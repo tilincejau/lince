@@ -7,4 +7,5 @@ pywinauto
 psutil
 requests
 datetime
+firebase_admin
 numpy
