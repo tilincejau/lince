@@ -267,11 +267,11 @@ elif script_choice == "Vasilhames":
     st.subheader("💧 Controle de Vasilhames")
     st.markdown("Este script consolida dados de vasilhames de diferentes fontes (Excel, TXT, PDF) e gera um relatório unificado.")
     
-    uploaded_txt_file = st.file_uploader("Envie o arquivo TXT de empréstimos (Ex: ESTOQUE0102.TXT)", type=["txt"])
+    uploaded_txt_files = st.file_uploader("Envie os arquivos TXT de empréstimos (Ex: ESTOQUE0102.TXT)", type=["txt"], accept_multiple_files=True)
     uploaded_excel_contagem = st.file_uploader("Envie o arquivo Excel de contagem (Ex: Contagem Vasilhames.xlsx)", type=["xlsx"])
     uploaded_pdf_files = st.file_uploader("Envie os arquivos PDF de fábrica", type=["pdf"], accept_multiple_files=True)
     
-    if uploaded_txt_file is not None and uploaded_excel_contagem is not None:
+    if uploaded_txt_files and uploaded_excel_contagem is not None:
         try:
             st.info("Processando arquivos. Por favor, aguarde...")
             
@@ -339,10 +339,20 @@ elif script_choice == "Vasilhames":
                 return pd.DataFrame(parsed_data).groupby(['Vasilhame', 'Dia'], as_index=False).sum()
             
             # --- Carregamento dos dados ---
-            df_txt_qty_raw, effective_date_str = process_txt_file_st(uploaded_txt_file)
-            if df_txt_qty_raw is None:
-                st.stop()
-            df_txt_qty_raw['Dia'] = effective_date_str
+            # Processa todos os arquivos TXT
+            all_txt_data = []
+            for uploaded_txt_file in uploaded_txt_files:
+                df_txt_qty, effective_date_str = process_txt_file_st(uploaded_txt_file)
+                if df_txt_qty is not None:
+                    df_txt_qty['Dia'] = effective_date_str
+                    all_txt_data.append(df_txt_qty)
+            
+            if all_txt_data:
+                df_all_processed_txt_data = pd.concat(all_txt_data, ignore_index=True)
+                df_all_processed_txt_data = df_all_processed_txt_data.groupby(['Vasilhame', 'Dia'])['Qtd. emprestimo'].sum().reset_index()
+            else:
+                df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Qtd. emprestimo'])
+
             df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
             df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
             df_historical_excel = df_contagem.copy()
@@ -367,12 +377,12 @@ elif script_choice == "Vasilhames":
             # Consolidação
             df_master_combinations = pd.concat([
                 df_excel_daily_counts[['Vasilhame', 'Dia']],
-                df_txt_qty_raw[['Vasilhame', 'Dia']],
+                df_all_processed_txt_data[['Vasilhame', 'Dia']],
                 df_all_processed_pdf_data[['Vasilhame', 'Dia']]
             ]).drop_duplicates().reset_index(drop=True)
             
             df_final = pd.merge(df_master_combinations, df_excel_daily_counts, on=['Vasilhame', 'Dia'], how='left')
-            df_final = pd.merge(df_final, df_txt_qty_raw, on=['Vasilhame', 'Dia'], how='left')
+            df_final = pd.merge(df_final, df_all_processed_txt_data, on=['Vasilhame', 'Dia'], how='left')
             df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
             
             # Cálculo final
