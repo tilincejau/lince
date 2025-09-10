@@ -26,7 +26,7 @@ script_choice = st.selectbox(
 st.write("---")
 
 if script_choice == "Acurácia":
-    st.subheader("📈 Acurácia de Estoque")
+    st.subheader("Acurácia de Estoque")
     st.markdown("Calcula a acurácia diária e mensal do estoque a partir de um arquivo Excel.")
     uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque.xlsx'", type=["xlsx"])
     if uploaded_file is not None:
@@ -331,3 +331,4 @@ elif script_choice == "Vasilhames":
             )
         except Exception as e:
             st.error(f"Ocorreu um erro durante o processamento: {e}")
+
