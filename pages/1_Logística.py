@@ -3,7 +3,7 @@ import pandas as pd
 import re
 import io
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 import PyPDF2
 from openpyxl import load_workbook
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -12,6 +12,7 @@ from openpyxl.utils import get_column_letter
 # Imports do Firebase Admin SDK
 import firebase_admin
 from firebase_admin import credentials, firestore
+import json
 
 # Verificação de login. Se não estiver logado, exibe uma mensagem e para o script.
 if not st.session_state.get('is_logged_in'):
@@ -24,8 +25,12 @@ if not st.session_state.get('is_logged_in'):
 @st.cache_resource
 def get_db():
     try:
-        # Pega as credenciais do st.secrets
-        cred_dict = st.secrets["firebase"]
+        # Pega as credenciais do st.secrets no formato de dicionário
+        cred_dict = dict(st.secrets["firebase"])
+        
+        # Converte a private_key de string para o formato de dicionário esperado pelo Firebase
+        cred_dict["private_key"] = json.loads(cred_dict["private_key"])
+        
         cred = credentials.Certificate(cred_dict)
         firebase_admin.initialize_app(cred)
         return firestore.client()
@@ -40,13 +45,10 @@ def save_vasilhames_to_db(df):
     st.info("Salvando dados no Firestore...")
     collection_ref = db.collection("vasilhames")
     for _, row in df.iterrows():
-        # Firestore não aceita campos com pd.NaT, então converte para None
         row_dict = row.to_dict()
         for key, value in row_dict.items():
             if pd.isna(value):
                 row_dict[key] = None
-        
-        # Cria um ID de documento único para cada entrada
         doc_ref = collection_ref.document()
         doc_ref.set(row_dict)
     st.success("Dados de vasilhames salvos com sucesso!")
