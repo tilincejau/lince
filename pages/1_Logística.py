@@ -25,12 +25,7 @@ if not st.session_state.get('is_logged_in'):
 @st.cache_resource
 def get_db():
     try:
-        # Pega as credenciais do st.secrets no formato de dicionário
         cred_dict = dict(st.secrets["firebase"])
-        
-        # O Firebase espera a private_key como uma string, não como JSON.
-        # Portanto, removemos a conversão com json.loads.
-        
         cred = credentials.Certificate(cred_dict)
         firebase_admin.initialize_app(cred)
         return firestore.client()
