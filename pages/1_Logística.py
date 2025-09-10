@@ -132,7 +132,7 @@ if script_choice == "Acurácia":
                 label="📥 Baixar Arquivo Processado",
                 data=excel_data,
                 file_name='Acuracia_estoque_processado.xlsx',
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         except Exception as e:
             st.error(f"Ocorreu um erro no script de Acurácia: {e}")
@@ -289,12 +289,12 @@ elif script_choice == "Vasilhames":
                     return None, None
                 product_code_to_vasilhame_map = {'563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', '550-012': '550-001 - CAIXA PLASTICA 600ML', '803-039': '550-001 - CAIXA PLASTICA 600ML', '803-037': '550-001 - CAIXA PLASTICA 600ML'}
                 parsed_data = []
-                pattern = re.compile(r'^\s*(\d{3}-\d{3})\s+(\d+)\s+(.+?)\s+([\d.]+)\s+([\d.,]+)\s*$')
+                pattern = re.compile(r'^\s*"?(\d{3}-\d{3})[^"\n]*?"?.*?"?([\d.]+)"?\s*$', re.MULTILINE)
                 for line in content.splitlines():
                     match = pattern.match(line)
                     if match:
                         product_code = match.group(1).strip()
-                        quantity = match.group(4).replace('.', '').strip()
+                        quantity = match.group(2).replace('.', '').strip()
                         if product_code in product_code_to_vasilhame_map:
                             parsed_data.append({'PRODUTO_CODE': product_code, 'QUANTIDADE': int(quantity) if quantity.isdigit() else 0})
                 if not parsed_data:
