@@ -20,14 +20,13 @@ if not st.session_state.get('is_logged_in'):
     st.stop()
 
 # --- Conexão e Funções do Firestore ---
-# Inicializa o Firebase se ainda não foi feito.
-# As credenciais são carregadas do `st.secrets`.
 @st.cache_resource
 def get_db():
     try:
-        cred_dict = dict(st.secrets["firebase"])
-        cred = credentials.Certificate(cred_dict)
-        firebase_admin.initialize_app(cred)
+        if not firebase_admin._apps:
+            cred_dict = dict(st.secrets["firebase"])
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
         return firestore.client()
     except Exception as e:
         st.error(f"Erro ao conectar com Firebase: {e}")
