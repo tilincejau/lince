@@ -28,8 +28,8 @@ def get_db():
         # Pega as credenciais do st.secrets no formato de dicionário
         cred_dict = dict(st.secrets["firebase"])
         
-        # Converte a private_key de string para o formato de dicionário esperado pelo Firebase
-        cred_dict["private_key"] = json.loads(cred_dict["private_key"])
+        # O Firebase espera a private_key como uma string, não como JSON.
+        # Portanto, removemos a conversão com json.loads.
         
         cred = credentials.Certificate(cred_dict)
         firebase_admin.initialize_app(cred)
@@ -295,12 +295,12 @@ elif script_choice == "Vasilhames":
                     return None, None
                 product_code_to_vasilhame_map = {'563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', '550-012': '550-001 - CAIXA PLASTICA 600ML', '803-039': '550-001 - CAIXA PLASTICA 600ML', '803-037': '550-001 - CAIXA PLASTICA 600ML'}
                 parsed_data = []
-                pattern = re.compile(r'^\s*(\d{3}-\d{3})\s+(\d+)\s+(.+?)\s+([\d.]+)\s+([\d.,]+)\s*$')
+                pattern = re.compile(r'^\s*"?(\d{3}-\d{3})[^"\n]*?"?.*?"?([\d.]+)"?\s*$', re.MULTILINE)
                 for line in content.splitlines():
                     match = pattern.match(line)
                     if match:
                         product_code = match.group(1).strip()
-                        quantity = match.group(4).replace('.', '').strip()
+                        quantity = match.group(2).replace('.', '').strip()
                         if product_code in product_code_to_vasilhame_map:
                             parsed_data.append({'PRODUTO_CODE': product_code, 'QUANTIDADE': int(quantity) if quantity.isdigit() else 0})
                 if not parsed_data:
@@ -310,6 +310,7 @@ elif script_choice == "Vasilhames":
                 df_txt_qty = df_estoque.groupby('Vasilhame')['QUANTIDADE'].sum().reset_index()
                 df_txt_qty.rename(columns={'QUANTIDADE': 'Qtd. emprestimo'}, inplace=True)
                 return df_txt_qty, effective_date_str
+
             def process_pdf_content(pdf_file, product_map):
                 parsed_data = []
                 filename_match = re.search(r'([a-zA-Z\s]+)\s+(\d{2}-\d{2}-\d{4})\.pdf', pdf_file.name)
