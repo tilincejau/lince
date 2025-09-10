@@ -20,11 +20,20 @@ if not st.session_state.get('is_logged_in'):
 
 # --- Conexão e Funções do Firestore ---
 # Inicializa o Firebase se ainda não foi feito.
-# As credenciais são carregadas do arquivo JSON.
-if not firebase_admin._apps:
-    cred = credentials.Certificate("firebase_credentials.json") # SUBSTITUA POR SUAS CREDENCIAIS
-    firebase_admin.initialize_app(cred)
-db = firestore.client()
+# As credenciais são carregadas do `st.secrets`.
+@st.cache_resource
+def get_db():
+    try:
+        # Pega as credenciais do st.secrets
+        cred_dict = st.secrets["firebase"]
+        cred = credentials.Certificate(cred_dict)
+        firebase_admin.initialize_app(cred)
+        return firestore.client()
+    except Exception as e:
+        st.error(f"Erro ao conectar com Firebase: {e}")
+        st.stop()
+
+db = get_db()
 
 def save_vasilhames_to_db(df):
     """Salva o DataFrame de vasilhames no Firestore."""
