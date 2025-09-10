@@ -289,12 +289,12 @@ elif script_choice == "Vasilhames":
                     return None, None
                 product_code_to_vasilhame_map = {'563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', '550-012': '550-001 - CAIXA PLASTICA 600ML', '803-039': '550-001 - CAIXA PLASTICA 600ML', '803-037': '550-001 - CAIXA PLASTICA 600ML'}
                 parsed_data = []
-                pattern = re.compile(r'^\s*"?(\d{3}-\d{3})[^"\n]*?"?.*?"?([\d.]+)"?\s*$', re.MULTILINE)
+                pattern = re.compile(r'^\s*(\d{3}-\d{3})\s+(\d+)\s+(.+?)\s+([\d.]+)\s+([\d.,]+)\s*$')
                 for line in content.splitlines():
                     match = pattern.match(line)
                     if match:
                         product_code = match.group(1).strip()
-                        quantity = match.group(2).replace('.', '').strip()
+                        quantity = match.group(4).replace('.', '').strip()
                         if product_code in product_code_to_vasilhame_map:
                             parsed_data.append({'PRODUTO_CODE': product_code, 'QUANTIDADE': int(quantity) if quantity.isdigit() else 0})
                 if not parsed_data:
@@ -339,10 +339,10 @@ elif script_choice == "Vasilhames":
                 return pd.DataFrame(parsed_data).groupby(['Vasilhame', 'Dia'], as_index=False).sum()
             
             # --- Carregamento dos dados ---
-            df_txt_qty, effective_date_str = process_txt_file_st(uploaded_txt_file)
-            if df_txt_qty is None:
+            df_txt_qty_raw, effective_date_str = process_txt_file_st(uploaded_txt_file)
+            if df_txt_qty_raw is None:
                 st.stop()
-            df_txt_qty['Dia'] = effective_date_str
+            df_txt_qty_raw['Dia'] = effective_date_str
             df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
             df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
             df_historical_excel = df_contagem.copy()
@@ -367,12 +367,12 @@ elif script_choice == "Vasilhames":
             # Consolidação
             df_master_combinations = pd.concat([
                 df_excel_daily_counts[['Vasilhame', 'Dia']],
-                df_txt_qty[['Vasilhame', 'Dia']],
+                df_txt_qty_raw[['Vasilhame', 'Dia']],
                 df_all_processed_pdf_data[['Vasilhame', 'Dia']]
             ]).drop_duplicates().reset_index(drop=True)
             
             df_final = pd.merge(df_master_combinations, df_excel_daily_counts, on=['Vasilhame', 'Dia'], how='left')
-            df_final = pd.merge(df_final, df_txt_qty, on=['Vasilhame', 'Dia'], how='left')
+            df_final = pd.merge(df_final, df_txt_qty_raw, on=['Vasilhame', 'Dia'], how='left')
             df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
             
             # Cálculo final
@@ -384,11 +384,9 @@ elif script_choice == "Vasilhames":
             st.subheader("✅ Tabela Consolidada de Vasilhames")
             st.dataframe(df_final)
 
-            # --- Adicionado: Botão para Salvar no Firestore ---
             if st.button("Salvar no Banco de Dados"):
                 save_vasilhames_to_db(df_final)
             
-            # --- Adicionado: Botão para Carregar do Firestore ---
             if st.button("Carregar do Banco de Dados"):
                 df_from_db = load_vasilhames_from_db()
                 if not df_from_db.empty:
