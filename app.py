@@ -185,6 +185,11 @@ def main_page():
             st.rerun()
 
 # Lógica principal da página
+if 'is_logged_in' not in st.session_state:
+    st.session_state['is_logged_in'] = False
+if 'current_page' not in st.session_state:
+    st.session_state['current_page'] = 'login'
+
 if st.session_state.get('is_logged_in', False):
     page_functions = {
         'home': main_page,
