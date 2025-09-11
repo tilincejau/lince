@@ -159,19 +159,19 @@ def main_page():
         st.markdown("---")
         
         # Cria os botões um embaixo do outro e centralizados
-        if st.button("🚚 Logística", use_container_width=True, key="logistics"):
+        if st.button("🚚 Logística", use_container_width=True):
             st.session_state['current_page'] = 'logistics'
             st.rerun()
-        if st.button("📈 Comercial", use_container_width=True, key="commercial"):
+        if st.button("📈 Comercial", use_container_width=True):
             st.session_state['current_page'] = 'commercial'
             st.rerun()
-        if st.button("👥 RH", use_container_width=True, key="rh"):
+        if st.button("👥 RH", use_container_width=True):
             st.session_state['current_page'] = 'rh'
             st.rerun()
-        if st.button("💻 TI", use_container_width=True, key="ti"):
+        if st.button("💻 TI", use_container_width=True):
             st.session_state['current_page'] = 'ti'
             st.rerun()
-        if st.button("🏠 Sítio", use_container_width=True, key="site"):
+        if st.button("🏠 Sítio", use_container_width=True):
             st.session_state['current_page'] = 'site'
             st.rerun()
         
