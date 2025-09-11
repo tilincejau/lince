@@ -20,7 +20,7 @@ st.markdown("Bem-vindo(a) ao setor Comercial. Abaixo estão os scripts disponív
 # --- Seleção do Script ---
 script_selection = st.selectbox(
     "Selecione o script que deseja executar:",
-    ("Análise de Canal", "Processador de Pontos")
+    ("Selecione...", "Análise de Canal", "Processador de Pontos")
 )
 
 # --- Seção 1: Análise de Canal e Validação de Dados ---
