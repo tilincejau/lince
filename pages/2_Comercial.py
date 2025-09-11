@@ -20,13 +20,13 @@ st.markdown("Bem-vindo(a) ao setor Comercial. Abaixo estão os scripts disponív
 # --- Seleção do Script ---
 script_selection = st.selectbox(
     "Selecione o script que deseja executar:",
-    ("Selecione...", "Análise de Canal", "Processador de Pontos")
+    ("Selecione...", "Troca de Canal", "Circuito Execução")
 )
 
-# --- Seção 1: Análise de Canal e Validação de Dados ---
-if script_selection == "Análise de Canal":
+# --- Seção 1: Troca de Canal e Validação de Dados ---
+if script_selection == "Troca de Canal":
     st.write("---")
-    st.subheader("📊 Análise de Canal")
+    st.subheader("📊 Troca de Canal")
     st.markdown("Este script transforma e consolida dados de planilhas de Google Forms, adicionando uma coluna de status com lista suspensa.")
 
     def normalize_columns(columns_list):
@@ -81,12 +81,12 @@ if script_selection == "Análise de Canal":
         final_df = pd.DataFrame(processed_records)
         return final_df
 
-    uploaded_file_1 = st.file_uploader("Envie o arquivo para 'Análise de Canal' (.xlsx)", type=["xlsx"])
+    uploaded_file_1 = st.file_uploader("Envie o arquivo para 'Troca de Canal' (.xlsx)", type=["xlsx"])
 
     if uploaded_file_1 is not None:
         try:
             df_forms = pd.read_excel(uploaded_file_1)
-            st.subheader("📄 Dados Originais (Análise de Canal)")
+            st.subheader("📄 Dados Originais (Troca de Canal)")
             st.dataframe(df_forms.head())
             
             final_df_forms = transform_google_forms_data(df_forms)
@@ -115,23 +115,23 @@ if script_selection == "Análise de Canal":
             workbook.save(output_with_dropdown)
             output_with_dropdown.seek(0)
             
-            st.subheader("✅ Dados Transformados (Análise de Canal)")
+            st.subheader("✅ Dados Transformados (Troca de Canal)")
             st.dataframe(final_df_forms)
             
             st.download_button(
-                label="📥 Baixar Arquivo de Análise de Canal",
+                label="📥 Baixar Arquivo de Troca de Canal",
                 data=output_with_dropdown.getvalue(),
-                file_name="analise_canal_processada.xlsx",
+                file_name="troca_canal_processada.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
             
         except Exception as e:
-            st.error(f"Ocorreu um erro durante o processamento de 'Análise de Canal': {e}")
+            st.error(f"Ocorreu um erro durante o processamento de 'Troca de Canal': {e}")
 
-# --- Seção 2: Processador de Arquivos para Pontuação ---
-elif script_selection == "Processador de Pontos":
+# --- Seção 2: Circuito Execução ---
+elif script_selection == "Circuito Execução":
     st.write("---")
-    st.subheader("⚙️ Processador de Arquivos")
+    st.subheader("⚙️ Circuito Execução")
     st.markdown("Este script converte os valores 'Presença' em pontuação, com base no nome das colunas.")
 
     def extract_points(column_name):
@@ -162,27 +162,27 @@ elif script_selection == "Processador de Pontos":
         processed_data = output.getvalue()
         return processed_data
 
-    uploaded_file_2 = st.file_uploader("Envie o arquivo para 'Processador de Pontos' (.xlsx)", type=["xlsx"])
+    uploaded_file_2 = st.file_uploader("Envie o arquivo para 'Circuito Execução' (.xlsx)", type=["xlsx"])
 
     if uploaded_file_2 is not None:
         try:
             df_points = pd.read_excel(uploaded_file_2)
-            st.subheader("📄 Dados Originais (Processador de Pontos)")
+            st.subheader("📄 Dados Originais (Circuito Execução)")
             st.dataframe(df_points)
             
             df_transformed_points = transform_points_columns(df_points)
             
-            st.subheader("✅ Dados Transformados (Processador de Pontos)")
+            st.subheader("✅ Dados Transformados (Circuito Execução)")
             st.dataframe(df_transformed_points)
             
             excel_data = convert_df_to_excel(df_transformed_points)
             
             st.download_button(
-                label="📥 Baixar Arquivo de Pontos Transformado",
+                label="📥 Baixar Arquivo de Circuito Execução Transformado",
                 data=excel_data,
-                file_name="pontos_transformados.xlsx",
+                file_name="circuito_execucao_transformado.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
             
         except Exception as e:
-            st.error(f"Ocorreu um erro durante o processamento de 'Processador de Pontos': {e}")
+            st.error(f"Ocorreu um erro durante o processamento de 'Circuito Execução': {e}")
