@@ -36,10 +36,14 @@ st.markdown("""
         font-family: 'Arial Black', sans-serif;
     }
     .st-emotion-cache-1c7y3q { /* CSS para o container do formulário */
-        background-color: white;
+        background-color: #F8F8F8;
         padding: 30px;
         border-radius: 10px;
         box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+    }
+    .centered-icon {
+        text-align: center;
+        font-size: 5rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -58,7 +62,8 @@ def login_form():
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.title("🔐 Acesso Restrito")
+        st.markdown("<div class='centered-icon'>🔐</div>", unsafe_allow_html=True)
+        st.title("Acesso Restrito")
         st.markdown("<h3 style='text-align: center; color: #555;'>Lince Distribuidora de Bebidas</h3>", unsafe_allow_html=True)
         st.markdown("---")
         
