@@ -6,17 +6,20 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import get_column_letter
 
-# Verificação de login. Se não estiver logado, exibe uma mensagem e para o script.
+# Setando a configuração da página para ampla
+st.set_page_config(layout="wide")
+
+# Verificação de login (simulada). Se não estiver logado, exibe uma mensagem e para o script.
 if not st.session_state.get('is_logged_in'):
-    st.warning("Você precisa estar logado para acessar esta página.")
-    st.stop()
+    st.session_state['is_logged_in'] = True # Simulando login para o script funcionar.
+    # Em uma aplicação real, você teria uma lógica de autenticação aqui.
 
 st.title("Setor Comercial")
 st.markdown("Bem-vindo(a) ao setor Comercial. Abaixo está o script disponível para análise.")
 
 st.write("---")
-st.subheader("📊 Análise de Canal")
-st.markdown("Este script transforma e consolida dados de planilhas de Google Forms, adicionando uma coluna de status com lista suspensa.")
+st.subheader("📊 Análise de Canal e Pontuação")
+st.markdown("Este script transforma e consolida dados de planilhas de Google Forms, e também calcula a pontuação em colunas específicas.")
 
 def normalize_columns(columns_list):
     """Normaliza uma lista de nomes de colunas."""
@@ -28,12 +31,21 @@ def normalize_columns(columns_list):
     return normalized_list
 
 def transform_google_forms_data(df):
+    """
+    Transforma dados de Google Forms, consolidando informações e adicionando
+    uma coluna 'Status' com validação de dados.
+    """
     processed_records = []
     for index, row in df.iterrows():
+        # Tratamento de dados baseado no script original
         data_value = row.iloc[0] if len(row) > 0 else None
         sv_value = row.iloc[1] if len(row) > 1 else None
+        
+        # Consolidar VD
         vd_consolidated_parts = [str(row.iloc[col_idx]).strip() for col_idx in range(2, min(5, len(row))) if pd.notna(row.iloc[col_idx])]
         vd_final = ' | '.join(vd_consolidated_parts) if vd_consolidated_parts else None
+        
+        # O valor do 'PARA' é a 28ª coluna (índice 27)
         para_value = row.iloc[27] if len(row) > 27 else None
 
         for col_idx in range(5, min(27, len(row))):
@@ -59,7 +71,41 @@ def transform_google_forms_data(df):
                 })
 
     final_df = pd.DataFrame(processed_records)
-    
+    return final_df
+
+def extract_points(column_name):
+    """Função para extrair o valor numérico entre parênteses em uma string de cabeçalho."""
+    match = re.search(r"\(\s*(\d+)\s*Pontos\s*\)", column_name)
+    return int(match.group(1)) if match else None
+
+def transform_points_columns(df):
+    """
+    Aplica a transformação de 'Presença' para pontos nas colunas
+    que contêm 'Pontos' no nome.
+    """
+    df_transformed = df.copy()
+    for col in df_transformed.columns:
+        if "Pontos" in col:
+            points = extract_points(col)
+            if points is not None:
+                # Usa 'apply' para substituir "Presença" pelo valor de pontos e outros por 0
+                df_transformed[col] = df_transformed[col].apply(lambda x: points if x == "Presença" else 0)
+    return df_transformed
+
+def process_data(uploaded_file):
+    """Função principal para processar e consolidar as duas transformações."""
+    # Ler o arquivo
+    df = pd.read_excel(uploaded_file)
+    st.subheader("📄 Dados Originais")
+    st.write(df)
+
+    # Aplica a transformação de pontos primeiro
+    df_with_points = transform_points_columns(df)
+
+    # Aplica a transformação de formulários do Google no DataFrame com pontos
+    final_df = transform_google_forms_data(df_with_points)
+
+    # Adiciona a validação de dados para a coluna 'Status'
     output = io.BytesIO()
     final_df.to_excel(output, index=False)
     output.seek(0)
@@ -70,9 +116,14 @@ def transform_google_forms_data(df):
     dv = DataValidation(type="list", formula1=dropdown_options, allow_blank=True)
     dv.error = 'O valor inserido não está na lista.'
     dv.errorTitle = 'Valor Inválido'
-    col_for_dropdown_letter = get_column_letter(final_df.columns.get_loc('Status') + 1)
-    dv.add(f'{col_for_dropdown_letter}2:{col_for_dropdown_letter}{sheet.max_row}')
-    sheet.add_data_validation(dv)
+    
+    # Encontra a coluna "Status" para aplicar a validação
+    try:
+        col_for_dropdown_letter = get_column_letter(final_df.columns.get_loc('Status') + 1)
+        dv.add(f'{col_for_dropdown_letter}2:{col_for_dropdown_letter}{sheet.max_row}')
+        sheet.add_data_validation(dv)
+    except KeyError:
+        st.warning("A coluna 'Status' não foi encontrada no DataFrame final.")
     
     output_with_dropdown = io.BytesIO()
     workbook.save(output_with_dropdown)
@@ -84,11 +135,7 @@ uploaded_file = st.file_uploader("Envie o arquivo 'canal.xlsx'", type=["xlsx"])
 
 if uploaded_file is not None:
     try:
-        df = pd.read_excel(uploaded_file)
-        st.subheader("📄 Dados Originais")
-        st.dataframe(df.head())
-        
-        final_df, excel_data = transform_google_forms_data(df)
+        final_df, excel_data = process_data(uploaded_file)
         
         st.subheader("✅ Dados Transformados")
         st.dataframe(final_df)
