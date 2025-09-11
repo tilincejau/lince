@@ -9,10 +9,10 @@ from openpyxl.utils import get_column_letter
 # Setando a configuração da página para ampla
 st.set_page_config(layout="wide")
 
-# Verificação de login (simulada). Se não estiver logado, exibe uma mensagem e para o script.
+# Verificação de login. Se não estiver logado, exibe uma mensagem e para o script.
 if not st.session_state.get('is_logged_in'):
-    st.session_state['is_logged_in'] = True # Simulando login para o script funcionar.
-    # Em uma aplicação real, você teria uma lógica de autenticação aqui.
+    st.warning("Você precisa estar logado para acessar esta página.")
+    st.stop()
 
 st.title("Setor Comercial")
 st.markdown("Bem-vindo(a) ao setor Comercial. Abaixo estão os scripts disponíveis para análise.")
