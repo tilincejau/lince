@@ -56,11 +56,6 @@ LOGIN_INFO = {
     "marcia": "54321"
 }
 
-# Código para carregar a imagem em base64
-def get_image_as_base64(path):
-    with open(path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode()
-
 def login_form():
     """Exibe o formulário de login com um design aprimorado."""
     
@@ -69,8 +64,8 @@ def login_form():
     
     with col2:
         # Adiciona a imagem do logo
-        # Usamos uma imagem placeholder, pois não podemos carregar arquivos locais.
-        st.image("https://placehold.co/600x200/FFFFFF/000000?text=Lince+Distribuidora", width=250)
+        # Usamos uma imagem base64 para garantir que seja exibida corretamente.
+        st.image("https://raw.githubusercontent.com/Lince-Distribuidora/imagens/main/Captura%20de%20tela%202025-04-23%20161218.png")
         st.markdown("<h3 style='text-align: center; color: #555;'></h3>", unsafe_allow_html=True)
         st.markdown("---")
         
