@@ -15,7 +15,7 @@ if 'username' not in st.session_state:
 if 'current_page' not in st.session_state:
     st.session_state['current_page'] = 'login'  # 'login' ou 'home'
 
-# Adiciona CSS personalizado para um visual mais limpo e profissional
+# CSS personalizado
 st.markdown("""
 <style>
     .stApp {
@@ -43,7 +43,6 @@ st.markdown("""
         color: #004d99;
         font-family: 'Arial Black', sans-serif;
     }
-    /* Evite depender de classes dinâmicas do Streamlit; use ids ou estruturas próprias quando necessário */
     .centered-icon {
         text-align: center;
         font-size: 5rem;
@@ -73,7 +72,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Define as credenciais de login para demonstração
+# Credenciais de login
 LOGIN_INFO = {
     "admin": "Joao789",
     "amanda": "12345",
@@ -100,7 +99,7 @@ def login_form():
                 st.session_state['current_page'] = 'home'
                 st.success("Login realizado com sucesso! Redirecionando...")
                 st.balloons()
-                st.experimental_rerun()
+                st.rerun()   # ✅ corrigido
             else:
                 st.error("Usuário ou senha incorretos.")
 
@@ -109,35 +108,35 @@ def logistics_page():
     st.write("Conteúdo da página de Logística.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
-        st.experimental_rerun()
+        st.rerun()   # ✅ corrigido
 
 def commercial_page():
     st.markdown("<h2 style='text-align: center;'>Comercial</h2>", unsafe_allow_html=True)
     st.write("Conteúdo da página de Comercial.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
-        st.experimental_rerun()
+        st.rerun()   # ✅ corrigido
 
 def rh_page():
     st.markdown("<h2 style='text-align: center;'>Recursos Humanos</h2>", unsafe_allow_html=True)
     st.write("Conteúdo da página de Recursos Humanos.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
-        st.experimental_rerun()
+        st.rerun()   # ✅ corrigido
 
 def ti_page():
     st.markdown("<h2 style='text-align: center;'>TI</h2>", unsafe_allow_html=True)
     st.write("Conteúdo da página de TI.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
-        st.experimental_rerun()
+        st.rerun()   # ✅ corrigido
 
 def site_page():
     st.markdown("<h2 style='text-align: center;'>Sítio</h2>", unsafe_allow_html=True)
     st.write("Conteúdo da página do Sítio.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
-        st.experimental_rerun()
+        st.rerun()   # ✅ corrigido
 
 def main_page():
     """Exibe a página principal após o login com um layout mais agradável."""
@@ -149,25 +148,25 @@ def main_page():
         st.markdown("---")
         if st.button("🚚 Logística", use_container_width=True, key="btn_logistics"):
             st.session_state['current_page'] = 'logistics'
-            st.experimental_rerun()
+            st.rerun()   # ✅ corrigido
         if st.button("📈 Comercial", use_container_width=True, key="btn_commercial"):
             st.session_state['current_page'] = 'commercial'
-            st.experimental_rerun()
+            st.rerun()   # ✅ corrigido
         if st.button("👥 RH", use_container_width=True, key="btn_rh"):
             st.session_state['current_page'] = 'rh'
-            st.experimental_rerun()
+            st.rerun()   # ✅ corrigido
         if st.button("💻 TI", use_container_width=True, key="btn_ti"):
             st.session_state['current_page'] = 'ti'
-            st.experimental_rerun()
+            st.rerun()   # ✅ corrigido
         if st.button("🏠 Sítio", use_container_width=True, key="btn_site"):
             st.session_state['current_page'] = 'site'
-            st.experimental_rerun()
+            st.rerun()   # ✅ corrigido
         st.markdown("---")
         if st.button("Sair", use_container_width=True, key="btn_logout"):
             st.session_state['is_logged_in'] = False
             st.session_state['username'] = ""
             st.session_state['current_page'] = 'login'
-            st.experimental_rerun()
+            st.rerun()   # ✅ corrigido
 
 # Dispatcher principal
 if st.session_state.get('is_logged_in', False):
@@ -183,7 +182,6 @@ if st.session_state.get('is_logged_in', False):
     try:
         page_functions.get(current, main_page)()
     except Exception as e:
-        # Mostra o erro na UI para facilitar o debug em vez da página em branco
         st.error("Erro ao renderizar a página. Veja detalhes abaixo:")
         st.exception(e)
 else:
