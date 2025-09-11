@@ -167,14 +167,12 @@ def main_page():
             "Sítio": {"icon": "🏠", "help": "Gerenciamento do sítio da empresa.", "key": "site"}
         }
 
-        # Cria os botões em colunas para ficarem um abaixo do outro
-        cols = st.columns(len(areas))
-        
-        for i, (area, props) in enumerate(areas.items()):
-            with cols[i]:
-                if st.button(f"{props['icon']} {area}", help=props['help'], key=props['key'], use_container_width=True):
-                    st.session_state['current_page'] = props['key']
-                    st.rerun()
+        # Cria os botões em colunas para ficarem um abaixo do outro e centralizados
+        for area, props in areas.items():
+            st.button(f"{props['icon']} {area}", help=props['help'], key=props['key'], use_container_width=True)
+            if st.session_state.get(props['key']):
+                st.session_state['current_page'] = props['key']
+                st.rerun()
         
         st.markdown("---")
         
