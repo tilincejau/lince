@@ -80,6 +80,11 @@ if script_selection == "Análise de Canal":
 
         final_df = pd.DataFrame(processed_records)
         return final_df
+
+    # Campo de texto para as opções da lista suspensa
+    dropdown_input = st.text_input(
+        "Insira as opções da lista suspensa (separadas por vírgula):",
+        "Aprovado,Não Aprovado"
     )
 
     uploaded_file_1 = st.file_uploader("Envie o arquivo para 'Análise de Canal' (.xlsx)", type=["xlsx"])
@@ -187,4 +192,3 @@ elif script_selection == "Processador de Pontos":
             
         except Exception as e:
             st.error(f"Ocorreu um erro durante o processamento de 'Processador de Pontos': {e}")
-
