@@ -365,9 +365,9 @@ def logistics_page():
                 
                 if all_txt_data:
                     df_all_processed_txt_data = pd.concat(all_txt_data, ignore_index=True)
-                    df_all_processed_txt_data = df_all_processed_txt_data.groupby(['Vasilhames', 'Dia'])['Qtd. emprestimo'].sum().reset_index()
+                    df_all_processed_txt_data = df_all_processed_txt_data.groupby(['Vasilhame', 'Dia'])['Qtd. emprestimo'].sum().reset_index()
                 else:
-                    df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhames', 'Dia', 'Qtd. emprestimo'])
+                    df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Qtd. emprestimo'])
 
                 df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                 df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
@@ -386,26 +386,26 @@ def logistics_page():
                 
                 if all_pdf_data:
                     df_all_processed_pdf_data = pd.concat(all_pdf_data, ignore_index=True)
-                    df_all_processed_pdf_data = df_all_processed_pdf_data.groupby(['Vasilhames', 'Dia']).sum().reset_index()
+                    df_all_processed_pdf_data = df_all_processed_pdf_data.groupby(['Vasilhame', 'Dia']).sum().reset_index()
                 else:
-                    df_all_processed_pdf_data = pd.DataFrame(columns=['Vasilhames', 'Dia', 'Credito Ponta Grossa (0328)', 'Debito Ponta Grossa (0328)', 'Credito Araraquara (0336)', 'Debito Araraquara (0336)', 'Credito Itu (0002)', 'Debito Itu (0002)'])
+                    df_all_processed_pdf_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Credito Ponta Grossa (0328)', 'Debito Ponta Grossa (0328)', 'Credito Araraquara (0336)', 'Debito Araraquara (0336)', 'Credito Itu (0002)', 'Debito Itu (0002)'])
                 
                 # Consolidação
                 df_master_combinations = pd.concat([
-                    df_excel_daily_counts[['Vasilhames', 'Dia']],
-                    df_all_processed_txt_data[['Vasilhames', 'Dia']],
-                    df_all_processed_pdf_data[['Vasilhames', 'Dia']]
+                    df_excel_daily_counts[['Vasilhame', 'Dia']],
+                    df_all_processed_txt_data[['Vasilhame', 'Dia']],
+                    df_all_processed_pdf_data[['Vasilhame', 'Dia']]
                 ]).drop_duplicates().reset_index(drop=True)
                 
-                df_final = pd.merge(df_master_combinations, df_excel_daily_counts, on=['Vasilhames', 'Dia'], how='left')
-                df_final = pd.merge(df_final, df_all_processed_txt_data, on=['Vasilhames', 'Dia'], how='left')
-                df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhames', 'Dia'], how='left')
+                df_final = pd.merge(df_master_combinations, df_excel_daily_counts, on=['Vasilhame', 'Dia'], how='left')
+                df_final = pd.merge(df_final, df_all_processed_txt_data, on=['Vasilhame', 'Dia'], how='left')
+                df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
                 
                 # Cálculo final
                 df_final['Contagem'] = pd.to_numeric(df_final['Contagem'], errors='coerce').fillna(0)
                 df_final['Qtd. emprestimo'] = pd.to_numeric(df_final['Qtd. emprestimo'], errors='coerce').fillna(0)
                 df_final['Total Revenda'] = df_final['Qtd. emprestimo'] + df_final['Contagem'] + df_final['Credito Ponta Grossa (0328)'].fillna(0) + df_final['Credito Araraquara (0336)'].fillna(0) + df_final['Credito Itu (0002)'].fillna(0) - (df_final['Debito Ponta Grossa (0328)'].fillna(0) + df_final['Debito Araraquara (0336)'].fillna(0) + df_final['Debito Itu (0002)'].fillna(0))
-                df_final['Diferença'] = df_final.groupby('Vasilhames')['Total Revenda'].diff()
+                df_final['Diferença'] = df_final.groupby('Vasilhame')['Total Revenda'].diff()
 
                 st.subheader("✅ Tabela Consolidada de Vasilhames")
                 st.dataframe(df_final)
@@ -464,7 +464,7 @@ def commercial_page():
                 
                 # Consolidar VD
                 vd_consolidated_parts = [str(row.iloc[col_idx]).strip() for col_idx in range(2, min(5, len(row))) if pd.notna(row.iloc[col_idx])]
-                vd_final = ' | '.in(vd_consolidated_parts) if vd_consolidated_parts else None
+                vd_final = ' | '.join(vd_consolidated_parts) if vd_consolidated_parts else None
                 
                 # O valor do 'PARA' é a 28ª coluna (índice 27)
                 para_value = row.iloc[27] if len(row) > 27 else None
