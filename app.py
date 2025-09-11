@@ -46,6 +46,27 @@ st.markdown("""
         text-align: center;
         font-size: 5rem;
     }
+    .app-card {
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        text-align: center;
+        margin-bottom: 20px;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    .app-card:hover {
+        transform: translateY(-5px);
+    }
+    .app-card h3 {
+        color: #004d99;
+        font-size: 1.2rem;
+    }
+    .app-card p {
+        color: #555;
+        font-size: 0.9rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -94,8 +115,39 @@ def main_page():
     col1, col2, col3 = st.columns([1, 3, 1])
     
     with col2:
-        st.markdown(f"Bem-vindo(a), **{st.session_state['username']}**!")
-        st.info("Agora você pode navegar para as outras páginas do menu lateral.")
+        st.markdown(f"<h3 style='text-align: center;'>Bem-vindo(a), **{st.session_state['username']}**!</h3>", unsafe_allow_html=True)
+        st.markdown("---")
+        
+        # Cria as áreas com ícones e texto
+        # Utilize colunas para organizar os cards de forma responsiva
+        c1, c2 = st.columns(2)
+
+        with c1:
+            with st.container(border=True):
+                st.markdown("<h3 style='text-align: center;'>📦</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: center;'>Logística</h3>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center;'>Gestão de estoque e rotas.</p>", unsafe_allow_html=True)
+
+            with st.container(border=True):
+                st.markdown("<h3 style='text-align: center;'>👥</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: center;'>RH</h3>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center;'>Recursos Humanos e folha de pagamento.</p>", unsafe_allow_html=True)
+
+            with st.container(border=True):
+                st.markdown("<h3 style='text-align: center;'>🌐</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: center;'>Site</h3>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center;'>Gerenciamento do site da empresa.</p>", unsafe_allow_html=True)
+
+        with c2:
+            with st.container(border=True):
+                st.markdown("<h3 style='text-align: center;'>📈</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: center;'>Comercial</h3>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center;'>Acompanhamento de vendas e clientes.</p>", unsafe_allow_html=True)
+
+            with st.container(border=True):
+                st.markdown("<h3 style='text-align: center;'>💻</h3>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: center;'>TI</h3>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center;'>Suporte técnico e infraestrutura.</p>", unsafe_allow_html=True)
         
         st.markdown("---")
         
