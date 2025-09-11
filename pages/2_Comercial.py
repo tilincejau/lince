@@ -81,12 +81,6 @@ if script_selection == "Análise de Canal":
         final_df = pd.DataFrame(processed_records)
         return final_df
 
-    # Campo de texto para as opções da lista suspensa
-    dropdown_input = st.text_input(
-        "Insira as opções da lista suspensa (separadas por vírgula):",
-        "Aprovado,Não Aprovado"
-    )
-
     uploaded_file_1 = st.file_uploader("Envie o arquivo para 'Análise de Canal' (.xlsx)", type=["xlsx"])
 
     if uploaded_file_1 is not None:
@@ -104,8 +98,8 @@ if script_selection == "Análise de Canal":
             workbook = load_workbook(output)
             sheet = workbook.active
             
-            # Usa as opções do campo de texto para a validação de dados
-            dropdown_options_excel = f'"{dropdown_input}"'
+            # Opções da lista suspensa fixas no código
+            dropdown_options_excel = '"Aprovado,Não Aprovado"'
             dv = DataValidation(type="list", formula1=dropdown_options_excel, allow_blank=True)
             dv.error = 'O valor inserido não está na lista.'
             dv.errorTitle = 'Valor Inválido'
