@@ -132,8 +132,8 @@ if uploaded_file is not None:
             consolidated_df.loc[group[group['Tipo de Lançamento'] == 'Fim da Viagem'].index, 'Tempo de Dirigibilidade'] = tempo_dirigibilidade
             consolidated_df.loc[group[group['Motivo'] == 'Almoço'].index, 'Tempo Almoço'] = almoco_duration
             consolidated_df.loc[group[group['Motivo'] == 'Carga/Descarga'].index, 'Tempo Carga/Descarga'] = carga_descarga_duration
-            consolidated_df.loc[group[group['Motivo'] == 'Liberação de N.F'].index, 'Tempo Liberação N.F.'] = liberacao_nf_duration
-            consolidated_df.loc[group[group['Motivo'] == 'Repouso'].index, 'Tempo Repouso'] = repouso_duration
+            consolidated_df.loc[group[group['Motivo'] == 'Liberação de N.F'].index, 'Tempo Liberação N.F.'].iloc[0] = liberacao_nf_duration
+            consolidated_df.loc[group[group['Motivo'] == 'Repouso'].index, 'Tempo Repouso'].iloc[0] = repouso_duration
         consolidated_df['Tempo Total de Jornada'] = consolidated_df['Tempo Total de Jornada'].apply(format_timedelta_as_dias_hms)
         consolidated_df['Tempo Total de Viagem'] = consolidated_df['Tempo Total de Viagem'].apply(format_timedelta_as_dias_hms)
         consolidated_df['Tempo de Dirigibilidade'] = consolidated_df['Tempo de Dirigibilidade'].apply(format_timedelta_as_hms)
