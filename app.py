@@ -4,8 +4,7 @@ import base64
 st.set_page_config(
     page_title="Lince Distribuidora de Bebidas - Login",
     page_icon="🏠",
-    layout="centered",
-    initial_sidebar_state="collapsed"
+    layout="centered"
 )
 
 # Adiciona CSS personalizado para um visual mais limpo e profissional
