@@ -1,4 +1,5 @@
 import streamlit as st
+import base64
 
 st.set_page_config(
     page_title="Lince Distribuidora de Bebidas - Login",
@@ -55,6 +56,11 @@ LOGIN_INFO = {
     "marcia": "54321"
 }
 
+# Código para carregar a imagem em base64
+def get_image_as_base64(path):
+    with open(path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode()
+
 def login_form():
     """Exibe o formulário de login com um design aprimorado."""
     
@@ -62,9 +68,10 @@ def login_form():
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.markdown("<div class='centered-icon'>🔐</div>", unsafe_allow_html=True)
-        st.title("Acesso Restrito")
-        st.markdown("<h3 style='text-align: center; color: #555;'>Lince Distribuidora de Bebidas</h3>", unsafe_allow_html=True)
+        # Adiciona a imagem do logo
+        # Usamos uma imagem placeholder, pois não podemos carregar arquivos locais.
+        st.image("https://placehold.co/600x200/FFFFFF/000000?text=Lince+Distribuidora", width=250)
+        st.markdown("<h3 style='text-align: center; color: #555;'></h3>", unsafe_allow_html=True)
         st.markdown("---")
         
         with st.form("login_form", clear_on_submit=False):
