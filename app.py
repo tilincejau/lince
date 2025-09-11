@@ -365,9 +365,9 @@ def logistics_page():
                 
                 if all_txt_data:
                     df_all_processed_txt_data = pd.concat(all_txt_data, ignore_index=True)
-                    df_all_processed_txt_data = df_all_processed_txt_data.groupby(['Vasilhame', 'Dia'])['Qtd. emprestimo'].sum().reset_index()
+                    df_all_processed_txt_data = df_all_processed_txt_data.groupby(['Vasilhames', 'Dia'])['Qtd. emprestimo'].sum().reset_index()
                 else:
-                    df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Qtd. emprestimo'])
+                    df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhames', 'Dia', 'Qtd. emprestimo'])
 
                 df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                 df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
