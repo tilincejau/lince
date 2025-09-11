@@ -83,7 +83,7 @@ def logistics_page():
     
     script_choice = st.selectbox(
         "Selecione um script para executar:",
-        ("Selecione...", "Acurácia", "Validade", "Vasilhames")
+        ("Selecione...", "Acurácia", "Validade", "Vasilhames", "Abastecimento")
     )
     
     st.write("---")
@@ -422,6 +422,119 @@ def logistics_page():
                 )
             except Exception as e:
                 st.error(f"Ocorreu um erro durante o processamento: {e}")
+    
+    elif script_choice == "Abastecimento":
+        st.subheader("Análise de Abastecimento")
+        st.markdown("Este script processa dados de abastecimento e gera relatórios separados para Diesel e Arla, com médias de consumo por KM.")
+        
+        uploaded_file = st.file_uploader("Envie o arquivo de abastecimento (.xlsx ou .csv)", type=["xlsx", "csv"])
+        
+        if uploaded_file is not None:
+            try:
+                st.info("Processando arquivo de abastecimento. Isso pode levar alguns segundos...")
+                
+                if uploaded_file.name.endswith('.csv'):
+                    df = pd.read_csv(uploaded_file)
+                elif uploaded_file.name.endswith('.xlsx'):
+                    df = pd.read_excel(uploaded_file)
+                
+                # Normalização de colunas
+                df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
+                
+                # Garante que as colunas de data e hora estão no formato correto
+                if 'DATA ABASTECIMENTO' not in df.columns and 'DATA' in df.columns:
+                    df['DATA ABASTECIMENTO'] = pd.to_datetime(df['DATA'], errors='coerce')
+                else:
+                    df['DATA ABASTECIMENTO'] = pd.to_datetime(df['DATA ABASTECIMENTO'], errors='coerce')
+                
+                if 'HORÁRIO' in df.columns:
+                    df['HORÁRIO'] = pd.to_datetime(df['HORÁRIO'], format='%H:%M:%S', errors='coerce').dt.time
+                
+                if 'MOTORISTA' not in df.columns and 'RESPONSÁVEL' in df.columns:
+                    df['MOTORISTA'] = df['RESPONSÁVEL']
+
+                df['KM'] = pd.to_numeric(df['KM'], errors='coerce')
+                df['LITROS'] = pd.to_numeric(df['LITROS'], errors='coerce')
+
+                # Define as colunas de saída
+                colunas_saida = [
+                    'DATA ABASTECIMENTO', 'HORÁRIO', 'TIPO DE ABASTECIMENTO', 
+                    'PLACA', 'KM', 'ALERTA KM', 'MOTORISTA', 'LITROS', 'Média de litros por KM'
+                ]
+                
+                # --- Processa a planilha de Diesel ---
+                df_diesel = df[df['TIPO DE ABASTECIMENTO'] == 'DIESEL'].copy()
+                if not df_diesel.empty:
+                    excel_data_diesel = io.BytesIO()
+                    with pd.ExcelWriter(excel_data_diesel, engine='openpyxl') as writer:
+                        placas_diesel = sorted(df_diesel['PLACA'].unique())
+                        for placa in placas_diesel:
+                            df_placa = df_diesel[df_diesel['PLACA'] == placa].copy()
+                            
+                            df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
+                            
+                            df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
+                            df_placa['MEDIA_LITROS_KM'] = df_placa['LITROS'] / df_placa['DISTANCIA_PERCORRIDA']
+                            
+                            df_placa['ALERTA KM'] = ''
+                            df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor que o registro anterior!'
+
+                            df_placa['Média de litros por KM'] = df_placa['MEDIA_LITROS_KM'].mean()
+                            df_placa.loc[df_placa.index[:-1], 'Média de litros por KM'] = ''
+                            
+                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'TIPO DE ABASTECIMENTO': 'Tipo de Abastecimento'})
+                            
+                            df_placa_output[colunas_saida].to_excel(writer, sheet_name=placa, index=False)
+                    
+                    excel_data_diesel.seek(0)
+                    st.success("Planilha de Diesel processada com sucesso!")
+                    st.download_button(
+                        label="📥 Baixar Planilha de Diesel",
+                        data=excel_data_diesel,
+                        file_name="planilha_diesel.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.warning("Não foram encontrados dados de 'DIESEL' no arquivo.")
+                    
+                # --- Processa a planilha de Arla ---
+                df_arla = df[df['TIPO DE ABASTECIMENTO'] == 'ARLA'].copy()
+                if not df_arla.empty:
+                    excel_data_arla = io.BytesIO()
+                    with pd.ExcelWriter(excel_data_arla, engine='openpyxl') as writer:
+                        placas_arla = sorted(df_arla['PLACA'].unique())
+                        for placa in placas_arla:
+                            df_placa = df_arla[df_arla['PLACA'] == placa].copy()
+                            
+                            df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
+                            
+                            df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
+                            df_placa['MEDIA_LITROS_KM'] = df_placa['LITROS'] / df_placa['DISTANCIA_PERCORRIDA']
+                            
+                            df_placa['ALERTA KM'] = ''
+                            df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor que o registro anterior!'
+                            
+                            df_placa['Média de litros por KM'] = df_placa['MEDIA_LITROS_KM'].mean()
+                            df_placa.loc[df_placa.index[:-1], 'Média de litros por KM'] = ''
+                            
+                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'TIPO DE ABASTECIMENTO': 'Tipo de Abastecimento'})
+                            
+                            df_placa_output[colunas_saida].to_excel(writer, sheet_name=placa, index=False)
+                            
+                    excel_data_arla.seek(0)
+                    st.success("Planilha de Arla processada com sucesso!")
+                    st.download_button(
+                        label="📥 Baixar Planilha de Arla",
+                        data=excel_data_arla,
+                        file_name="planilha_arla.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.warning("Não foram encontrados dados de 'ARLA' no arquivo.")
+
+            except Exception as e:
+                st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
+
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
         st.rerun()
@@ -1024,4 +1137,3 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
-
