@@ -159,26 +159,26 @@ def main_page():
         st.markdown("---")
         
         # Cria os botões um embaixo do outro e centralizados
-        if st.button("🚚 Logística", use_container_width=True):
+        if st.button("🚚 Logística", use_container_width=True, key="btn_logistics"):
             st.session_state['current_page'] = 'logistics'
             st.rerun()
-        if st.button("📈 Comercial", use_container_width=True):
+        if st.button("📈 Comercial", use_container_width=True, key="btn_commercial"):
             st.session_state['current_page'] = 'commercial'
             st.rerun()
-        if st.button("👥 RH", use_container_width=True):
+        if st.button("👥 RH", use_container_width=True, key="btn_rh"):
             st.session_state['current_page'] = 'rh'
             st.rerun()
-        if st.button("💻 TI", use_container_width=True):
+        if st.button("💻 TI", use_container_width=True, key="btn_ti"):
             st.session_state['current_page'] = 'ti'
             st.rerun()
-        if st.button("🏠 Sítio", use_container_width=True):
+        if st.button("🏠 Sítio", use_container_width=True, key="btn_site"):
             st.session_state['current_page'] = 'site'
             st.rerun()
         
         st.markdown("---")
         
         # Botão de sair estilizado
-        if st.button("Sair", use_container_width=True):
+        if st.button("Sair", use_container_width=True, key="btn_logout"):
             st.session_state['is_logged_in'] = False
             st.session_state.pop('username', None)
             st.session_state.pop('current_page', None)
@@ -186,17 +186,14 @@ def main_page():
 
 # Lógica principal da página
 if st.session_state.get('is_logged_in', False):
-    if st.session_state.get('current_page') == 'logistics':
-        logistics_page()
-    elif st.session_state.get('current_page') == 'commercial':
-        commercial_page()
-    elif st.session_state.get('current_page') == 'rh':
-        rh_page()
-    elif st.session_state.get('current_page') == 'ti':
-        ti_page()
-    elif st.session_state.get('current_page') == 'site':
-        site_page()
-    else:
-        main_page()
+    page_functions = {
+        'home': main_page,
+        'logistics': logistics_page,
+        'commercial': commercial_page,
+        'rh': rh_page,
+        'ti': ti_page,
+        'site': site_page
+    }
+    page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
