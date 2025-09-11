@@ -7,6 +7,14 @@ st.set_page_config(
     layout="centered"
 )
 
+# Inicializa chaves importantes do session_state (evita KeyError)
+if 'is_logged_in' not in st.session_state:
+    st.session_state['is_logged_in'] = False
+if 'username' not in st.session_state:
+    st.session_state['username'] = ""
+if 'current_page' not in st.session_state:
+    st.session_state['current_page'] = 'login'  # 'login' ou 'home'
+
 # Adiciona CSS personalizado para um visual mais limpo e profissional
 st.markdown("""
 <style>
@@ -35,12 +43,7 @@ st.markdown("""
         color: #004d99;
         font-family: 'Arial Black', sans-serif;
     }
-    .st-emotion-cache-1c7y3q { /* CSS para o container do formulário */
-        background-color: #F8F8F8;
-        padding: 30px;
-        border-radius: 10px;
-        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-    }
+    /* Evite depender de classes dinâmicas do Streamlit; use ids ou estruturas próprias quando necessário */
     .centered-icon {
         text-align: center;
         font-size: 5rem;
@@ -67,10 +70,6 @@ st.markdown("""
         color: #555;
         font-size: 0.9rem;
     }
-    .st-emotion-cache-1f81n9p a { /* Estilo para o link do botão para parecer um card */
-        text-decoration: none;
-        color: inherit;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -83,32 +82,25 @@ LOGIN_INFO = {
 
 def login_form():
     """Exibe o formulário de login com um design aprimorado."""
-    
-    # Usa colunas para centralizar o formulário na página
     col1, col2, col3 = st.columns([1, 2, 1])
-    
     with col2:
-        # Adiciona o nome da empresa em um título
-        st.markdown("<h2 style='text-align: center; color: #004d99; font-family: \'Arial Black\', sans-serif;'>Lince Distribuidora</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; color: #004d99; font-family: \"Arial Black\", sans-serif;'>Lince Distribuidora</h2>", unsafe_allow_html=True)
         st.markdown("---")
-        
         with st.form("login_form", clear_on_submit=False):
             st.markdown("Por favor, insira suas credenciais para continuar.")
-            
             username = st.text_input("Usuário", key="username_input", placeholder="Digite seu nome de usuário")
             password = st.text_input("Senha", type="password", key="password_input", placeholder="Digite sua senha")
-            
             st.markdown("<br>", unsafe_allow_html=True)
             submit_button = st.form_submit_button("Entrar", use_container_width=True)
-            
+
         if submit_button:
             if username in LOGIN_INFO and LOGIN_INFO[username] == password:
                 st.session_state['is_logged_in'] = True
                 st.session_state['username'] = username
-                st.session_state['current_page'] = 'home' # Define a página inicial
+                st.session_state['current_page'] = 'home'
                 st.success("Login realizado com sucesso! Redirecionando...")
-                st.balloons() # Adiciona um efeito visual de balões
-                st.rerun()
+                st.balloons()
+                st.experimental_rerun()
             else:
                 st.error("Usuário ou senha incorretos.")
 
@@ -117,74 +109,67 @@ def logistics_page():
     st.write("Conteúdo da página de Logística.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
-        st.rerun()
+        st.experimental_rerun()
 
 def commercial_page():
     st.markdown("<h2 style='text-align: center;'>Comercial</h2>", unsafe_allow_html=True)
     st.write("Conteúdo da página de Comercial.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
-        st.rerun()
+        st.experimental_rerun()
 
 def rh_page():
     st.markdown("<h2 style='text-align: center;'>Recursos Humanos</h2>", unsafe_allow_html=True)
     st.write("Conteúdo da página de Recursos Humanos.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
-        st.rerun()
+        st.experimental_rerun()
 
 def ti_page():
     st.markdown("<h2 style='text-align: center;'>TI</h2>", unsafe_allow_html=True)
     st.write("Conteúdo da página de TI.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
-        st.rerun()
+        st.experimental_rerun()
 
 def site_page():
     st.markdown("<h2 style='text-align: center;'>Sítio</h2>", unsafe_allow_html=True)
     st.write("Conteúdo da página do Sítio.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
-        st.rerun()
+        st.experimental_rerun()
 
 def main_page():
     """Exibe a página principal após o login com um layout mais agradável."""
-    
+    username = st.session_state.get('username', '')
     st.markdown("<h1 style='text-align: center;'>Página Inicial</h1>", unsafe_allow_html=True)
-    
     col1, col2, col3 = st.columns([1, 3, 1])
-    
     with col2:
-        st.markdown(f"<h3 style='text-align: center;'>Bem-vindo(a), **{st.session_state['username']}**!</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align: center;'>Bem-vindo(a), **{username}**!</h3>", unsafe_allow_html=True)
         st.markdown("---")
-        
-        # Cria os botões um embaixo do outro e centralizados
         if st.button("🚚 Logística", use_container_width=True, key="btn_logistics"):
             st.session_state['current_page'] = 'logistics'
-            st.rerun()
+            st.experimental_rerun()
         if st.button("📈 Comercial", use_container_width=True, key="btn_commercial"):
             st.session_state['current_page'] = 'commercial'
-            st.rerun()
+            st.experimental_rerun()
         if st.button("👥 RH", use_container_width=True, key="btn_rh"):
             st.session_state['current_page'] = 'rh'
-            st.rerun()
+            st.experimental_rerun()
         if st.button("💻 TI", use_container_width=True, key="btn_ti"):
             st.session_state['current_page'] = 'ti'
-            st.rerun()
+            st.experimental_rerun()
         if st.button("🏠 Sítio", use_container_width=True, key="btn_site"):
             st.session_state['current_page'] = 'site'
-            st.rerun()
-        
+            st.experimental_rerun()
         st.markdown("---")
-        
-        # Botão de sair estilizado
         if st.button("Sair", use_container_width=True, key="btn_logout"):
             st.session_state['is_logged_in'] = False
-            st.session_state.pop('username', None)
-            st.session_state.pop('current_page', None)
-            st.rerun()
+            st.session_state['username'] = ""
+            st.session_state['current_page'] = 'login'
+            st.experimental_rerun()
 
-# Lógica principal da página
+# Dispatcher principal
 if st.session_state.get('is_logged_in', False):
     page_functions = {
         'home': main_page,
@@ -194,6 +179,12 @@ if st.session_state.get('is_logged_in', False):
         'ti': ti_page,
         'site': site_page
     }
-    page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
+    current = st.session_state.get('current_page') or 'home'
+    try:
+        page_functions.get(current, main_page)()
+    except Exception as e:
+        # Mostra o erro na UI para facilitar o debug em vez da página em branco
+        st.error("Erro ao renderizar a página. Veja detalhes abaixo:")
+        st.exception(e)
 else:
     login_form()
