@@ -10,3 +10,4 @@ datetime
 firebase_admin
 numpy
 xlsxwriter
+SQLAlchemy
