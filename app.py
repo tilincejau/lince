@@ -158,21 +158,22 @@ def main_page():
         st.markdown(f"<h3 style='text-align: center;'>Bem-vindo(a), **{st.session_state['username']}**!</h3>", unsafe_allow_html=True)
         st.markdown("---")
         
-        # Define as áreas com ícones e texto
-        areas = {
-            "Logística": {"icon": "🚚", "help": "Gestão de estoque e rotas.", "key": "logistics"},
-            "Comercial": {"icon": "📈", "help": "Acompanhamento de vendas e clientes.", "key": "commercial"},
-            "RH": {"icon": "👥", "help": "Recursos Humanos e folha de pagamento.", "key": "rh"},
-            "TI": {"icon": "💻", "help": "Suporte técnico e infraestrutura.", "key": "ti"},
-            "Sítio": {"icon": "🏠", "help": "Gerenciamento do sítio da empresa.", "key": "site"}
-        }
-
-        # Cria os botões em colunas para ficarem um abaixo do outro e centralizados
-        for area, props in areas.items():
-            st.button(f"{props['icon']} {area}", help=props['help'], key=props['key'], use_container_width=True)
-            if st.session_state.get(props['key']):
-                st.session_state['current_page'] = props['key']
-                st.rerun()
+        # Cria os botões um embaixo do outro e centralizados
+        if st.button("🚚 Logística", use_container_width=True, key="logistics"):
+            st.session_state['current_page'] = 'logistics'
+            st.rerun()
+        if st.button("📈 Comercial", use_container_width=True, key="commercial"):
+            st.session_state['current_page'] = 'commercial'
+            st.rerun()
+        if st.button("👥 RH", use_container_width=True, key="rh"):
+            st.session_state['current_page'] = 'rh'
+            st.rerun()
+        if st.button("💻 TI", use_container_width=True, key="ti"):
+            st.session_state['current_page'] = 'ti'
+            st.rerun()
+        if st.button("🏠 Sítio", use_container_width=True, key="site"):
+            st.session_state['current_page'] = 'site'
+            st.rerun()
         
         st.markdown("---")
         
