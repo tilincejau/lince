@@ -55,6 +55,7 @@ st.markdown("""
         margin-bottom: 20px;
         cursor: pointer;
         transition: transform 0.2s;
+        height: 100%;
     }
     .app-card:hover {
         transform: translateY(-5px);
@@ -66,6 +67,10 @@ st.markdown("""
     .app-card p {
         color: #555;
         font-size: 0.9rem;
+    }
+    .st-emotion-cache-1f81n9p a { /* Estilo para o link do botão para parecer um card */
+        text-decoration: none;
+        color: inherit;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -101,11 +106,47 @@ def login_form():
             if username in LOGIN_INFO and LOGIN_INFO[username] == password:
                 st.session_state['is_logged_in'] = True
                 st.session_state['username'] = username
+                st.session_state['current_page'] = 'home' # Define a página inicial
                 st.success("Login realizado com sucesso! Redirecionando...")
                 st.balloons() # Adiciona um efeito visual de balões
                 st.rerun()
             else:
                 st.error("Usuário ou senha incorretos.")
+
+def logistics_page():
+    st.markdown("<h2 style='text-align: center;'>Logística</h2>", unsafe_allow_html=True)
+    st.write("Conteúdo da página de Logística.")
+    if st.button("Voltar para o Início"):
+        st.session_state['current_page'] = 'home'
+        st.rerun()
+
+def commercial_page():
+    st.markdown("<h2 style='text-align: center;'>Comercial</h2>", unsafe_allow_html=True)
+    st.write("Conteúdo da página de Comercial.")
+    if st.button("Voltar para o Início"):
+        st.session_state['current_page'] = 'home'
+        st.rerun()
+
+def rh_page():
+    st.markdown("<h2 style='text-align: center;'>Recursos Humanos</h2>", unsafe_allow_html=True)
+    st.write("Conteúdo da página de Recursos Humanos.")
+    if st.button("Voltar para o Início"):
+        st.session_state['current_page'] = 'home'
+        st.rerun()
+
+def ti_page():
+    st.markdown("<h2 style='text-align: center;'>TI</h2>", unsafe_allow_html=True)
+    st.write("Conteúdo da página de TI.")
+    if st.button("Voltar para o Início"):
+        st.session_state['current_page'] = 'home'
+        st.rerun()
+
+def site_page():
+    st.markdown("<h2 style='text-align: center;'>Site</h2>", unsafe_allow_html=True)
+    st.write("Conteúdo da página do Site.")
+    if st.button("Voltar para o Início"):
+        st.session_state['current_page'] = 'home'
+        st.rerun()
 
 def main_page():
     """Exibe a página principal após o login com um layout mais agradável."""
@@ -123,31 +164,23 @@ def main_page():
         c1, c2 = st.columns(2)
 
         with c1:
-            with st.container(border=True):
-                st.markdown("<h3 style='text-align: center;'>📦</h3>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: center;'>Logística</h3>", unsafe_allow_html=True)
-                st.markdown("<p style='text-align: center;'>Gestão de estoque e rotas.</p>", unsafe_allow_html=True)
-
-            with st.container(border=True):
-                st.markdown("<h3 style='text-align: center;'>👥</h3>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: center;'>RH</h3>", unsafe_allow_html=True)
-                st.markdown("<p style='text-align: center;'>Recursos Humanos e folha de pagamento.</p>", unsafe_allow_html=True)
-
-            with st.container(border=True):
-                st.markdown("<h3 style='text-align: center;'>🌐</h3>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: center;'>Site</h3>", unsafe_allow_html=True)
-                st.markdown("<p style='text-align: center;'>Gerenciamento do site da empresa.</p>", unsafe_allow_html=True)
+            if st.button("📦\nLogística\n", help="Gestão de estoque e rotas.", key="logistics"):
+                st.session_state['current_page'] = 'logistics'
+                st.rerun()
+            if st.button("👥\nRH\n", help="Recursos Humanos e folha de pagamento.", key="rh"):
+                st.session_state['current_page'] = 'rh'
+                st.rerun()
+            if st.button("🌐\nSite\n", help="Gerenciamento do site da empresa.", key="site"):
+                st.session_state['current_page'] = 'site'
+                st.rerun()
 
         with c2:
-            with st.container(border=True):
-                st.markdown("<h3 style='text-align: center;'>📈</h3>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: center;'>Comercial</h3>", unsafe_allow_html=True)
-                st.markdown("<p style='text-align: center;'>Acompanhamento de vendas e clientes.</p>", unsafe_allow_html=True)
-
-            with st.container(border=True):
-                st.markdown("<h3 style='text-align: center;'>💻</h3>", unsafe_allow_html=True)
-                st.markdown("<h3 style='text-align: center;'>TI</h3>", unsafe_allow_html=True)
-                st.markdown("<p style='text-align: center;'>Suporte técnico e infraestrutura.</p>", unsafe_allow_html=True)
+            if st.button("📈\nComercial\n", help="Acompanhamento de vendas e clientes.", key="commercial"):
+                st.session_state['current_page'] = 'commercial'
+                st.rerun()
+            if st.button("💻\nTI\n", help="Suporte técnico e infraestrutura.", key="ti"):
+                st.session_state['current_page'] = 'ti'
+                st.rerun()
         
         st.markdown("---")
         
@@ -155,10 +188,22 @@ def main_page():
         if st.button("Sair", use_container_width=True):
             st.session_state['is_logged_in'] = False
             st.session_state.pop('username', None)
+            st.session_state.pop('current_page', None)
             st.rerun()
 
 # Lógica principal da página
 if st.session_state.get('is_logged_in', False):
-    main_page()
+    if st.session_state.get('current_page') == 'logistics':
+        logistics_page()
+    elif st.session_state.get('current_page') == 'commercial':
+        commercial_page()
+    elif st.session_state.get('current_page') == 'rh':
+        rh_page()
+    elif st.session_state.get('current_page') == 'ti':
+        ti_page()
+    elif st.session_state.get('current_page') == 'site':
+        site_page()
+    else:
+        main_page()
 else:
     login_form()
