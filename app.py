@@ -89,7 +89,7 @@ def logistics_page():
     st.write("---")
 
     if script_choice == "Acurácia":
-        st.subheader("📈 Acurácia de Estoque")
+        st.subheader("Acurácia de Estoque")
         st.markdown("Calcula a acurácia diária e mensal do estoque a partir de um arquivo Excel.")
         uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque.xlsx'", type=["xlsx"])
         if uploaded_file is not None:
@@ -154,7 +154,7 @@ def logistics_page():
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
 
     elif script_choice == "Validade":
-        st.subheader("🛒 Controle de Validade")
+        st.subheader("Controle de Validade")
         st.markdown("Consolida dados de validade de um arquivo Excel e um arquivo de texto, e gera um relatório com status de validade e contagens.")
         def parse_estoque_txt(file_content):
             lines = [line.decode('latin1') for line in file_content.getvalue().splitlines()]
@@ -280,7 +280,7 @@ def logistics_page():
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
     elif script_choice == "Vasilhames":
-        st.subheader("💧 Controle de Vasilhames")
+        st.subheader("Controle de Vasilhames")
         st.markdown("Este script consolida dados de vasilhames de diferentes fontes (Excel, TXT, PDF) e gera um relatório unificado.")
         
         uploaded_txt_files = st.file_uploader("Envie os arquivos TXT de empréstimos (Ex: ESTOQUE0102.TXT)", type=["txt"], accept_multiple_files=True)
@@ -439,7 +439,7 @@ def commercial_page():
     # --- Seção 1: Troca de Canal e Validação de Dados ---
     if script_selection == "Troca de Canal":
         st.write("---")
-        st.subheader("📊 Troca de Canal")
+        st.subheader("Troca de Canal")
         st.markdown("Este script transforma e consolida dados de planilhas de Google Forms, adicionando uma coluna de status com lista suspensa.")
 
         def normalize_columns(columns_list):
@@ -544,7 +544,7 @@ def commercial_page():
     # --- Seção 2: Circuito Execução ---
     elif script_selection == "Circuito Execução":
         st.write("---")
-        st.subheader("⚙️ Circuito Execução")
+        st.subheader("Circuito Execução")
         st.markdown("Este script converte os valores 'Presença' em pontuação, com base no nome das colunas.")
 
         def extract_points(column_name):
@@ -615,7 +615,7 @@ def rh_page():
     st.write("---")
 
     if script_choice == "Controle de Jornada":
-        st.subheader("⏳ Controle de Jornada")
+        st.subheader("Controle de Jornada")
         st.markdown("Este script processa uma planilha de controle de jornada e calcula tempos de viagem, dirigibilidade e paradas.")
 
         def format_timedelta_as_hms(td):
@@ -778,7 +778,7 @@ def ti_page():
     st.write("---")
 
     if script_choice == "Importação e Download de Dados":
-        st.subheader("📦 Importação e Download de Dados")
+        st.subheader("Importação e Download de Dados")
         st.markdown("Conteúdo do script de Importação e Download de Dados.")
     
     if st.button("Voltar para o Início"):
@@ -797,7 +797,7 @@ def site_page():
     st.write("---")
 
     if script_choice == "Sítio Santa Izabel":
-        st.subheader("🏡 Sítio Santa Izabel")
+        st.subheader("Sítio Santa Izabel")
         st.markdown("Este script processa a planilha de controle do Sítio Santa Izabel e a divide em abas com base nos lançamentos.")
 
         def normalize_columns(columns_list):
@@ -1024,3 +1024,4 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
