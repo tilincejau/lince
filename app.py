@@ -142,8 +142,8 @@ def ti_page():
         st.rerun()
 
 def site_page():
-    st.markdown("<h2 style='text-align: center;'>Site</h2>", unsafe_allow_html=True)
-    st.write("Conteúdo da página do Site.")
+    st.markdown("<h2 style='text-align: center;'>Sítio</h2>", unsafe_allow_html=True)
+    st.write("Conteúdo da página do Sítio.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
         st.rerun()
@@ -161,27 +161,29 @@ def main_page():
         
         # Cria as áreas com ícones e texto
         # Utilize colunas para organizar os cards de forma responsiva
-        c1, c2 = st.columns(2)
+        c1, c2, c3, c4, c5 = st.columns(5)
 
         with c1:
-            if st.button("📦\nLogística\n", help="Gestão de estoque e rotas.", key="logistics"):
+            if st.button("📦\nLogística", help="Gestão de estoque e rotas.", key="logistics"):
                 st.session_state['current_page'] = 'logistics'
                 st.rerun()
-            if st.button("👥\nRH\n", help="Recursos Humanos e folha de pagamento.", key="rh"):
+        with c2:
+            if st.button("📈\nComercial", help="Acompanhamento de vendas e clientes.", key="commercial"):
+                st.session_state['current_page'] = 'commercial'
+                st.rerun()
+        with c3:
+            if st.button("👥\nRH", help="Recursos Humanos e folha de pagamento.", key="rh"):
                 st.session_state['current_page'] = 'rh'
                 st.rerun()
-            if st.button("🌐\nSite\n", help="Gerenciamento do site da empresa.", key="site"):
+        with c4:
+            if st.button("💻\nTI", help="Suporte técnico e infraestrutura.", key="ti"):
+                st.session_state['current_page'] = 'ti'
+                st.rerun()
+        with c5:
+            if st.button("🌐\nSítio", help="Gerenciamento do sítio da empresa.", key="site"):
                 st.session_state['current_page'] = 'site'
                 st.rerun()
 
-        with c2:
-            if st.button("📈\nComercial\n", help="Acompanhamento de vendas e clientes.", key="commercial"):
-                st.session_state['current_page'] = 'commercial'
-                st.rerun()
-            if st.button("💻\nTI\n", help="Suporte técnico e infraestrutura.", key="ti"):
-                st.session_state['current_page'] = 'ti'
-                st.rerun()
-        
         st.markdown("---")
         
         # Botão de sair estilizado
