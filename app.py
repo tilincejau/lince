@@ -38,25 +38,25 @@ def main_page():
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🚚 Logística", use_container_width=True):
+        if st.button("Logística", use_container_width=True):
             st.session_state['current_page'] = 'logistics'
             st.rerun()
     with col2:
-        if st.button("📈 Comercial", use_container_width=True):
+        if st.button("Comercial", use_container_width=True):
             st.session_state['current_page'] = 'commercial'
             st.rerun()
 
     col3, col4 = st.columns(2)
     with col3:
-        if st.button("👥 RH", use_container_width=True):
+        if st.button("RH", use_container_width=True):
             st.session_state['current_page'] = 'rh'
             st.rerun()
     with col4:
-        if st.button("💻 TI", use_container_width=True):
+        if st.button("TI", use_container_width=True):
             st.session_state['current_page'] = 'ti'
             st.rerun()
 
-    if st.button("🏠 Sítio", use_container_width=True):
+    if st.button("Sítio", use_container_width=True):
         st.session_state['current_page'] = 'site'
         st.rerun()
     
@@ -200,3 +200,4 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
