@@ -63,10 +63,8 @@ def login_form():
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        # Adiciona a imagem do logo
-        # Usamos uma imagem base64 para garantir que seja exibida corretamente.
-        st.image("https://raw.githubusercontent.com/Lince-Distribuidora/imagens/main/Captura%20de%20tela%202025-04-23%20161218.png")
-        st.markdown("<h3 style='text-align: center; color: #555;'></h3>", unsafe_allow_html=True)
+        # Adiciona o nome da empresa em um título
+        st.markdown("<h2 style='text-align: center; color: #004d99; font-family: \'Arial Black\', sans-serif;'>Lince Distribuidora</h2>", unsafe_allow_html=True)
         st.markdown("---")
         
         with st.form("login_form", clear_on_submit=False):
