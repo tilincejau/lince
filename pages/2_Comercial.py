@@ -26,7 +26,7 @@ script_selection = st.selectbox(
 # --- Seção 1: Análise de Canal e Validação de Dados ---
 if script_selection == "Análise de Canal":
     st.write("---")
-    st.subheader("📊 Troca de Canal")
+    st.subheader("📊 Análise de Canal")
     st.markdown("Este script transforma e consolida dados de planilhas de Google Forms, adicionando uma coluna de status com lista suspensa.")
 
     def normalize_columns(columns_list):
@@ -134,10 +134,10 @@ if script_selection == "Análise de Canal":
         except Exception as e:
             st.error(f"Ocorreu um erro durante o processamento de 'Análise de Canal': {e}")
 
-# --- Seção 2: Circuito Execução ---
-elif script_selection == "Circuito Execução":
+# --- Seção 2: Processador de Arquivos para Pontuação ---
+elif script_selection == "Processador de Pontos":
     st.write("---")
-    st.subheader("Circuito Execução")
+    st.subheader("⚙️ Processador de Arquivos")
     st.markdown("Este script converte os valores 'Presença' em pontuação, com base no nome das colunas.")
 
     def extract_points(column_name):
@@ -192,4 +192,3 @@ elif script_selection == "Circuito Execução":
             
         except Exception as e:
             st.error(f"Ocorreu um erro durante o processamento de 'Processador de Pontos': {e}")
-
