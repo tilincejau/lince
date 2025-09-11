@@ -15,11 +15,12 @@ if not st.session_state.get('is_logged_in'):
     # Em uma aplicação real, você teria uma lógica de autenticação aqui.
 
 st.title("Setor Comercial")
-st.markdown("Bem-vindo(a) ao setor Comercial. Abaixo está o script disponível para análise.")
+st.markdown("Bem-vindo(a) ao setor Comercial. Abaixo estão os scripts disponíveis para análise.")
 
+# --- Seção 1: Análise de Canal e Validação de Dados ---
 st.write("---")
-st.subheader("📊 Análise de Canal e Pontuação")
-st.markdown("Este script transforma e consolida dados de planilhas de Google Forms, e também calcula a pontuação em colunas específicas.")
+st.subheader("📊 Análise de Canal")
+st.markdown("Este script transforma e consolida dados de planilhas de Google Forms, adicionando uma coluna de status com lista suspensa.")
 
 def normalize_columns(columns_list):
     """Normaliza uma lista de nomes de colunas."""
@@ -73,6 +74,56 @@ def transform_google_forms_data(df):
     final_df = pd.DataFrame(processed_records)
     return final_df
 
+uploaded_file_1 = st.file_uploader("Envie o arquivo para 'Análise de Canal' (.xlsx)", type=["xlsx"])
+
+if uploaded_file_1 is not None:
+    try:
+        df_forms = pd.read_excel(uploaded_file_1)
+        st.subheader("📄 Dados Originais (Análise de Canal)")
+        st.dataframe(df_forms.head())
+        
+        final_df_forms = transform_google_forms_data(df_forms)
+        
+        output = io.BytesIO()
+        final_df_forms.to_excel(output, index=False)
+        output.seek(0)
+        
+        workbook = load_workbook(output)
+        sheet = workbook.active
+        dropdown_options = '"Aprovado,Não Aprovado"'
+        dv = DataValidation(type="list", formula1=dropdown_options, allow_blank=True)
+        dv.error = 'O valor inserido não está na lista.'
+        dv.errorTitle = 'Valor Inválido'
+        
+        try:
+            col_for_dropdown_letter = get_column_letter(final_df_forms.columns.get_loc('Status') + 1)
+            dv.add(f'{col_for_dropdown_letter}2:{col_for_dropdown_letter}{sheet.max_row}')
+            sheet.add_data_validation(dv)
+        except KeyError:
+            st.warning("A coluna 'Status' não foi encontrada no DataFrame final.")
+        
+        output_with_dropdown = io.BytesIO()
+        workbook.save(output_with_dropdown)
+        output_with_dropdown.seek(0)
+        
+        st.subheader("✅ Dados Transformados (Análise de Canal)")
+        st.dataframe(final_df_forms)
+        
+        st.download_button(
+            label="📥 Baixar Arquivo de Análise de Canal",
+            data=output_with_dropdown.getvalue(),
+            file_name="analise_canal_processada.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        
+    except Exception as e:
+        st.error(f"Ocorreu um erro durante o processamento de 'Análise de Canal': {e}")
+
+# --- Seção 2: Processador de Arquivos para Pontuação ---
+st.write("---")
+st.subheader("⚙️ Processador de Arquivos")
+st.markdown("Este script converte os valores 'Presença' em pontuação, com base no nome das colunas.")
+
 def extract_points(column_name):
     """Função para extrair o valor numérico entre parênteses em uma string de cabeçalho."""
     match = re.search(r"\(\s*(\d+)\s*Pontos\s*\)", column_name)
@@ -92,60 +143,36 @@ def transform_points_columns(df):
                 df_transformed[col] = df_transformed[col].apply(lambda x: points if x == "Presença" else 0)
     return df_transformed
 
-def process_data(uploaded_file):
-    """Função principal para processar e consolidar as duas transformações."""
-    # Ler o arquivo
-    df = pd.read_excel(uploaded_file)
-    st.subheader("📄 Dados Originais")
-    st.write(df)
-
-    # Aplica a transformação de pontos primeiro
-    df_with_points = transform_points_columns(df)
-
-    # Aplica a transformação de formulários do Google no DataFrame com pontos
-    final_df = transform_google_forms_data(df_with_points)
-
-    # Adiciona a validação de dados para a coluna 'Status'
+@st.cache_data
+def convert_df_to_excel(df):
+    """Converte DataFrame para um arquivo Excel em memória."""
     output = io.BytesIO()
-    final_df.to_excel(output, index=False)
-    output.seek(0)
-    
-    workbook = load_workbook(output)
-    sheet = workbook.active
-    dropdown_options = '"Aprovado,Não Aprovado"'
-    dv = DataValidation(type="list", formula1=dropdown_options, allow_blank=True)
-    dv.error = 'O valor inserido não está na lista.'
-    dv.errorTitle = 'Valor Inválido'
-    
-    # Encontra a coluna "Status" para aplicar a validação
-    try:
-        col_for_dropdown_letter = get_column_letter(final_df.columns.get_loc('Status') + 1)
-        dv.add(f'{col_for_dropdown_letter}2:{col_for_dropdown_letter}{sheet.max_row}')
-        sheet.add_data_validation(dv)
-    except KeyError:
-        st.warning("A coluna 'Status' não foi encontrada no DataFrame final.")
-    
-    output_with_dropdown = io.BytesIO()
-    workbook.save(output_with_dropdown)
-    output_with_dropdown.seek(0)
-    
-    return final_df, output_with_dropdown.getvalue()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False)
+    processed_data = output.getvalue()
+    return processed_data
 
-uploaded_file = st.file_uploader("Envie o arquivo 'canal.xlsx'", type=["xlsx"])
+uploaded_file_2 = st.file_uploader("Envie o arquivo para 'Processador de Pontos' (.xlsx)", type=["xlsx"])
 
-if uploaded_file is not None:
+if uploaded_file_2 is not None:
     try:
-        final_df, excel_data = process_data(uploaded_file)
+        df_points = pd.read_excel(uploaded_file_2)
+        st.subheader("📄 Dados Originais (Processador de Pontos)")
+        st.dataframe(df_points)
         
-        st.subheader("✅ Dados Transformados")
-        st.dataframe(final_df)
+        df_transformed_points = transform_points_columns(df_points)
+        
+        st.subheader("✅ Dados Transformados (Processador de Pontos)")
+        st.dataframe(df_transformed_points)
+        
+        excel_data = convert_df_to_excel(df_transformed_points)
         
         st.download_button(
-            label="📥 Baixar Arquivo Processado",
+            label="📥 Baixar Arquivo de Pontos Transformado",
             data=excel_data,
-            file_name="planilha_processada.xlsx",
+            file_name="pontos_transformados.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         
     except Exception as e:
-        st.error(f"Ocorreu um erro durante o processamento: {e}")
+        st.error(f"Ocorreu um erro durante o processamento de 'Processador de Pontos': {e}")
