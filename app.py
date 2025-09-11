@@ -108,6 +108,7 @@ def login_form():
                 st.session_state['current_page'] = 'home' # Define a página inicial
                 st.success("Login realizado com sucesso! Redirecionando...")
                 st.balloons() # Adiciona um efeito visual de balões
+                st.experimental_set_query_params(page='home') # Roteamento
                 st.rerun()
             else:
                 st.error("Usuário ou senha incorretos.")
@@ -117,6 +118,7 @@ def logistics_page():
     st.write("Conteúdo da página de Logística.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
+        st.experimental_set_query_params(page='home') # Roteamento
         st.rerun()
 
 def commercial_page():
@@ -124,6 +126,7 @@ def commercial_page():
     st.write("Conteúdo da página de Comercial.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
+        st.experimental_set_query_params(page='home') # Roteamento
         st.rerun()
 
 def rh_page():
@@ -131,6 +134,7 @@ def rh_page():
     st.write("Conteúdo da página de Recursos Humanos.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
+        st.experimental_set_query_params(page='home') # Roteamento
         st.rerun()
 
 def ti_page():
@@ -138,6 +142,7 @@ def ti_page():
     st.write("Conteúdo da página de TI.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
+        st.experimental_set_query_params(page='home') # Roteamento
         st.rerun()
 
 def site_page():
@@ -145,6 +150,7 @@ def site_page():
     st.write("Conteúdo da página do Sítio.")
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
+        st.experimental_set_query_params(page='home') # Roteamento
         st.rerun()
 
 def main_page():
@@ -161,18 +167,23 @@ def main_page():
         # Cria os botões um embaixo do outro e centralizados
         if st.button("🚚 Logística", use_container_width=True):
             st.session_state['current_page'] = 'logistics'
+            st.experimental_set_query_params(page='logistics') # Roteamento
             st.rerun()
         if st.button("📈 Comercial", use_container_width=True):
             st.session_state['current_page'] = 'commercial'
+            st.experimental_set_query_params(page='commercial') # Roteamento
             st.rerun()
         if st.button("👥 RH", use_container_width=True):
             st.session_state['current_page'] = 'rh'
+            st.experimental_set_query_params(page='rh') # Roteamento
             st.rerun()
         if st.button("💻 TI", use_container_width=True):
             st.session_state['current_page'] = 'ti'
+            st.experimental_set_query_params(page='ti') # Roteamento
             st.rerun()
         if st.button("🏠 Sítio", use_container_width=True):
             st.session_state['current_page'] = 'site'
+            st.experimental_set_query_params(page='site') # Roteamento
             st.rerun()
         
         st.markdown("---")
@@ -182,19 +193,23 @@ def main_page():
             st.session_state['is_logged_in'] = False
             st.session_state.pop('username', None)
             st.session_state.pop('current_page', None)
+            st.experimental_set_query_params() # Limpa a URL
             st.rerun()
 
 # Lógica principal da página
 if st.session_state.get('is_logged_in', False):
-    if st.session_state.get('current_page') == 'logistics':
+    query_params = st.experimental_get_query_params()
+    page = query_params.get("page", ["home"])[0]
+    
+    if page == 'logistics':
         logistics_page()
-    elif st.session_state.get('current_page') == 'commercial':
+    elif page == 'commercial':
         commercial_page()
-    elif st.session_state.get('current_page') == 'rh':
+    elif page == 'rh':
         rh_page()
-    elif st.session_state.get('current_page') == 'ti':
+    elif page == 'ti':
         ti_page()
-    elif st.session_state.get('current_page') == 'site':
+    elif page == 'site':
         site_page()
     else:
         main_page()
