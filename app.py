@@ -158,31 +158,22 @@ def main_page():
         st.markdown(f"<h3 style='text-align: center;'>Bem-vindo(a), **{st.session_state['username']}**!</h3>", unsafe_allow_html=True)
         st.markdown("---")
         
-        # Cria as áreas com ícones e texto
-        # Utilize colunas para organizar os cards de forma responsiva
-        c1, c2, c3, c4, c5 = st.columns(5)
+        # Define as áreas com ícones e texto
+        areas = {
+            "Logística": {"icon": "🚚", "help": "Gestão de estoque e rotas.", "key": "logistics"},
+            "Comercial": {"icon": "📈", "help": "Acompanhamento de vendas e clientes.", "key": "commercial"},
+            "RH": {"icon": "👥", "help": "Recursos Humanos e folha de pagamento.", "key": "rh"},
+            "TI": {"icon": "💻", "help": "Suporte técnico e infraestrutura.", "key": "ti"},
+            "Sítio": {"icon": "🏠", "help": "Gerenciamento do sítio da empresa.", "key": "site"}
+        }
 
-        with c1:
-            if st.button("📦\nLogística", help="Gestão de estoque e rotas.", key="logistics"):
-                st.session_state['current_page'] = 'logistics'
+        # Cria os botões em colunas para ficarem um abaixo do outro
+        for area, props in areas.items():
+            st.button(f"{props['icon']} {area}", help=props['help'], key=props['key'])
+            if st.session_state[props['key']]:
+                st.session_state['current_page'] = props['key']
                 st.rerun()
-        with c2:
-            if st.button("📈\nComercial", help="Acompanhamento de vendas e clientes.", key="commercial"):
-                st.session_state['current_page'] = 'commercial'
-                st.rerun()
-        with c3:
-            if st.button("👥\nRH", help="Recursos Humanos e folha de pagamento.", key="rh"):
-                st.session_state['current_page'] = 'rh'
-                st.rerun()
-        with c4:
-            if st.button("💻\nTI", help="Suporte técnico e infraestrutura.", key="ti"):
-                st.session_state['current_page'] = 'ti'
-                st.rerun()
-        with c5:
-            if st.button("🌐\nSítio", help="Gerenciamento do sítio da empresa.", key="site"):
-                st.session_state['current_page'] = 'site'
-                st.rerun()
-
+        
         st.markdown("---")
         
         # Botão de sair estilizado
