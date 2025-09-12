@@ -422,8 +422,8 @@ def logistics_page():
                     
                     df_master_combinations = pd.concat([
                         df_excel_daily_counts[['Vasilhame', 'Dia']],
-                        df_all_processed_txt_data[['Vasilhames', 'Dia']] if 'Vasilhames' in df_all_processed_txt_data.columns else pd.DataFrame(columns=['Vasilhames', 'Dia']),
-                        df_all_processed_pdf_data[['Vasilhame', 'Dia']] if 'Vasilhame' in df_all_processed_pdf_data.columns else pd.DataFrame(columns=['Vasilhame', 'Dia'])
+                        df_all_processed_txt_data[['Vasilhame', 'Dia']],
+                        df_all_processed_pdf_data[['Vasilhame', 'Dia']]
                     ]).drop_duplicates().reset_index(drop=True)
 
                     df_final = pd.merge(df_master_combinations, df_excel_daily_counts, on=['Vasilhame', 'Dia'], how='left')
@@ -452,9 +452,6 @@ def logistics_page():
                 except Exception as e:
                     st.error(f"Ocorreu um erro durante o processamento: {e}")
     
-    # Restante dos scripts (Validade, Vasilhames, Abastecimento, etc.)
-    # ... (Seu código original continua aqui)
-    
     elif script_choice == "Abastecimento":
         st.subheader("Análise de Abastecimento")
         st.markdown("Este script processa dados de abastecimento e gera relatórios separados para Diesel e Arla, com médias de consumo por KM.")
@@ -465,11 +462,15 @@ def logistics_page():
             try:
                 st.info("Processando arquivo de abastecimento. Isso pode levar alguns segundos...")
                 
+                # Leitura do arquivo com base na extensão
                 if uploaded_file.name.endswith('.csv'):
-                    df = pd.read_csv(uploaded_file)
+                    df = pd.read_csv(uploaded_file, sep=';', encoding='latin1')
                 elif uploaded_file.name.endswith('.xlsx'):
                     df = pd.read_excel(uploaded_file, engine='openpyxl')
-                
+                else:
+                    st.error("Formato de arquivo não suportado. Por favor, envie um arquivo .xlsx ou .csv.")
+                    return
+
                 df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
                 
                 if 'DATA ABASTECIMENTO' not in df.columns and 'DATA' in df.columns:
@@ -496,14 +497,7 @@ def logistics_page():
                 if not df_diesel.empty:
                     excel_data_diesel = io.BytesIO()
                     
-                    # Remova as duas linhas abaixo
-                    # wb_diesel = Workbook()
-                    # wb_diesel.remove(wb_diesel.active) # Esta linha causa o erro
-                    
                     with pd.ExcelWriter(excel_data_diesel, engine='openpyxl') as writer:
-                        # A linha `writer.book = wb_diesel` também deve ser removida
-                        # porque `pd.ExcelWriter` gerencia a criação do workbook internamente
-                        
                         placas_diesel = sorted(df_diesel['PLACA'].unique())
                         for placa in placas_diesel:
                             df_placa = df_diesel[df_diesel['PLACA'] == placa].copy()
@@ -514,7 +508,7 @@ def logistics_page():
                             
                             df_placa['ALERTA KM'] = ''
                             df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor que o registro anterior!'
-                
+
                             df_placa['Média de litros por KM'] = df_placa['MEDIA_LITROS_KM'].mean()
                             df_placa.loc[df_placa.index[:-1], 'Média de litros por KM'] = ''
                             
@@ -533,22 +527,15 @@ def logistics_page():
                 else:
                     st.warning("Não foram encontrados dados de 'DIESEL' no arquivo.")
                     
-               # --- Lógica para Arla ---
+                # --- Lógica para Arla ---
                 df_arla = df[df['TIPO DE ABASTECIMENTO'] == 'ARLA'].copy()
                 if not df_arla.empty:
                     excel_data_arla = io.BytesIO()
                     
-                    # Remova as duas linhas abaixo
-                    # wb_arla = Workbook()
-                    # wb_arla.remove(wb_arla.active) # Esta linha causa o erro
-                    
                     with pd.ExcelWriter(excel_data_arla, engine='openpyxl') as writer:
-                        # A linha `writer.book = wb_arla` também deve ser removida
-                        # porque `pd.ExcelWriter` gerencia a criação do workbook internamente
-                        
                         placas_arla = sorted(df_arla['PLACA'].unique())
                         for placa in placas_arla:
-                            df_placa = df_arla[df_placa['PLACA'] == placa].copy()
+                            df_placa = df_arla[df_arla['PLACA'] == placa].copy()
                             df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
                             
                             df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
@@ -1172,4 +1159,3 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
-
