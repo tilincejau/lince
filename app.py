@@ -513,6 +513,12 @@ def logistics_page():
                             df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'TIPO DE ABASTECIMENTO': 'Tipo de Abastecimento'})
                             
                             df_placa_output[colunas_saida].to_excel(writer, sheet_name=placa, index=False)
+
+                        # CORREÇÃO: Força a visibilidade da primeira aba
+                        workbook = writer.book
+                        if workbook.sheetnames:
+                            first_sheet = workbook[workbook.sheetnames[0]]
+                            first_sheet.sheet_state = 'visible'
                     
                     excel_data_diesel.seek(0)
                     st.success("Planilha de Diesel processada com sucesso!")
@@ -547,6 +553,12 @@ def logistics_page():
                             df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'TIPO DE ABASTECIMENTO': 'Tipo de Abastecimento'})
                             
                             df_placa_output[colunas_saida].to_excel(writer, sheet_name=placa, index=False)
+                        
+                        # CORREÇÃO: Força a visibilidade da primeira aba
+                        workbook = writer.book
+                        if workbook.sheetnames:
+                            first_sheet = workbook[workbook.sheetnames[0]]
+                            first_sheet.sheet_state = 'visible'
                             
                     excel_data_arla.seek(0)
                     st.success("Planilha de Arla processada com sucesso!")
