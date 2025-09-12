@@ -6,7 +6,7 @@ import io
 import numpy as np
 from datetime import datetime, timedelta
 import PyPDF2
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import get_column_letter
 from sqlalchemy import create_engine
@@ -292,7 +292,7 @@ def logistics_page():
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             except Exception as e:
-                st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
+                st.error(f"Ocorreu um erro no script de Acurácia: {e}")
 
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
@@ -468,7 +468,7 @@ def logistics_page():
                 if uploaded_file.name.endswith('.csv'):
                     df = pd.read_csv(uploaded_file)
                 elif uploaded_file.name.endswith('.xlsx'):
-                    df = pd.read_excel(uploaded_file, engine='openpyxl') # Alteração aqui para usar 'openpyxl'
+                    df = pd.read_excel(uploaded_file, engine='openpyxl')
                 
                 df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
                 
@@ -491,14 +491,21 @@ def logistics_page():
                     'PLACA', 'KM', 'ALERTA KM', 'MOTORISTA', 'LITROS', 'Média de litros por KM'
                 ]
                 
+                # --- Lógica para Diesel ---
                 df_diesel = df[df['TIPO DE ABASTECIMENTO'] == 'DIESEL'].copy()
                 if not df_diesel.empty:
                     excel_data_diesel = io.BytesIO()
+                    
+                    # Cria um novo Workbook explícito para garantir que as abas sejam visíveis
+                    wb_diesel = Workbook()
+                    wb_diesel.remove(wb_diesel.active) # Remove a aba padrão
+                    
                     with pd.ExcelWriter(excel_data_diesel, engine='openpyxl') as writer:
+                        writer.book = wb_diesel
+                        
                         placas_diesel = sorted(df_diesel['PLACA'].unique())
                         for placa in placas_diesel:
                             df_placa = df_diesel[df_diesel['PLACA'] == placa].copy()
-                            
                             df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
                             
                             df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
@@ -513,12 +520,6 @@ def logistics_page():
                             df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'TIPO DE ABASTECIMENTO': 'Tipo de Abastecimento'})
                             
                             df_placa_output[colunas_saida].to_excel(writer, sheet_name=placa, index=False)
-
-                        # CORREÇÃO: Força a visibilidade da primeira aba
-                        workbook = writer.book
-                        if workbook.sheetnames:
-                            first_sheet = workbook[workbook.sheetnames[0]]
-                            first_sheet.sheet_state = 'visible'
                     
                     excel_data_diesel.seek(0)
                     st.success("Planilha de Diesel processada com sucesso!")
@@ -531,14 +532,21 @@ def logistics_page():
                 else:
                     st.warning("Não foram encontrados dados de 'DIESEL' no arquivo.")
                     
+                # --- Lógica para Arla ---
                 df_arla = df[df['TIPO DE ABASTECIMENTO'] == 'ARLA'].copy()
                 if not df_arla.empty:
                     excel_data_arla = io.BytesIO()
+                    
+                    # Cria um novo Workbook explícito para garantir que as abas sejam visíveis
+                    wb_arla = Workbook()
+                    wb_arla.remove(wb_arla.active) # Remove a aba padrão
+                    
                     with pd.ExcelWriter(excel_data_arla, engine='openpyxl') as writer:
+                        writer.book = wb_arla
+                        
                         placas_arla = sorted(df_arla['PLACA'].unique())
                         for placa in placas_arla:
                             df_placa = df_arla[df_arla['PLACA'] == placa].copy()
-                            
                             df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
                             
                             df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
@@ -553,12 +561,6 @@ def logistics_page():
                             df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'TIPO DE ABASTECIMENTO': 'Tipo de Abastecimento'})
                             
                             df_placa_output[colunas_saida].to_excel(writer, sheet_name=placa, index=False)
-                        
-                        # CORREÇÃO: Força a visibilidade da primeira aba
-                        workbook = writer.book
-                        if workbook.sheetnames:
-                            first_sheet = workbook[workbook.sheetnames[0]]
-                            first_sheet.sheet_state = 'visible'
                             
                     excel_data_arla.seek(0)
                     st.success("Planilha de Arla processada com sucesso!")
