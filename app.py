@@ -462,11 +462,36 @@ def logistics_page():
             try:
                 st.info("Processando arquivo de abastecimento. Isso pode levar alguns segundos...")
                 
-                # Leitura do arquivo com base na extensão
                 if uploaded_file.name.endswith('.csv'):
                     df = pd.read_csv(uploaded_file, sep=';', encoding='latin1')
                 elif uploaded_file.name.endswith('.xlsx'):
-                    df = pd.read_excel(uploaded_file, engine='openpyxl')
+                    try:
+                        df = pd.read_excel(uploaded_file, engine='openpyxl')
+                    except Exception as e:
+                        if "At least one sheet must be visible" in str(e):
+                            st.warning("Detectada uma planilha oculta. Tentando reexibi-la para processamento...")
+                            try:
+                                wb = load_workbook(uploaded_file)
+                                # Itera sobre todas as planilhas para encontrar a primeira oculta
+                                for sheet_name in wb.sheetnames:
+                                    ws = wb[sheet_name]
+                                    if ws.sheet_state == 'hidden' or ws.sheet_state == 'veryHidden':
+                                        ws.sheet_state = 'visible'
+                                        st.success(f"Planilha '{sheet_name}' foi reexibida com sucesso.")
+                                        break
+                                
+                                # Salva as alterações em um novo buffer e lê com o Pandas
+                                temp_file = io.BytesIO()
+                                wb.save(temp_file)
+                                temp_file.seek(0)
+                                df = pd.read_excel(temp_file, engine='openpyxl')
+                                
+                            except Exception as e_unhide:
+                                st.error(f"Falha ao reexibir a planilha. Por favor, desoculte-a manualmente e tente novamente. Erro: {e_unhide}")
+                                return
+                        else:
+                            st.error(f"Ocorreu um erro ao ler o arquivo Excel: {e}")
+                            return
                 else:
                     st.error("Formato de arquivo não suportado. Por favor, envie um arquivo .xlsx ou .csv.")
                     return
@@ -704,7 +729,7 @@ def commercial_page():
         @st.cache_data
         def convert_df_to_excel(df):
             """Converte DataFrame para um arquivo Excel em memória."""
-            output = io.BytesIO()
+            output = io.Bytes-IO()
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 df.to_excel(writer, index=False)
             processed_data = output.getvalue()
