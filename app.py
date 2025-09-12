@@ -468,7 +468,7 @@ def logistics_page():
                 if uploaded_file.name.endswith('.csv'):
                     df = pd.read_csv(uploaded_file)
                 elif uploaded_file.name.endswith('.xlsx'):
-                    df = pd.read_excel(uploaded_file)
+                    df = pd.read_excel(uploaded_file, engine='openpyxl') # Alteração aqui para usar 'openpyxl'
                 
                 df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
                 
