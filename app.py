@@ -496,12 +496,13 @@ def logistics_page():
                 if not df_diesel.empty:
                     excel_data_diesel = io.BytesIO()
                     
-                    # Cria um novo Workbook explícito para garantir que as abas sejam visíveis
-                    wb_diesel = Workbook()
-                    wb_diesel.remove(wb_diesel.active) # Remove a aba padrão
+                    # Remova as duas linhas abaixo
+                    # wb_diesel = Workbook()
+                    # wb_diesel.remove(wb_diesel.active) # Esta linha causa o erro
                     
                     with pd.ExcelWriter(excel_data_diesel, engine='openpyxl') as writer:
-                        writer.book = wb_diesel
+                        # A linha `writer.book = wb_diesel` também deve ser removida
+                        # porque `pd.ExcelWriter` gerencia a criação do workbook internamente
                         
                         placas_diesel = sorted(df_diesel['PLACA'].unique())
                         for placa in placas_diesel:
@@ -513,7 +514,7 @@ def logistics_page():
                             
                             df_placa['ALERTA KM'] = ''
                             df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor que o registro anterior!'
-
+                
                             df_placa['Média de litros por KM'] = df_placa['MEDIA_LITROS_KM'].mean()
                             df_placa.loc[df_placa.index[:-1], 'Média de litros por KM'] = ''
                             
@@ -532,21 +533,22 @@ def logistics_page():
                 else:
                     st.warning("Não foram encontrados dados de 'DIESEL' no arquivo.")
                     
-                # --- Lógica para Arla ---
+               # --- Lógica para Arla ---
                 df_arla = df[df['TIPO DE ABASTECIMENTO'] == 'ARLA'].copy()
                 if not df_arla.empty:
                     excel_data_arla = io.BytesIO()
                     
-                    # Cria um novo Workbook explícito para garantir que as abas sejam visíveis
-                    wb_arla = Workbook()
-                    wb_arla.remove(wb_arla.active) # Remove a aba padrão
+                    # Remova as duas linhas abaixo
+                    # wb_arla = Workbook()
+                    # wb_arla.remove(wb_arla.active) # Esta linha causa o erro
                     
                     with pd.ExcelWriter(excel_data_arla, engine='openpyxl') as writer:
-                        writer.book = wb_arla
+                        # A linha `writer.book = wb_arla` também deve ser removida
+                        # porque `pd.ExcelWriter` gerencia a criação do workbook internamente
                         
                         placas_arla = sorted(df_arla['PLACA'].unique())
                         for placa in placas_arla:
-                            df_placa = df_arla[df_arla['PLACA'] == placa].copy()
+                            df_placa = df_arla[df_placa['PLACA'] == placa].copy()
                             df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
                             
                             df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
@@ -1170,3 +1172,4 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
