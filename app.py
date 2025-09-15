@@ -545,16 +545,13 @@ def logistics_page():
                     'MOTORISTA': ['MOTORISTA', 'RESPONSÁVEL'],
                 }
                 
-                # Normaliza as colunas do DataFrame original para facilitar a busca
-                df.columns = [col.upper().strip() for col in df.columns]
-
                 # Renomeia as colunas do DataFrame com base no mapeamento
                 df_renamed = pd.DataFrame()
                 for new_name, possible_names in column_mapping.items():
                     found_col = None
                     for old_name in possible_names:
                         # Busca por nomes de coluna que contenham a palavra-chave principal
-                        matching_cols = [col for col in df.columns if old_name.upper() in col]
+                        matching_cols = [col for col in df.columns if old_name.upper().strip() in col.upper().strip()]
                         if matching_cols:
                             found_col = matching_cols[0]
                             break
