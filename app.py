@@ -20,7 +20,7 @@ def login_form():
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.markdown("<h2 style='text-align: center; color: #004d99; font-family: \'Arial Black\', sans-serif;'>Lince Distribuidora</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; color: #004d99; font-family: 'Arial Black', sans-serif;'>Lince Distribuidora</h2>", unsafe_allow_html=True)
         st.markdown("---")
         
         with st.form("login_form", clear_on_submit=False):
@@ -170,136 +170,6 @@ def logistics_page():
         st.subheader("Controle de Validade")
         st.markdown("Consolida dados de validade de um arquivo Excel e um arquivo de texto, e gera um relatório com status de validade e contagens.")
         def parse_estoque_txt(file_content):
-            lines = [line.decode('latin1') for line in file_content.getvalue().splitlines()]
-            separator_string = '-' * 116
-            separator_indices = [i for i, line in enumerate(lines) if separator_string in line]
-            if len(separator_indices) < 2:
-                st.warning("Não foi possível localizar os separadores de colunas no arquivo TXT.")
-                return pd.DataFrame()
-            start_line = separator_indices[1] + 1
-            col_names = ['COD.RED.', 'DESCRIÇÃO', 'SLD INICIAL CX', 'SLD INICIAL UN', 'ENTRADAS CX', 'ENTRADAS UN', 'SAÍDAS CX', 'SAÍDAS UN', 'SALDO FÍSICO CX', 'SALDO FÍSICO UN', 'CONT. FÍSICA CX', 'CONT. FÍSICA UN', 'DIFERENÇA CX', 'DIFERENÇA UN']
-            data = []
-            pattern = re.compile(r'^\s*"?(\d{3}-\d{3})[^"\n]*?"?.*?"?([\d.]+)"?\s*$', re.MULTILINE)
-            for line in lines[start_line:]:
-                line = line.strip()
-                if not line:
-                    continue
-                match = pattern.match(line)
-                if match:
-                    groups = match.groups()
-                    row_values = [groups[0], groups[1]]
-                    for i in range(2, len(groups), 2):
-                        cx = groups[i].strip()
-                        un = groups[i+1].strip()
-                        row_values.extend([int(cx) if cx else 0, int(un) if un else 0])
-                    if len(row_values) == 14:
-                        data.append(row_values)
-            df_txt_raw = pd.DataFrame(data, columns=col_names)
-            return df_txt_raw
-        uploaded_excel_file = st.file_uploader("Envie o arquivo Excel 'Controle de Validade.xlsx'", type=["xlsx"])
-        uploaded_txt_file = st.file_uploader("Envie o arquivo de texto de estoque", type=["txt"])
-        if uploaded_excel_file is not None and uploaded_txt_file is not None:
-            try:
-                df_validade = pd.read_excel(uploaded_excel_file)
-                df_validade.columns = df_validade.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
-                df_estoque = parse_estoque_txt(uploaded_txt_file)
-                if df_estoque.empty:
-                    st.warning("O arquivo TXT está vazio ou não pôde ser processado.")
-                validity_cols = ['Validade', 'Validade.1', 'Validade.2', 'Validade.3', 'Validade.4']
-                quantity_caixa_cols = ['Quantidade (CAIXA)', 'Quantidade 2 (CAIXA)', 'Quantidade 3 (CAIXA)', 'Quantidade 4 (CAIXA)', 'Quantidade 5 (CAIXA)']
-                quantity_unidade_cols = ['Quantidade (UNIDADE)', 'Quantidade 2 (UNIDADE)', 'Quantidade 3 (UNIDADE)', 'Quantidade 4 (UNIDADE)', 'Quantidade 5 (UNIDADE)']
-                all_validity_entries = []
-                for i in range(len(validity_cols)):
-                    cols_to_check = ['Qual Produto ?', validity_cols[i], quantity_caixa_cols[i], quantity_unidade_cols[i]]
-                    if all(col in df_validade.columns for col in cols_to_check):
-                        temp_df = df_validade[['Qual Produto ?', validity_cols[i], quantity_caixa_cols[i], quantity_unidade_cols[i]]].copy()
-                        temp_df.rename(columns={validity_cols[i]: 'Validade', quantity_caixa_cols[i]: 'Quantidade (CAIXA)', quantity_unidade_cols[i]: 'Quantidade (UNIDADE)'}, inplace=True)
-                        all_validity_entries.append(temp_df)
-                all_validity_entries = [df for df in all_validity_entries if not df.dropna(subset=['Validade']).empty]
-                if all_validity_entries:
-                    melted_df_validade_all = pd.concat(all_validity_entries, ignore_index=True)
-                else:
-                    melted_df_validade_all = pd.DataFrame(columns=['Qual Produto ?', 'Validade', 'Quantidade (CAIXA)', 'Quantidade (UNIDADE)'])
-                melted_df_validade_all.dropna(subset=['Validade'], inplace=True)
-                melted_df_validade_all['Validade'] = pd.to_datetime(melted_df_validade_all['Validade'], errors='coerce')
-                melted_df_validade_all.dropna(subset=['Validade'], inplace=True)
-                melted_df_validade_all['Quantidade (CAIXA)'] = pd.to_numeric(melted_df_validade_all['Quantidade (CAIXA)'], errors='coerce').fillna(0)
-                melted_df_validade_all['Quantidade (UNIDADE)'] = pd.to_numeric(melted_df_validade_all['Quantidade (UNIDADE)'], errors='coerce').fillna(0)
-                split_data_validade = melted_df_validade_all['Qual Produto ?'].astype(str).str.split(' - ', n=1, expand=True)
-                melted_df_validade_all['Codigo Produto'] = split_data_validade[0].str.strip()
-                melted_df_validade_all['Nome Produto'] = split_data_validade[1].str.strip()
-                def extract_units_per_box(product_name):
-                    product_name = str(product_name).upper().replace(' ', '')
-                    match_multiplication = re.search(r'(\d+)X(\d+)(?:UN|U)', product_name)
-                    if match_multiplication:
-                        factor1 = int(match_multiplication.group(1))
-                        factor2 = int(match_multiplication.group(2))
-                        return factor1 * factor2
-                    match_direct = re.search(r'(\d+)(?:UN|U)', product_name)
-                    if match_direct:
-                        return int(match_direct.group(1))
-                    return 1
-                melted_df_validade_all['Units_Per_Box_Temp'] = melted_df_validade_all['Nome Produto'].apply(extract_units_per_box)
-                grouped = melted_df_validade_all.groupby(['Codigo Produto', 'Nome Produto', 'Validade']).agg({'Quantidade (CAIXA)': 'sum', 'Quantidade (UNIDADE)': 'sum', 'Units_Per_Box_Temp': 'first'}).reset_index()
-                def convert_total_units_to_boxes_and_units(row):
-                    units_per_box = row['Units_Per_Box_Temp'] or 1
-                    total_units = (row['Quantidade (CAIXA)'] * units_per_box) + row['Quantidade (UNIDADE)']
-                    row['Quantidade (CAIXA)'] = total_units // units_per_box
-                    row['Quantidade (UNIDADE)'] = total_units % units_per_box
-                    return row
-                grouped = grouped.apply(convert_total_units_to_boxes_and_units, axis=1)
-                grouped.drop('Units_Per_Box_Temp', axis=1, inplace=True)
-                data_atual = datetime.now()
-                grouped['Dias para Vencer'] = (grouped['Validade'] - data_atual).dt.days
-                conditions = [grouped['Dias para Vencer'] <= 45, (grouped['Dias para Vencer'] > 45) & (grouped['Dias para Vencer'] <= 60), grouped['Dias para Vencer'] > 60]
-                choices = ['VALIDADE CURTA', 'ATENÇÃO', 'OK']
-                grouped['Status Validade'] = np.select(conditions, choices, default='Indefinido')
-                grouped['Validade_DateOnly'] = grouped['Validade'].dt.date
-                sorted_grouped = grouped.sort_values(by=['Codigo Produto', 'Validade']).reset_index(drop=True)
-                sorted_grouped['Validade_Rank'] = sorted_grouped.groupby('Codigo Produto')['Validade'].rank(method='first').astype(int)
-                final_rows = []
-                for product_code, group in sorted_grouped.groupby('Codigo Produto'):
-                    row = {'Codigo Produto': product_code, 'Nome Produto': group['Nome Produto'].iloc[0]}
-                    for _, r in group.iterrows():
-                        i = r['Validade_Rank']
-                        row[f'Validade {i}'] = r['Validade_DateOnly']
-                        row[f'Quantidade (CAIXA) {i}'] = r['Quantidade (CAIXA)']
-                        row[f'Quantidade (UNIDADE) {i}'] = r['Quantidade (UNIDADE)']
-                        row[f'Dias para Vencer {i}'] = r['Dias para Vencer']
-                        row[f'Status Validade {i}'] = r['Status Validade']
-                    final_rows.append(row)
-                final_df = pd.DataFrame(final_rows)
-                if not df_estoque.empty:
-                    df_saldo = df_estoque[['COD.RED.', 'SALDO FÍSICO CX', 'SALDO FÍSICO UN']].drop_duplicates('COD.RED.')
-                    df_saldo.rename(columns={'SALDO FÍSICO CX': 'Saldo Físico TXT Caixa', 'SALDO FÍSICO UN': 'Saldo Físico TXT Unidade'}, inplace=True)
-                    final_df = pd.merge(final_df, df_saldo, how='left', left_on='Codigo Produto', right_on='COD.RED.')
-                    final_df.drop('COD.RED.', axis=1, inplace=True)
-                quantidade_caixa_cols = [col for col in final_df.columns if re.match(r'Quantidade \(CAIXA\) \d+', col)]
-                quantidade_unidade_cols = [col for col in final_df.columns if re.match(r'Quantidade \(UNIDADE\) \d+', col)]
-                final_df['Contagem Fisica CX'] = final_df[quantidade_caixa_cols].sum(axis=1)
-                final_df['Contagem Fisica UN'] = final_df[quantidade_unidade_cols].sum(axis=1)
-                st.subheader("✅ Relatório de Validade Gerado")
-                st.dataframe(final_df)
-                excel_data = io.BytesIO()
-                final_df.to_excel(excel_data, sheet_name='Controle de Estoque', index=False)
-                excel_data.seek(0)
-                st.download_button(
-                    label="📥 Baixar Relatório de Validade",
-                    data=excel_data,
-                    file_name="Controle_Estoque_Completo.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            except Exception as e:
-                st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
-
-    elif script_choice == "Vasilhames":
-        st.subheader("Controle de Vasilhames")
-        st.markdown("Este script consolida dados de vasilhames de diferentes fontes (Excel, TXT, PDF) e gera um relatório unificado.")
-        
-        # Cria a conexão com o banco de dados
-        engine = setup_database()
-
-        def process_txt_file_st(file_content):
             content = file_content.getvalue().decode('latin1')
             filename_date_match = re.search(r'ESTOQUE(\d{4})\.TXT', file_content.name)
             if filename_date_match:
@@ -614,27 +484,41 @@ def commercial_page():
             uma coluna 'Status' com validação de dados.
             """
             processed_records = []
-            if df.empty or len(df.columns) < 28:
-                st.error("A planilha não contém o número mínimo de colunas esperado para este script.")
+            if df.empty:
+                st.error("A planilha está vazia.")
+                return pd.DataFrame()
+            
+            # Tentar encontrar colunas por nome aproximado para maior robustez
+            col_map = {
+                'DATA': df.columns[0] if df.shape[1] > 0 else None,
+                'SV': df.columns[1] if df.shape[1] > 1 else None,
+                'VD_start': df.columns[2] if df.shape[1] > 2 else None,
+                'VD_end': df.columns[4] if df.shape[1] > 4 else None,
+                'PDV_DE_start': df.columns[5] if df.shape[1] > 5 else None,
+                'PDV_DE_end': df.columns[26] if df.shape[1] > 26 else None,
+                'PARA': df.columns[27] if df.shape[1] > 27 else None,
+            }
+
+            if not all(col_map.values()):
+                st.error("Não foi possível encontrar todas as colunas necessárias. Verifique se o arquivo está no formato correto.")
                 return pd.DataFrame()
 
             for index, row in df.iterrows():
-                # Verificação de segurança para garantir que 'row' é um Series.
-                if not isinstance(row, pd.Series):
-                    st.warning(f"Aviso: A linha {index} não é um Series e foi ignorada.")
-                    continue
-                
                 try:
-                    data_value = row.iloc[0]
-                    sv_value = row.iloc[1]
+                    if not isinstance(row, pd.Series):
+                        st.warning(f"Aviso: A linha {index} não é uma Series. Ignorando.")
+                        continue
+
+                    data_value = row[col_map['DATA']]
+                    sv_value = row[col_map['SV']]
                     
-                    vd_consolidated_parts = [str(row.iloc[col_idx]).strip() for col_idx in range(2, min(5, len(row))) if pd.notna(row.iloc[col_idx])]
+                    vd_consolidated_parts = [str(row[col]).strip() for col in df.columns[2:5] if pd.notna(row[col])]
                     vd_final = ' | '.join(vd_consolidated_parts) if vd_consolidated_parts else None
                     
-                    para_value = row.iloc[27] if len(row) > 27 else None
+                    para_value = row[col_map['PARA']]
 
-                    for col_idx in range(5, min(27, len(row))):
-                        cell_content = str(row.iloc[col_idx]).strip()
+                    for col in df.columns[5:27]:
+                        cell_content = str(row[col]).strip()
                         if not cell_content or cell_content.lower() == 'nan':
                             continue
                         
@@ -654,8 +538,14 @@ def commercial_page():
                                 'PARA': para_value,
                                 'Status': '' 
                             })
-                except IndexError:
-                    st.error(f"Erro: Estrutura de coluna inesperada na linha {index}. A linha será ignorada.")
+                except KeyError as e:
+                    st.error(f"Erro ao processar a linha {index}: A coluna {e} não foi encontrada. Ignorando a linha.")
+                    continue
+                except IndexError as e:
+                    st.error(f"Erro ao processar a linha {index}: Número de colunas inesperado. Ignorando a linha.")
+                    continue
+                except Exception as e:
+                    st.error(f"Erro inesperado na linha {index}: {e}. Ignorando a linha.")
                     continue
 
             final_df = pd.DataFrame(processed_records)
