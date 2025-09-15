@@ -173,11 +173,11 @@ def logistics_page():
         # FUNÇÃO CORRIGIDA PARA LER O TXT
         def parse_estoque_txt_st(file_content):
             """
-            Analisa o arquivo TXT lendo linha por linha, utilizando uma
-            expressão regular para extrair os dados de forma robusta,
-            ignorando o espaçamento inconsistente.
+            Analisa o arquivo TXT lendo linha por linha, extraindo dados 
+            de forma robusta, ignorando o espaçamento inconsistente.
             """
             lines = [line.decode('latin1') for line in file_content.getvalue().splitlines()]
+            
             separator_string = '-' * 116
             separator_indices = [i for i, line in enumerate(lines) if separator_string in line]
             if len(separator_indices) < 2:
@@ -197,39 +197,53 @@ def logistics_page():
             ]
             data = []
             
-            # Regex para capturar campos individuais de forma flexível
-            pattern = re.compile(
-                r'^\s*(\d+)\s+'
-                r'(.+?)'
-                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-            )
+            # Padrões para extrair as partes da linha
+            code_pattern = re.compile(r'^\s*(\d{6}|\d{3}-\d{3})')
+            description_pattern = re.compile(r'(.+?)\s+')
+            value_pattern = re.compile(r'\s*([-+]?\d*)\s*([-+]?\d*)')
 
             for line in lines[start_line:]:
                 line = line.strip()
-                if not line:
+                if not line or 'TOTAL GERAL' in line:
                     continue
-                match = pattern.match(line)
-                if match:
-                    groups = list(match.groups())
-                    
-                    row_values = [groups[0], groups[1].strip()]
-                    
-                    # Extrai os 6 pares de CX e UN e converte para inteiros
-                    for i in range(2, len(groups), 2):
-                        cx = groups[i].strip() if groups[i] and groups[i].strip() else '0'
-                        un = groups[i+1].strip() if groups[i+1] and groups[i+1].strip() else '0'
-                        row_values.extend([int(cx), int(un)])
-                    
-                    if len(row_values) == 14:
-                        data.append(row_values)
+
+                code_match = code_pattern.search(line)
+                if not code_match:
+                    continue
+
+                code = code_match.group(1).strip()
+                
+                # Encontra a posição do código para começar a busca pela descrição
+                rest_of_line = line[code_match.end():].strip()
+                
+                # A descrição é a primeira parte do resto da linha, seguida pelos valores.
+                # A melhor maneira de separar é pelos espaços entre a descrição e o primeiro valor numérico.
+                parts = re.split(r'\s{2,}', rest_of_line, 1)
+                if len(parts) < 2:
+                    description = parts[0]
+                    value_string = ''
+                else:
+                    description = parts[0]
+                    value_string = parts[1]
+
+                # A string de valores agora tem um formato mais previsível
+                # Remove os caracteres 'I' para facilitar o split
+                value_string = value_string.replace('I', '').strip()
+                values = [int(v) if v.strip() and v.strip() != ' ' else 0 for v in re.split(r'\s+', value_string)]
+                
+                # A lista de valores pode ter menos de 12 itens se alguns campos estiverem vazios.
+                # Preenchemos com zeros para ter 12 valores (6 pares de CX e UN).
+                if len(values) < 12:
+                    values.extend([0] * (12 - len(values)))
+                
+                row_values = [code, description] + values
+                
+                if len(row_values) == 14:
+                    data.append(row_values)
             
             df_txt_raw = pd.DataFrame(data, columns=col_names)
             return df_txt_raw
+
 
         uploaded_excel_file = st.file_uploader("Envie o arquivo Excel 'Controle de Validade.xlsx'", type=["xlsx"])
         uploaded_txt_file = st.file_uploader("Envie o arquivo de texto de estoque", type=["txt"])
@@ -1142,7 +1156,7 @@ def site_page():
 
 # Lógica principal da página
 if 'is_logged_in' not in st.session_state:
-    st.session_state['is_logged_in'] = False
+    st.session_in('is_logged_in') = False
 if 'current_page' not in st.session_state:
     st.session_state['current_page'] = 'login'
 if 'LOGIN_INFO' not in st.session_state:
