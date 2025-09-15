@@ -166,9 +166,9 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
 
-    elif script_choice == "Validade":
-        st.subheader("Controle de Validade")
-        st.markdown("Consolida dados de validade de um arquivo Excel e um arquivo de texto, e gera um relatório com status de validade e contagens.")
+    elif script_choice == "Vasilhames":
+        st.subheader("Controle de Vasilhames")
+        st.markdown("Consolida dados de vasilhames de um arquivo Excel e um arquivo de texto, e gera um relatório com status de validade e contagens.")
         def parse_estoque_txt(file_content):
             content = file_content.getvalue().decode('latin1')
             filename_date_match = re.search(r'ESTOQUE(\d{4})\.TXT', file_content.name)
@@ -1060,3 +1060,4 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
