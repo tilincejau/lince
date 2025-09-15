@@ -523,18 +523,23 @@ def logistics_page():
             try:
                 st.info("Processando arquivo de abastecimento. Isso pode levar alguns segundos...")
                 
-                # Lógica de leitura baseada na extensão do arquivo
-                file_extension = os.path.splitext(uploaded_file.name)[1].lower()
-
-                if file_extension == '.xlsx':
-                    df = pd.read_excel(uploaded_file, engine='openpyxl')
-                elif file_extension == '.csv':
-                    df = pd.read_csv(uploaded_file)
-                else:
-                    st.error("Formato de arquivo não suportado. Por favor, envie um arquivo .xlsx ou .csv.")
+                # Leitura do arquivo e tratamento de erro
+                try:
+                    if uploaded_file.name.endswith('.csv'):
+                        df = pd.read_csv(uploaded_file)
+                    elif uploaded_file.name.endswith('.xlsx'):
+                        df = pd.read_excel(uploaded_file)
+                    else:
+                        st.error("Formato de arquivo não suportado. Por favor, use um arquivo .csv ou .xlsx.")
+                        return
+                except Exception as e:
+                    st.error(f"Erro ao ler o arquivo: {e}")
                     return
-                
-                # Mapeamento de nomes de colunas para lidar com variações
+
+                # Normalização das colunas
+                df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
+
+                # Mapeamento e unificação das colunas
                 column_mapping = {
                     'DATA ABASTECIMENTO': ['DATA', 'DATA ABASTECIMENTO', 'DATE', 'DATA_ABASTECIMENTO'],
                     'HORÁRIO': ['HORÁRIO', 'HORA', 'HORA DO ABASTECIMENTO'],
@@ -544,25 +549,17 @@ def logistics_page():
                     'LITROS': ['LITROS', 'VOLUME'],
                     'MOTORISTA': ['MOTORISTA', 'RESPONSÁVEL'],
                 }
-                
-                # Normaliza os nomes das colunas do DataFrame original
-                df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
-                
-                # Cria um novo DataFrame com os nomes de colunas padronizados
-                df_renamed = pd.DataFrame()
+
+                df_unified = pd.DataFrame()
                 for new_name, possible_names in column_mapping.items():
-                    found = False
                     for old_name in possible_names:
                         if old_name.upper() in df.columns:
-                            df_renamed[new_name] = df[old_name.upper()]
-                            found = True
+                            df_unified[new_name] = df[old_name.upper()]
                             break
-                    if not found:
+                    else:
                         st.warning(f"Aviso: Coluna essencial '{new_name}' não foi encontrada. O processamento pode estar incompleto.")
-                        df_renamed[new_name] = np.nan
-                
-                # Substitui o DataFrame original pelo renomeado
-                df = df_renamed
+                        df_unified[new_name] = np.nan
+                df = df_unified
 
                 # Garante que as colunas de data e hora estão no formato correto
                 df['DATA ABASTECIMENTO'] = pd.to_datetime(df['DATA ABASTECIMENTO'], errors='coerce').dt.date
@@ -573,10 +570,11 @@ def logistics_page():
                 
                 # Define as colunas de saída
                 colunas_saida = [
-                    'DATA ABASTECIMENTO', 'HORÁRIO', 'TIPO DE ABASTECIMENTO', 
+                    'Data Abastecimento', 'HORÁRIO', 'TIPO DE ABASTECIMENTO', 
                     'PLACA', 'KM', 'ALERTA KM', 'MOTORISTA', 'LITROS', 'Média de litros por KM'
                 ]
                 
+                # Processa a planilha de Diesel
                 df_diesel = df[df['TIPO DE ABASTECIMENTO'].str.upper() == 'DIESEL'].copy()
                 if not df_diesel.empty:
                     excel_data_diesel = io.BytesIO()
@@ -584,7 +582,6 @@ def logistics_page():
                         placas_diesel = sorted(df_diesel['PLACA'].unique())
                         for placa in placas_diesel:
                             df_placa = df_diesel[df_diesel['PLACA'] == placa].copy()
-                            
                             df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
                             
                             df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
@@ -596,9 +593,9 @@ def logistics_page():
                             df_placa['Média de litros por KM'] = df_placa['MEDIA_LITROS_KM'].mean()
                             df_placa.loc[df_placa.index[:-1], 'Média de litros por KM'] = ''
                             
-                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'TIPO DE ABASTECIMENTO': 'Tipo de Abastecimento'})
+                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento'})
                             
-                            df_placa_output[colunas_saida].to_excel(writer, sheet_name=placa, index=False)
+                            df_placa_output.to_excel(writer, sheet_name=placa, index=False)
                     
                     excel_data_diesel.seek(0)
                     st.success("Planilha de Diesel processada com sucesso!")
@@ -611,6 +608,7 @@ def logistics_page():
                 else:
                     st.warning("Não foram encontrados dados de 'DIESEL' no arquivo.")
                 
+                # Processa a planilha de Arla
                 df_arla = df[df['TIPO DE ABASTECIMENTO'].str.upper() == 'ARLA'].copy()
                 if not df_arla.empty:
                     excel_data_arla = io.BytesIO()
@@ -618,7 +616,6 @@ def logistics_page():
                         placas_arla = sorted(df_arla['PLACA'].unique())
                         for placa in placas_arla:
                             df_placa = df_arla[df_arla['PLACA'] == placa].copy()
-                            
                             df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
                             
                             df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
@@ -630,9 +627,9 @@ def logistics_page():
                             df_placa['Média de litros por KM'] = df_placa['MEDIA_LITROS_KM'].mean()
                             df_placa.loc[df_placa.index[:-1], 'Média de litros por KM'] = ''
                             
-                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'TIPO DE ABASTECIMENTO': 'Tipo de Abastecimento'})
+                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento'})
                             
-                            df_placa_output[colunas_saida].to_excel(writer, sheet_name=placa, index=False)
+                            df_placa_output.to_excel(writer, sheet_name=placa, index=False)
                             
                     excel_data_arla.seek(0)
                     st.success("Planilha de Arla processada com sucesso!")
