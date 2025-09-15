@@ -170,7 +170,6 @@ def logistics_page():
         st.subheader("Controle de Validade")
         st.markdown("Consolida dados de validade de um arquivo Excel e um arquivo de texto, e gera um relatório com status de validade e contagens.")
         
-        # FUNÇÃO ATUALIZADA PARA LER O TXT
         def parse_estoque_txt_st(file_content):
             """
             Analisa o arquivo TXT lendo linha por linha, utilizando uma
@@ -196,16 +195,15 @@ def logistics_page():
                 'DIFERENÇA CX', 'DIFERENÇA UN'
             ]
             data = []
-            # Expressão regular para capturar todos os campos da linha de dados
+            
+            # Novo regex para lidar com os formatos do arquivo TXT fornecido
             pattern = re.compile(
-                r'^\s*(\d{3}-\d{3})\s+' 
-                r'(.+?)' 
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I' 
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I' 
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I' 
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I' 
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I' 
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I' 
+                r'^\s*(\d{6}|\d{3}-\d{3})(.+?)'
+                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'
+                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'
+                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'
+                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'
+                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'
             )
 
             for line in lines[start_line:]:
@@ -219,8 +217,12 @@ def logistics_page():
                     for i in range(2, len(groups)):
                         groups[i] = int(float(groups[i].replace('.', '').replace(',', '.'))) if groups[i] else 0
                     
-                    if len(groups) == 14:
-                        data.append(groups)
+                    if len(groups) == 12: # Corrigido para 12 grupos capturados pelo novo regex
+                        # O regex captura de forma diferente, então ajustamos a lista de dados
+                        row_values = [groups[0], groups[1].strip()]
+                        for i in range(2, len(groups), 2):
+                            row_values.extend([groups[i], groups[i+1]])
+                        data.append(row_values)
             
             df_txt_raw = pd.DataFrame(data, columns=col_names)
             return df_txt_raw
@@ -318,6 +320,9 @@ def logistics_page():
                 final_df = pd.DataFrame(final_rows)
                 
                 if not df_estoque.empty:
+                    # A coluna SALDO FÍSICO CX no TXT não tem hífen no código de produto, mas a contagem tem.
+                    # Mapeamos para o formato correto.
+                    df_estoque['COD.RED.'] = df_estoque['COD.RED.'].str.replace(r'(\d{3})(\d{3})', r'\1-\2', regex=True)
                     df_saldo = df_estoque[['COD.RED.', 'SALDO FÍSICO CX', 'SALDO FÍSICO UN']].drop_duplicates('COD.RED.')
                     df_saldo.rename(columns={'SALDO FÍSICO CX': 'Saldo Físico TXT Caixa', 'SALDO FÍSICO UN': 'Saldo Físico TXT Unidade'}, inplace=True)
                     final_df = pd.merge(final_df, df_saldo, how='left', left_on='Codigo Produto', right_on='COD.RED.')
