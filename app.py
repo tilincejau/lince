@@ -552,7 +552,7 @@ def logistics_page():
                 for new_name, possible_names in column_mapping.items():
                     for old_name in possible_names:
                         if old_name.upper() in df.columns.str.upper():
-                            df_renamed[new_name] = df[df.columns[df.columns.str.upper() == old_name.upper()].iloc[0]]
+                            df_renamed[new_name] = df[df.columns[df.columns.str.upper() == old_name.upper()][0]]
                             break
                     if new_name not in df_renamed.columns:
                         st.warning(f"Aviso: Coluna essencial '{new_name}' não foi encontrada. O processamento pode estar incompleto.")
@@ -1239,4 +1239,5 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
 
