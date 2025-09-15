@@ -536,10 +536,10 @@ def logistics_page():
                 
                 # Mapeamento de nomes de colunas para lidar com variações, agora mais flexível
                 column_mapping = {
-                    'DATA ABASTECIMENTO': ['Carimbo de data/hora', 'DATA', 'DATA ABASTECIMENTO', 'DATE'],
+                    'DATA ABASTECIMENTO': ['Carimbo de data/hora'],
                     'HORÁRIO': ['Carimbo de data/hora'],
-                    'TIPO DE ABASTECIMENTO': ['Qual o tipo de abastecimento?', 'TIPO', 'COMBUSTÍVEL'],
-                    'PLACA': ['PLACA'],
+                    'TIPO DE ABASTECIMENTO': ['Qual o tipo de abastecimento?'],
+                    'PLACA': ['PLACA', 'PLACA_VEICULO'],
                     'KM': ['KM', 'QUILOMETRAGEM'],
                     'LITROS': ['LITROS', 'VOLUME'],
                     'MOTORISTA': ['MOTORISTA', 'RESPONSÁVEL'],
@@ -550,11 +550,8 @@ def logistics_page():
                 for new_name, possible_names in column_mapping.items():
                     found_col = None
                     for old_name in possible_names:
-                        # Busca por nomes de coluna que contenham a palavra-chave principal
-                        # Adicionamos .strip() para remover espaços em branco iniciais/finais
-                        matching_cols = [col for col in df.columns if old_name.upper().strip() in col.upper().strip()]
-                        if matching_cols:
-                            found_col = matching_cols[0]
+                        if old_name in df.columns:
+                            found_col = old_name
                             break
                     
                     if found_col:
