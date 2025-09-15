@@ -536,33 +536,26 @@ def logistics_page():
                 
                 # Mapeamento de nomes de colunas para lidar com variações
                 column_mapping = {
-                    'DATA ABASTECIMENTO': ['Carimbo de data/hora', 'DATA', 'DATA ABASTECIMENTO', 'DATE'],
+                    'DATA ABASTECIMENTO': ['Carimbo de data/hora'],
                     'HORÁRIO': ['Carimbo de data/hora'],
-                    'TIPO DE ABASTECIMENTO': ['Qual o tipo de abastecimento?', 'TIPO', 'COMBUSTÍVEL'],
-                    'PLACA': ['PLACA'],
+                    'TIPO DE ABASTECIMENTO': ['Qual o tipo de abastecimento?'],
+                    'PLACA': ['PLACA', 'PLACA_VEICULO'],
                     'KM': ['KM', 'QUILOMETRAGEM'],
                     'LITROS': ['LITROS', 'VOLUME'],
                     'MOTORISTA': ['MOTORISTA', 'RESPONSÁVEL'],
                 }
                 
-                # Crie uma cópia para evitar ChainAssignmentError
-                df_temp = df.copy()
-
-                # Normaliza os nomes das colunas para facilitar o mapeamento
-                df_temp.columns = [col.strip().upper() for col in df_temp.columns]
-
                 # Renomeia as colunas do DataFrame com base no mapeamento
                 df_renamed = pd.DataFrame()
                 for new_name, possible_names in column_mapping.items():
                     found_col = None
                     for old_name in possible_names:
-                        # Busca por nomes de coluna que contenham a palavra-chave principal
-                        if old_name.upper().strip() in df_temp.columns:
-                            found_col = old_name.upper().strip()
+                        if old_name in df.columns:
+                            found_col = old_name
                             break
                     
                     if found_col:
-                        df_renamed[new_name] = df_temp[found_col]
+                        df_renamed[new_name] = df[found_col]
                     else:
                         st.warning(f"Aviso: Coluna essencial '{new_name}' não foi encontrada. O processamento pode estar incompleto.")
                         df_renamed[new_name] = np.nan
@@ -593,7 +586,7 @@ def logistics_page():
                     with pd.ExcelWriter(excel_data_diesel, engine='xlsxwriter') as writer:
                         placas_diesel = sorted(df_diesel['PLACA'].unique())
                         for placa in placas_diesel:
-                            df_placa = df_diesel[df_diesel['PLACA'] == placa].copy()
+                            df_placa = df_diesel[df_placa['PLACA'] == placa].copy()
                             
                             df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
                             
@@ -754,4 +747,502 @@ def commercial_page():
                 final_df_forms = transform_google_forms_data(df_forms)
                 
                 if not final_df_forms.empty:
-                    output = io.Bytes-
+                    output = io.BytesIO()
+                    final_df_forms.to_excel(output, index=False)
+                    output.seek(0)
+                    
+                    workbook = load_workbook(output)
+                    sheet = workbook.active
+                    
+                    dropdown_options_excel = '"Aprovado,Não Aprovado"'
+                    dv = DataValidation(type="list", formula1=dropdown_options_excel, allow_blank=True)
+                    dv.error = 'O valor inserido não está na lista.'
+                    dv.errorTitle = 'Valor Inválido'
+                    
+                    try:
+                        col_for_dropdown_letter = get_column_letter(final_df_forms.columns.get_loc('Status') + 1)
+                        dv.add(f'{col_for_dropdown_letter}2:{col_for_dropdown_letter}{sheet.max_row}')
+                        sheet.add_data_validation(dv)
+                    except KeyError:
+                        st.warning("A coluna 'Status' não foi encontrada no DataFrame final.")
+                    
+                    output_with_dropdown = io.BytesIO()
+                    workbook.save(output_with_dropdown)
+                    output_with_dropdown.seek(0)
+                    
+                    st.subheader("✅ Dados Transformados (Troca de Canal)")
+                    st.dataframe(final_df_forms)
+                    
+                    st.download_button(
+                        label="📥 Baixar Arquivo de Troca de Canal",
+                        data=output_with_dropdown.getvalue(),
+                        file_name="troca_canal_processada.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.warning("O arquivo processado está vazio ou a estrutura está incorreta. Nenhuma tabela será gerada.")
+                
+            except Exception as e:
+                st.error(f"Ocorreu um erro durante o processamento de 'Troca de Canal': {e}")
+
+    elif script_selection == "Circuito Execução":
+        st.write("---")
+        st.subheader("Circuito Execução")
+        st.markdown("Este script converte os valores 'Presença' em pontuação, com base no nome das colunas.")
+
+        def extract_points(column_name):
+            """Função para extrair o valor numérico entre parênteses em uma string de cabeçalho."""
+            match = re.search(r"\(\s*(\d+)\s*Pontos\s*\)", column_name)
+            return int(match.group(1)) if match else None
+
+        def transform_points_columns(df):
+            """
+            Aplica a transformação de 'Presença' para pontos nas colunas
+            que contêm 'Pontos' no nome.
+            """
+            df_transformed = df.copy()
+            for col in df_transformed.columns:
+                if "Pontos" in col:
+                    points = extract_points(col)
+                    if points is not None:
+                        df_transformed[col] = df_transformed[col].apply(lambda x: points if x == "Presença" else 0)
+            return df_transformed
+
+        @st.cache_data
+        def convert_df_to_excel(df):
+            """Converte DataFrame para um arquivo Excel em memória."""
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                df.to_excel(writer, index=False)
+            processed_data = output.getvalue()
+            return processed_data
+
+        uploaded_file_2 = st.file_uploader("Envie o arquivo para 'Circuito Execução' (.xlsx)", type=["xlsx"])
+
+        if uploaded_file_2 is not None:
+            try:
+                df_points = pd.read_excel(uploaded_file_2)
+                st.subheader("📄 Dados Originais (Circuito Execução)")
+                st.dataframe(df_points)
+                
+                df_transformed_points = transform_points_columns(df_points)
+                
+                st.subheader("✅ Dados Transformados (Circuito Execução)")
+                st.dataframe(df_transformed_points)
+                
+                excel_data = convert_df_to_excel(df_transformed_points)
+                
+                st.download_button(
+                    label="📥 Baixar Arquivo de Circuito Execução Transformado",
+                    data=excel_data,
+                    file_name="circuito_execucao_transformado.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                
+            except Exception as e:
+                st.error(f"Ocorreu um erro durante o processamento de 'Circuito Execução': {e}")
+    if st.button("Voltar para o Início"):
+        st.session_state['current_page'] = 'home'
+        st.rerun()
+
+def rh_page():
+    st.title("Setor de RH")
+    st.markdown("Bem-vindo(a) ao setor de RH. Abaixo estão os scripts disponíveis para análise.")
+
+    script_choice = st.selectbox(
+        "Selecione um script para executar:",
+        ("Selecione...", "Controle de Jornada")
+    )
+
+    st.write("---")
+
+    if script_choice == "Controle de Jornada":
+        st.subheader("Controle de Jornada")
+        st.markdown("Este script processa uma planilha de controle de jornada e calcula tempos de viagem, dirigibilidade e paradas.")
+
+        def format_timedelta_as_hms(td):
+            if pd.isna(td):
+                return pd.NaT
+            total_seconds = td.total_seconds()
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+
+        def format_timedelta_as_dias_hms(td):
+            if pd.isna(td):
+                return pd.NaT
+            total_seconds = td.total_seconds()
+            days, remainder = divmod(total_seconds, 86400)
+            hours, remainder = divmod(remainder, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            if days > 0:
+                return f"{int(days)} dias {int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+            else:
+                return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+
+        uploaded_file = st.file_uploader("Envie o arquivo 'Controle de Jornada.xlsx'", type=["xlsx"])
+
+        if uploaded_file is not None:
+            try:
+                df = pd.read_excel(uploaded_file)
+                st.subheader("📄 Dados Originais")
+                st.dataframe(df.head())
+                
+                all_events = []
+                for index, row in df.iterrows():
+                    motorista = row.get('Motorista')
+                    timestamp_str = row.get('Carimbo de data/hora')
+                    if pd.isna(timestamp_str) or pd.isna(motorista):
+                        continue
+                    timestamp = pd.to_datetime(timestamp_str)
+                    entry_type = row.get('Qual o tipo de lançamento?')
+                    if entry_type == 'Inicio Jornada':
+                        date_str = row.get('Dia')
+                        time_str = row.get('Horário')
+                        if pd.notna(date_str) and pd.notna(time_str):
+                            start_time = pd.to_datetime(f"{date_str} {time_str}")
+                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': entry_type, 'Inicio': start_time, 'Fim': None, 'Motivo': None, 'Carimbo de data/hora': timestamp})
+                    elif entry_type == 'Inicio de Viagem':
+                        date_str = row.get('Dia.1')
+                        time_str = row.get('Horário.1')
+                        if pd.notna(date_str) and pd.notna(time_str):
+                            start_time = pd.to_datetime(f"{date_str} {time_str}")
+                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': entry_type, 'Inicio': start_time, 'Fim': None, 'Motivo': None, 'Carimbo de data/hora': timestamp})
+                    elif entry_type == 'Fim da Viagem':
+                        time_str = row.get('Fim.5')
+                        if pd.notna(time_str):
+                            time_str = str(time_str).split(' ')[-1]
+                            end_time = pd.to_datetime(f"{timestamp.strftime('%Y-%m-%d')} {time_str}")
+                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': entry_type, 'Inicio': None, 'Fim': end_time, 'Motivo': None, 'Carimbo de data/hora': timestamp})
+                    elif entry_type == 'Fim de Jornada':
+                        date_str = row.get('Dia.2')
+                        time_str = row.get('Horário.3')
+                        if pd.notna(date_str) and pd.notna(time_str):
+                            end_time = pd.to_datetime(f"{date_str} {time_str}")
+                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': entry_type, 'Inicio': None, 'Fim': end_time, 'Motivo': None, 'Carimbo de data/hora': timestamp})
+                    parada_cols_map = {
+                        '1': {'inicio': 'Inicio ', 'fim': 'Fim', 'motivo': 'Motivo'},
+                        '2': {'inicio': 'Inicio', 'fim': 'Fim.1', 'motivo': 'Motivo.1'},
+                        '3': {'inicio': 'Inicio.1', 'fim': 'Fim.2', 'motivo': 'Motivo.2'},
+                        '4': {'inicio': 'Inicio.2', 'fim': 'Fim.3', 'motivo': 'Motivo.3'},
+                        '5': {'inicio': 'Inicio.3', 'fim': 'Fim.4', 'motivo': 'Motivo.4'}
+                    }
+                    for i in range(1, 6):
+                        cols = parada_cols_map.get(str(i))
+                        start_time_str = row.get(cols['inicio'])
+                        end_time_str = row.get(cols['fim'])
+                        motivo = row.get(cols['motivo'])
+                        if pd.notna(start_time_str) and pd.notna(end_time_str) and pd.notna(motivo):
+                            date_str = timestamp.strftime('%Y-%m-%d')
+                            try:
+                                start_time_str = str(start_time_str).split(' ')[-1]
+                                end_time_str = str(end_time_str).split(' ')[-1]
+                                start_time = pd.to_datetime(f"{date_str} {start_time_str}")
+                                end_time = pd.to_datetime(f"{date_str} {end_time_str}")
+                                all_events.append({'Motorista': motorista, 'Tipo de Lançamento': f'Parada {i}', 'Inicio': start_time, 'Fim': end_time, 'Motivo': motivo, 'Carimbo de data/hora': timestamp})
+                            except ValueError:
+                                st.error(f"Erro ao converter data/hora na linha {index} para 'Parada {i}'.")
+                                continue
+                consolidated_df = pd.DataFrame(all_events)
+                consolidated_df.dropna(subset=['Motorista', 'Tipo de Lançamento'], how='all', inplace=True)
+                consolidated_df.sort_values(by=['Motorista', 'Carimbo de data/hora'], inplace=True)
+                consolidated_df.reset_index(drop=True, inplace=True)
+                consolidated_df['Tempo Total de Jornada'] = pd.NaT
+                consolidated_df['Tempo Total de Viagem'] = pd.NaT
+                consolidated_df['Tempo de Dirigibilidade'] = pd.NaT
+                consolidated_df['Tempo Almoço'] = pd.NaT
+                consolidated_df['Tempo Carga/Descarga'] = pd.NaT
+                consolidated_df['Tempo Liberação N.F.'] = pd.NaT
+                consolidated_df['Tempo Repouso'] = pd.NaT
+                for (motorista, dia), group in consolidated_df.groupby(['Motorista', consolidated_df['Carimbo de data/hora'].dt.date]):
+                    inicio_jornada = group[group['Tipo de Lançamento'] == 'Inicio Jornada']['Inicio'].min()
+                    fim_jornada = group[group['Tipo de Lançamento'] == 'Fim de Jornada']['Fim'].max()
+                    tempo_jornada = fim_jornada - inicio_jornada if pd.notnull(inicio_jornada) and pd.notnull(fim_jornada) else timedelta(seconds=0)
+                    inicio_viagem = group[group['Tipo de Lançamento'] == 'Inicio de Viagem']['Inicio'].min()
+                    fim_viagem = group[group['Tipo de Lançamento'] == 'Fim da Viagem']['Fim'].max()
+                    tempo_viagem = fim_viagem - inicio_viagem if pd.notnull(inicio_viagem) and pd.notnull(fim_viagem) else timedelta(seconds=0)
+                    break_durations = group.dropna(subset=['Motivo']).copy()
+                    if not break_durations.empty:
+                        break_durations['Duration'] = break_durations['Fim'] - break_durations['Inicio']
+                    else:
+                        break_durations['Duration'] = timedelta(seconds=0)
+                    almoco_duration = break_durations[break_durations['Motivo'] == 'Almoço']['Duration'].sum()
+                    carga_descarga_duration = break_durations[break_durations['Motivo'] == 'Carga/Descarga']['Duration'].sum()
+                    liberacao_nf_duration = break_durations[break_durations['Motivo'] == 'Liberação de N.F']['Duration'].sum()
+                    repouso_duration = break_durations[break_durations['Motivo'] == 'Repouso']['Duration'].sum()
+                    total_stop_time = almoco_duration + carga_descarga_duration + liberacao_nf_duration + repouso_duration
+                    tempo_dirigibilidade = tempo_viagem - total_stop_time
+                    consolidated_df.loc[group[group['Tipo de Lançamento'] == 'Fim de Jornada'].index, 'Tempo Total de Jornada'] = tempo_jornada
+                    consolidated_df.loc[group[group['Tipo de Lançamento'] == 'Fim da Viagem'].index, 'Tempo Total de Viagem'] = tempo_viagem
+                    consolidated_df.loc[group[group['Tipo de Lançamento'] == 'Fim da Viagem'].index, 'Tempo de Dirigibilidade'] = tempo_dirigibilidade
+                    consolidated_df.loc[group[group['Motivo'] == 'Almoço'].index, 'Tempo Almoço'] = almoco_duration
+                    consolidated_df.loc[group[group['Motivo'] == 'Carga/Descarga'].index, 'Tempo Carga/Descarga'] = carga_descarga_duration
+                    consolidated_df.loc[group[group['Motivo'] == 'Liberação de N.F'].index, 'Tempo Liberação N.F.'] = liberacao_nf_duration
+                    consolidated_df.loc[group[group['Motivo'] == 'Repouso'].index, 'Tempo Repouso'] = repouso_duration
+                consolidated_df['Tempo Total de Jornada'] = consolidated_df['Tempo Total de Jornada'].apply(format_timedelta_as_dias_hms)
+                consolidated_df['Tempo Total de Viagem'] = consolidated_df['Tempo Total de Viagem'].apply(format_timedelta_as_dias_hms)
+                consolidated_df['Tempo de Dirigibilidade'] = consolidated_df['Tempo de Dirigibilidade'].apply(format_timedelta_as_hms)
+                consolidated_df['Tempo Almoço'] = consolidated_df['Tempo Almoço'].apply(format_timedelta_as_hms)
+                consolidated_df['Tempo Carga/Descarga'] = consolidated_df['Tempo Carga/Descarga'].apply(format_timedelta_as_hms)
+                consolidated_df['Tempo Liberação N.F.'] = consolidated_df['Tempo Liberação N.F.'].apply(format_timedelta_as_hms)
+                consolidated_df['Tempo Repouso'] = consolidated_df['Tempo Repouso'].apply(format_timedelta_as_hms)
+                consolidated_df.drop(columns=['Carimbo de data/hora'], inplace=True)
+                
+                st.subheader("✅ Dados Processados")
+                st.dataframe(consolidated_df)
+                
+                excel_data = io.BytesIO()
+                consolidated_df.to_excel(excel_data, sheet_name="Dados Consolidados", index=False)
+                excel_data.seek(0)
+                
+                st.download_button(
+                    label="📥 Baixar Arquivo Processado",
+                    data=excel_data,
+                    file_name="Jornada_Calculo.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            except Exception as e:
+                st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
+
+    if st.button("Voltar para o Início"):
+        st.session_state['current_page'] = 'home'
+        st.rerun()
+
+def site_page():
+    st.title("Setor Sítio")
+    st.markdown("Bem-vindo(a) ao setor Sítio. Abaixo estão os scripts disponíveis para análise.")
+    
+    script_choice = st.selectbox(
+        "Selecione um script para executar:",
+        ("Selecione...", "Sítio Santa Izabel")
+    )
+
+    st.write("---")
+
+    if script_choice == "Sítio Santa Izabel":
+        st.subheader("Sítio Santa Izabel")
+        st.markdown("Este script processa a planilha de controle do Sítio Santa Izabel e a divide em abas com base nos lançamentos.")
+
+        def normalize_columns(columns_list):
+            """
+            Normaliza uma lista de nomes de colunas, removendo espaços extras,
+            caracteres especiais e quebras de linha.
+            """
+            normalized_list = []
+            for col in columns_list:
+                col = re.sub(r'\s+', ' ', col).strip()
+                col = col.replace('\n', ' ')
+                normalized_list.append(col)
+            return normalized_list
+
+        uploaded_file = st.file_uploader("Envie o arquivo 'SÍTIO SANTA IZABEL.xlsx'", type=["xlsx"])
+
+        if uploaded_file is not None:
+            try:
+                df = pd.read_excel(uploaded_file, engine='openpyxl')
+                st.subheader("📄 Dados Originais")
+                st.dataframe(df.head())
+
+                df.columns = normalize_columns(df.columns)
+
+                planilhas_config = {
+                    'Pulverização': [
+                        'Carimbo de data/hora', 'Qual lançamento', 'Qual Talhão?',
+                        'Diagnóstico e Justificativa', 'Fase Fenológica', 'Previsão colheita',
+                        'Problema Alvo (Praga, Doença, Planta Daninha ou Deficiência Nutricional)',
+                        'Diagnóstico e Nível de Infestação/Ocorrência (Descrição detalhada)',
+                        'Justificativa Técnica para a Recomendação',
+                        'PRODUTO (N.C*E I.A.**)','Volume de Calda Recomendado (L/ha)',
+                        'Equipamento de aplicação', 'Número de Aplicações Recomendadas',
+                        'Intervalo entre Aplicações (dias - se houver mais de uma)', 
+                        'Modo de Aplicação','Época/Estádio de Aplicação',
+                        'Intervalo de Segurança/Período de Carência (dias)',
+                        'Intervalo de Reentrada na Área (horas)',
+                        'Equipamento de Proteção Individual (EPI)',
+                        'Condições Climáticas Ideais para Aplicação ex: "Evitar ventos acima de 10 km/h, temperatura abaixo de 30°C, umidade relativa acima de 55%"',
+                        'Cuidados com a Calda e Descarte de Embalagens ex: "Realizar tríplice lavagem das embalagens e descartá-las em locais indicados"',
+                        'Informações sobre Mistura em Tanque (se aplicável)',
+                        'Observações Adicionais/Advertências',
+                    ],
+                    'Controle de Irrigação': [
+                        'Carimbo de data/hora', 'Qual lançamento', 'Período', 'Setor/Talhão', 
+                        'Hora(s) de irrigação', 'Volume de Água (L)', 'Tipo de Irrigação',
+                        'Observações (Clima/Outros)', 'Responsável', 'Próxima Irrigação Sugerida'
+                    ],
+                    'Controle de Pragas': [
+                        'Carimbo de data/hora', 'Qual lançamento', 'DATA (3)', 'PRAGA', 'RECOMENDAÇÃO',
+                        'RECEITA', 'MODO DE APLICAÇÃO', 'PERÍODO', 'OBSERVAÇÃO'
+                    ],
+                    'Pluviômetro - (somente em dias de chuva)': [
+                        'Carimbo de data/hora', 'Qual lançamento', 'DATA (1)', 'LEITURA(MM)', 'OBSERVAÇÕES'
+                    ],
+                    'Hidrômetro': [
+                        'Carimbo de data/hora', 'Qual lançamento', 'DATA (2)', 'LEITURA (m³)'
+                    ],
+                    'Lavagem de EPIs': [
+                        'Carimbo de data/hora', 'Qual lançamento', 'Data da Lavagem:', 'Responsável pela Lavagem ',
+                        'Local da Lavagem', 'EPI', 'Agente de Limpeza Utilizado:', 'Temperatura da Água', 'Ciclos de enxague',
+                        'Condições de Armazenamento'
+                    ],
+                    'Registro de aplicações': [
+                        'Carimbo de data/hora', 'Qual lançamento', 'Cultura e/ou Variedade Tratada',
+                        'Local da Aplicação ( Por favor, especifique a zona geográfica, nome/referência da exploração, e o campo de produção, pomar, estufa ou instalação onde a cultura se encontra.)',
+                        'Data de Início da Aplicação',
+                        'Data de Fim da Aplicação',
+                        'Nome Comercial Registrado do Produto',
+                        'Intervalo de Segurança Pré-Colheita (PHS)',
+                        'Quantidade de Produto Aplicado',
+                        'Concentração ou Frequência',
+                        'Nome Completo do Aplicador',
+                        'Nome Completo da Pessoa Tecnicamente Responsável',
+                    ],
+                    'Limpeza do Local': [
+                        'Carimbo de data/hora', 'Qual lançamento', 'LOCAL', 'Marque com "X" a opção que melhor descreve o estado de limpeza [PISOS]',
+                        'Marque com "X" a opção que melhor descreve o estado de limpeza [LIXEIRAS]', 'Marque com "X" a opção que melhor descreve o estado de limpeza [Superfícies (mesas, bancadas)]',
+                        'Marque com "X" a opção que melhor descreve o estado de limpeza [Janelas e vidros]', 
+                        'Marque com "X" a opção que melhor descreve o estado de limpeza [Banheiros]', 'Marque com "X" a opção que melhor descreve o estado de limpeza [Descarte de resíduos]',
+                        'Marque com "X" a opção que melhor descreve o estado de limpeza [Organização geral]',
+                        'Problemas encontrados', 'Sugestões para melhoria'
+                    ],
+                    'Limpeza dos Equipamentos e Dispositivos': [
+                        'Qual a Limpeza (7)', 'Data da Lavagem (7)', 'Item Lavado (7)', 'Produto Utilizado (7)', 'Procedimento de Lavagem (Exemplo "submersão" , "pré-lavagem") (7)',
+                        'Responsável pela Lavagem (7)', 'Observações (7)' 
+                    ]
+                }
+                
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    for sheet_name, columns in planilhas_config.items():
+                        try:
+                            normalized_columns = normalize_columns(columns)
+                            if sheet_name == 'Pulverização':
+                                for col in df.columns:
+                                    if re.search(r'\(\d+\)', col) and col not in ['DATA (1)', 'DATA (2)', 'DATA (3)']:
+                                        normalized_columns.append(col)
+                                normalized_columns = list(dict.fromkeys(normalized_columns))
+
+                            df_filtered = df[df['Qual lançamento'] == sheet_name]
+                            existing_columns = [col for col in normalized_columns if col in df_filtered.columns]
+                            df_sheet = df_filtered[existing_columns]
+
+                            df_sheet.to_excel(writer, sheet_name=sheet_name, index=False)
+                            st.info(f"Aba '{sheet_name}' criada com sucesso.")
+
+                        except KeyError as e:
+                            st.warning(f"Aviso: Ocorreu um erro ao filtrar a aba '{sheet_name}'. Verifique se o nome da aba está correto.")
+                            continue
+                
+                output.seek(0)
+                st.subheader("✅ Processo Concluído")
+                st.success("O arquivo foi processado e está pronto para download.")
+                
+                st.download_button(
+                    label="📥 Baixar Arquivo Processado",
+                    data=output,
+                    file_name="sitio_santaizabel.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            except Exception as e:
+                st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
+    
+    if st.button("Voltar para o Início"):
+        st.session_state['current_page'] = 'home'
+        st.rerun()
+
+# Lógica principal da página
+if 'is_logged_in' not in st.session_state:
+    st.session_state['is_logged_in'] = False
+if 'current_page' not in st.session_state:
+    st.session_state['current_page'] = 'login'
+if 'LOGIN_INFO' not in st.session_state:
+    st.session_state['LOGIN_INFO'] = {
+        "admin": "Joao789",
+        "amanda": "12345",
+        "marcia": "54321"
+    }
+
+# Configurações iniciais da página
+st.set_page_config(
+    page_title="Lince Distribuidora de Bebidas - Login",
+    page_icon="🏠",
+    layout="centered"
+)
+
+# Adiciona CSS personalizado para um visual mais limpo e profissional
+st.markdown("""
+<style>
+    .stApp {
+        background-color: #f0f2f6;
+    }
+    div.stButton > button:first-child {
+        background-color: #007bff;
+        color: white;
+        border-radius: 5px;
+        padding: 10px 20px;
+        border: none;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    div.stButton > button:first-child:hover {
+        background-color: #0056b3;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+    }
+    .stTextInput label, .stForm > div > div > label {
+        font-weight: bold;
+        color: #333;
+    }
+    .stTitle {
+        text-align: center;
+        color: #004d99;
+        font-family: 'Arial Black', sans-serif;
+    }
+    .st-emotion-cache-1c7y3q { /* CSS para o container do formulário */
+        background-color: #F8F8F8;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+    }
+    .centered-icon {
+        text-align: center;
+        font-size: 5rem;
+    }
+    .app-card {
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        text-align: center;
+        margin-bottom: 20px;
+        cursor: pointer;
+        transition: transform 0.2s;
+        height: 100%;
+    }
+    .app-card:hover {
+        transform: translateY(-5px);
+    }
+    .app-card h3 {
+        color: #004d99;
+        font-size: 1.2rem;
+    }
+    .app-card p {
+        color: #555;
+        font-size: 0.9rem;
+    }
+    .st-emotion-cache-1f81n9p a { /* Estilo para o link do botão para parecer um card */
+        text-decoration: none;
+        color: inherit;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+if st.session_state.get('is_logged_in', False):
+    page_functions = {
+        'home': main_page,
+        'logistics': logistics_page,
+        'commercial': commercial_page,
+        'rh': rh_page,
+        'site': site_page
+    }
+    page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
+else:
+    login_form()
