@@ -197,14 +197,11 @@ def logistics_page():
             ]
             data = []
             
-            # Novo regex para lidar com os formatos do arquivo TXT fornecido
+            # Nova e mais robusta expressão regular
             pattern = re.compile(
-                r'^\s*(\d{6}|\d{3}-\d{3})(.+?)'
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'
+                r'^\s*(\d{6}|\d{3}-\d{3})\s+'
+                r'(.+?)'
+                r'(?:\s*([-+]?\d*)\s*([-+]?\d*)\s*I){6}'
             )
 
             for line in lines[start_line:]:
@@ -214,15 +211,16 @@ def logistics_page():
                 match = pattern.match(line)
                 if match:
                     groups = list(match.groups())
-                    # Normaliza e converte para numérico
-                    for i in range(2, len(groups)):
-                        groups[i] = int(float(groups[i].replace('.', '').replace(',', '.'))) if groups[i] else 0
                     
-                    if len(groups) == 12: # Corrigido para 12 grupos capturados pelo novo regex
-                        # O regex captura de forma diferente, então ajustamos a lista de dados
-                        row_values = [groups[0], groups[1].strip()]
-                        for i in range(2, len(groups), 2):
-                            row_values.extend([groups[i], groups[i+1]])
+                    row_values = [groups[0], groups[1].strip()]
+                    
+                    # Converte os 12 últimos grupos (6 pares de CX e UN) para inteiros
+                    for i in range(2, len(groups), 2):
+                        cx = groups[i].strip() if groups[i] else '0'
+                        un = groups[i+1].strip() if groups[i+1] else '0'
+                        row_values.extend([int(cx), int(un)])
+                    
+                    if len(row_values) == 14:
                         data.append(row_values)
             
             df_txt_raw = pd.DataFrame(data, columns=col_names)
@@ -321,9 +319,7 @@ def logistics_page():
                 final_df = pd.DataFrame(final_rows)
                 
                 if not df_estoque.empty:
-                    # A coluna SALDO FÍSICO CX no TXT não tem hífen no código de produto, mas a contagem tem.
-                    # Mapeamos para o formato correto.
-                    df_estoque['COD.RED.'] = df_estoque['COD.RED.'].str.replace(r'(\d{6})', r'\1', regex=True)
+                    df_estoque['COD.RED.'] = df_estoque['COD.RED.'].str.replace(r'(\d{3})(\d{3})', r'\1-\2', regex=True)
                     df_saldo = df_estoque[['COD.RED.', 'SALDO FÍSICO CX', 'SALDO FÍSICO UN']].drop_duplicates('COD.RED.')
                     df_saldo.rename(columns={'SALDO FÍSICO CX': 'Saldo Físico TXT Caixa', 'SALDO FÍSICO UN': 'Saldo Físico TXT Unidade'}, inplace=True)
                     final_df = pd.merge(final_df, df_saldo, how='left', left_on='Codigo Produto', right_on='COD.RED.')
@@ -496,7 +492,7 @@ def logistics_page():
                     st.subheader("✅ Tabela Consolidada de Vasilhames")
                     st.dataframe(df_final)
 
-                    output = io.BytesIO()
+                    output = io.Bytes-IO()
                     df_final.to_excel(output, index=False)
                     output.seek(0)
                     st.download_button(
