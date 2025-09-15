@@ -536,25 +536,22 @@ def logistics_page():
                 
                 # Mapeamento de nomes de colunas para lidar com variações, agora mais flexível
                 column_mapping = {
-                    'DATA ABASTECIMENTO': ['DATA'],
-                    'HORÁRIO': ['HORÁRIO'],
-                    'TIPO DE ABASTECIMENTO': ['TIPO DE ABASTECIMENTO'],
-                    'PLACA': ['PLACA'],
-                    'KM': ['KM'],
-                    'LITROS': ['LITROS'],
-                    'MOTORISTA': ['MOTORISTA'],
-                    'REPONSÁVEL': ['RESPONSÁVEL']
+                    'DATA ABASTECIMENTO': ['Carimbo de data/hora', 'DATA', 'DATE'],
+                    'HORÁRIO': ['Carimbo de data/hora'],
+                    'TIPO DE ABASTECIMENTO': ['Qual o tipo de abastecimento?'],
+                    'PLACA': ['PLACA', 'PLACA_VEICULO'],
+                    'KM': ['KM', 'QUILOMETRAGEM'],
+                    'LITROS': ['LITROS', 'VOLUME'],
+                    'MOTORISTA': ['MOTORISTA', 'RESPONSÁVEL'],
                 }
-                
+
                 # Renomeia as colunas do DataFrame com base no mapeamento
                 df_renamed = pd.DataFrame()
                 for new_name, possible_names in column_mapping.items():
                     found_col = None
                     for old_name in possible_names:
-                        # Busca por nomes de coluna que contenham a palavra-chave principal
-                        matching_cols = [col for col in df.columns if old_name.upper().strip() in col.upper().strip()]
-                        if matching_cols:
-                            found_col = matching_cols[0]
+                        if old_name in df.columns:
+                            found_col = old_name
                             break
                     
                     if found_col:
@@ -566,8 +563,10 @@ def logistics_page():
                 df = df_renamed
 
                 # Garante que as colunas de data e hora estão no formato correto
+                # O 'Carimbo de data/hora' precisa ser dividido em duas colunas.
                 df['DATA ABASTECIMENTO'] = pd.to_datetime(df['DATA ABASTECIMENTO'], errors='coerce').dt.date
-                df['HORÁRIO'] = pd.to_datetime(df['HORÁRIO'], format='%H:%M:%S', errors='coerce').dt.time
+                df['HORÁRIO'] = pd.to_datetime(df['HORÁRIO'], errors='coerce').dt.time
+                
                 df['KM'] = pd.to_numeric(df['KM'], errors='coerce')
                 df['LITROS'] = pd.to_numeric(df['LITROS'], errors='coerce')
                 df.dropna(subset=['DATA ABASTECIMENTO', 'KM', 'LITROS'], inplace=True)
@@ -1244,4 +1243,3 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
-
