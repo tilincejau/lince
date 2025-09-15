@@ -198,14 +198,14 @@ def logistics_page():
             data = []
             # Expressão regular para capturar todos os campos da linha de dados
             pattern = re.compile(
-                r'^\s*(\d{3}-\d{3})\s+'         # COD.RED.   
-                r'(.+?)'                   # DESCRIÇÃO
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'   # SLD INICIAL (CX UN)
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'   # ENTRADAS (CX UN)
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'   # SAÍDAS (CX UN)
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'   # SALDO FÍSICO (CX UN)
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'   # CONT. FÍSICA (CX UN)
-                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'   # DIFERENÇA (CX UN)
+                r'^\s*(\d{3}-\d{3})\s+' 
+                r'(.+?)' 
+                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I' 
+                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I' 
+                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I' 
+                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I' 
+                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I' 
+                r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I' 
             )
 
             for line in lines[start_line:]:
@@ -1229,4 +1229,3 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
-
