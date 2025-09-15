@@ -170,7 +170,7 @@ def logistics_page():
         st.subheader("Controle de Validade")
         st.markdown("Consolida dados de validade de um arquivo Excel e um arquivo de texto, e gera um relatório com status de validade e contagens.")
         
-        # FUNÇÃO ATUALIZADA PARA LER O TXT
+        # FUNÇÃO CORRIGIDA PARA LER O TXT
         def parse_estoque_txt_st(file_content):
             """
             Analisa o arquivo TXT lendo linha por linha, utilizando uma
@@ -197,18 +197,39 @@ def logistics_page():
             ]
             data = []
             
-            # Nova e mais robusta expressão regular
+            # Novo regex mais robusto para capturar os campos individuais
             pattern = re.compile(
-                r'^\s*(\d{6}|\d{3}-\d{3})\s+'
+                r'^\s*(\d+)\s+'
                 r'(.+?)'
-                r'(?:\s*([-+]?\d*)\s*([-+]?\d*)\s*I){6}'
+                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
+                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
+                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
+                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
+                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
+                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
             )
-
+            
+            # Regex alternativo para códigos como '900-090'
+            alt_pattern = re.compile(
+                r'^\s*(\d{3}-\d{3})\s+'
+                r'(.+?)'
+                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
+                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
+                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
+                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
+                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
+                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
+            )
+            
             for line in lines[start_line:]:
                 line = line.strip()
                 if not line:
                     continue
+                
                 match = pattern.match(line)
+                if not match:
+                    match = alt_pattern.match(line)
+
                 if match:
                     groups = list(match.groups())
                     
@@ -216,8 +237,8 @@ def logistics_page():
                     
                     # Converte os 12 últimos grupos (6 pares de CX e UN) para inteiros
                     for i in range(2, len(groups), 2):
-                        cx = groups[i].strip() if groups[i] else '0'
-                        un = groups[i+1].strip() if groups[i+1] else '0'
+                        cx = groups[i].strip() if groups[i] and groups[i].strip() else '0'
+                        un = groups[i+1].strip() if groups[i+1] and groups[i+1].strip() else '0'
                         row_values.extend([int(cx), int(un)])
                     
                     if len(row_values) == 14:
@@ -319,7 +340,8 @@ def logistics_page():
                 final_df = pd.DataFrame(final_rows)
                 
                 if not df_estoque.empty:
-                    df_estoque['COD.RED.'] = df_estoque['COD.RED.'].str.replace(r'(\d{3})(\d{3})', r'\1-\2', regex=True)
+                    df_estoque['COD.RED.'] = df_estoque['COD.RED.'].astype(str)
+                    final_df['Codigo Produto'] = final_df['Codigo Produto'].astype(str)
                     df_saldo = df_estoque[['COD.RED.', 'SALDO FÍSICO CX', 'SALDO FÍSICO UN']].drop_duplicates('COD.RED.')
                     df_saldo.rename(columns={'SALDO FÍSICO CX': 'Saldo Físico TXT Caixa', 'SALDO FÍSICO UN': 'Saldo Físico TXT Unidade'}, inplace=True)
                     final_df = pd.merge(final_df, df_saldo, how='left', left_on='Codigo Produto', right_on='COD.RED.')
@@ -492,7 +514,7 @@ def logistics_page():
                     st.subheader("✅ Tabela Consolidada de Vasilhames")
                     st.dataframe(df_final)
 
-                    output = io.Bytes-IO()
+                    output = io.BytesIO()
                     df_final.to_excel(output, index=False)
                     output.seek(0)
                     st.download_button(
