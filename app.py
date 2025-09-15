@@ -535,6 +535,7 @@ def logistics_page():
                     return
                 
                 # Mapeamento de nomes de colunas para lidar com variações
+                # Nomes de colunas do Google Forms
                 column_mapping = {
                     'DATA ABASTECIMENTO': ['Carimbo de data/hora'],
                     'HORÁRIO': ['Carimbo de data/hora'],
@@ -550,6 +551,7 @@ def logistics_page():
                 for new_name, possible_names in column_mapping.items():
                     found_col = None
                     for old_name in possible_names:
+                        # Verifica se o nome exato da coluna existe no DataFrame
                         if old_name in df.columns:
                             found_col = old_name
                             break
@@ -586,7 +588,7 @@ def logistics_page():
                     with pd.ExcelWriter(excel_data_diesel, engine='xlsxwriter') as writer:
                         placas_diesel = sorted(df_diesel['PLACA'].unique())
                         for placa in placas_diesel:
-                            df_placa = df_diesel[df_placa['PLACA'] == placa].copy()
+                            df_placa = df_diesel[df_diesel['PLACA'] == placa].copy()
                             
                             df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
                             
@@ -620,7 +622,7 @@ def logistics_page():
                     with pd.ExcelWriter(excel_data_arla, engine='xlsxwriter') as writer:
                         placas_arla = sorted(df_arla['PLACA'].unique())
                         for placa in placas_arla:
-                            df_placa = df_arla[df_arla['PLACA'] == placa].copy()
+                            df_placa = df_arla[df_placa['PLACA'] == placa].copy()
                             
                             df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
                             
