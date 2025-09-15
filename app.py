@@ -536,13 +536,14 @@ def logistics_page():
                 
                 # Mapeamento de nomes de colunas para lidar com variações, agora mais flexível
                 column_mapping = {
-                    'DATA ABASTECIMENTO': ['DATA', 'DATA ABASTECIMENTO', 'DATE'],
-                    'HORÁRIO': ['HORÁRIO', 'HORA'],
-                    'TIPO DE ABASTECIMENTO': ['TIPO', 'COMBUSTÍVEL', 'TIPO DE ABASTECIMENTO'],
+                    'DATA ABASTECIMENTO': ['DATA'],
+                    'HORÁRIO': ['HORÁRIO'],
+                    'TIPO DE ABASTECIMENTO': ['TIPO DE ABASTECIMENTO'],
                     'PLACA': ['PLACA'],
-                    'KM': ['KM', 'QUILOMETRAGEM'],
-                    'LITROS': ['LITROS', 'VOLUME'],
-                    'MOTORISTA': ['MOTORISTA', 'RESPONSÁVEL'],
+                    'KM': ['KM'],
+                    'LITROS': ['LITROS'],
+                    'MOTORISTA': ['MOTORISTA'],
+                    'REPONSÁVEL': ['RESPONSÁVEL']
                 }
                 
                 # Renomeia as colunas do DataFrame com base no mapeamento
@@ -1243,3 +1244,4 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
