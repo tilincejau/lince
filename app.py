@@ -166,8 +166,8 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
 
-    elif script_choice == "Vasilhame":
-        st.subheader("Controle de Vasilhame")
+    elif script_choice == "Vasilhames":
+        st.subheader("Controle de Vasilhames")
         st.markdown("Consolida dados de validade de um arquivo Excel e um arquivo de texto, e gera um relatório com status de validade e contagens.")
         def parse_estoque_txt(file_content):
             lines = [line.decode('latin1') for line in file_content.getvalue().splitlines()]
