@@ -523,7 +523,7 @@ def logistics_page():
             try:
                 st.info("Processando arquivo de abastecimento. Isso pode levar alguns segundos...")
                 
-                # Nova lógica de leitura baseada na extensão do arquivo
+                # Lógica de leitura baseada na extensão do arquivo
                 file_extension = os.path.splitext(uploaded_file.name)[1].lower()
 
                 if file_extension == '.xlsx':
@@ -545,9 +545,10 @@ def logistics_page():
                     'MOTORISTA': ['MOTORISTA', 'RESPONSÁVEL'],
                 }
                 
-                # Renomeia as colunas do DataFrame com base no mapeamento
+                # Normaliza os nomes das colunas do DataFrame original
                 df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
                 
+                # Cria um novo DataFrame com os nomes de colunas padronizados
                 df_renamed = pd.DataFrame()
                 for new_name, possible_names in column_mapping.items():
                     found = False
@@ -559,6 +560,8 @@ def logistics_page():
                     if not found:
                         st.warning(f"Aviso: Coluna essencial '{new_name}' não foi encontrada. O processamento pode estar incompleto.")
                         df_renamed[new_name] = np.nan
+                
+                # Substitui o DataFrame original pelo renomeado
                 df = df_renamed
 
                 # Garante que as colunas de data e hora estão no formato correto
