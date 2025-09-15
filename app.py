@@ -534,27 +534,28 @@ def logistics_page():
                     st.error("Formato de arquivo não suportado. Por favor, envie um arquivo .xlsx ou .csv.")
                     return
                 
-                # Mapeamento de nomes de colunas para lidar com variações
+                # Mapeamento de nomes de colunas para lidar com variações, agora mais flexível
                 column_mapping = {
-                    'DATA ABASTECIMENTO': ['DATA', 'DATA ABASTECIMENTO', 'DATE', 'DATA_ABASTECIMENTO'],
-                    'HORÁRIO': ['HORÁRIO', 'HORA', 'HORA DO ABASTECIMENTO'],
-                    'TIPO DE ABASTECIMENTO': ['TIPO DE ABASTECIMENTO', 'TIPO_ABASTECIMENTO', 'COMBUSTÍVEL', 'TIPO'],
-                    'PLACA': ['PLACA', 'PLACA_VEICULO'],
+                    'DATA ABASTECIMENTO': ['DATA', 'DATA ABASTECIMENTO', 'DATE'],
+                    'HORÁRIO': ['HORÁRIO', 'HORA'],
+                    'TIPO DE ABASTECIMENTO': ['TIPO', 'COMBUSTÍVEL', 'TIPO DE ABASTECIMENTO'],
+                    'PLACA': ['PLACA'],
                     'KM': ['KM', 'QUILOMETRAGEM'],
                     'LITROS': ['LITROS', 'VOLUME'],
                     'MOTORISTA': ['MOTORISTA', 'RESPONSÁVEL'],
                 }
                 
-                df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
+                # Normaliza as colunas do DataFrame original para facilitar a busca
+                df.columns = [col.upper().strip() for col in df.columns]
 
                 # Renomeia as colunas do DataFrame com base no mapeamento
                 df_renamed = pd.DataFrame()
                 for new_name, possible_names in column_mapping.items():
                     found_col = None
                     for old_name in possible_names:
-                        # Busca o nome da coluna no DataFrame original, ignorando maiúsculas/minúsculas
-                        matching_cols = df.columns[df.columns.str.upper() == old_name.upper()]
-                        if not matching_cols.empty:
+                        # Busca por nomes de coluna que contenham a palavra-chave principal
+                        matching_cols = [col for col in df.columns if old_name.upper() in col]
+                        if matching_cols:
                             found_col = matching_cols[0]
                             break
                     
