@@ -197,7 +197,7 @@ def logistics_page():
             ]
             data = []
             
-            # Novo regex mais robusto para capturar os campos individuais
+            # Regex para capturar campos individuais de forma flexível
             pattern = re.compile(
                 r'^\s*(\d+)\s+'
                 r'(.+?)'
@@ -208,34 +208,18 @@ def logistics_page():
                 r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
                 r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
             )
-            
-            # Regex alternativo para códigos como '900-090'
-            alt_pattern = re.compile(
-                r'^\s*(\d{3}-\d{3})\s+'
-                r'(.+?)'
-                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-                r'\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-            )
-            
+
             for line in lines[start_line:]:
                 line = line.strip()
                 if not line:
                     continue
-                
                 match = pattern.match(line)
-                if not match:
-                    match = alt_pattern.match(line)
-
                 if match:
                     groups = list(match.groups())
                     
                     row_values = [groups[0], groups[1].strip()]
                     
-                    # Converte os 12 últimos grupos (6 pares de CX e UN) para inteiros
+                    # Extrai os 6 pares de CX e UN e converte para inteiros
                     for i in range(2, len(groups), 2):
                         cx = groups[i].strip() if groups[i] and groups[i].strip() else '0'
                         un = groups[i+1].strip() if groups[i+1] and groups[i+1].strip() else '0'
@@ -498,7 +482,7 @@ def logistics_page():
                     df_master_combinations = pd.concat([
                         df_excel_daily_counts[['Vasilhame', 'Dia']],
                         df_all_processed_txt_data[['Vasilhame', 'Dia']] if 'Vasilhame' in df_all_processed_txt_data.columns else pd.DataFrame(columns=['Vasilhame', 'Dia']),
-                        df_all_processed_pdf_data[['Vasilhame', 'Dia']] if 'Vasilhame' in df_all_processed_pdf_data.columns else pd.DataFrame(columns=['Vasilhame', 'Dia'])
+                        df_all_processed_pdf_data[['Vasilhame', 'Dia']] if 'Vasilhame' in df_all_processed_pdf_data.columns else pd.DataFrame(columns=['Vasilhames', 'Dia'])
                     ]).drop_duplicates().reset_index(drop=True)
 
                     df_final = pd.merge(df_master_combinations, df_excel_daily_counts, on=['Vasilhame', 'Dia'], how='left')
