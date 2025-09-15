@@ -534,7 +534,7 @@ def logistics_page():
                     st.error("Formato de arquivo não suportado. Por favor, envie um arquivo .xlsx ou .csv.")
                     return
                 
-                # Mapeamento de nomes de colunas para lidar com variações, agora mais flexível
+                # Mapeamento de nomes de colunas para lidar com variações
                 column_mapping = {
                     'DATA ABASTECIMENTO': ['Carimbo de data/hora'],
                     'HORÁRIO': ['Carimbo de data/hora'],
