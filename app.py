@@ -523,7 +523,7 @@ def logistics_page():
             try:
                 st.info("Processando arquivo de abastecimento. Isso pode levar alguns segundos...")
                 
-                # Nova lógica de leitura baseada na extensão do arquivo
+                # Lógica de leitura baseada na extensão do arquivo
                 file_extension = os.path.splitext(uploaded_file.name)[1].lower()
 
                 if file_extension == '.xlsx':
@@ -550,11 +550,17 @@ def logistics_page():
                 # Renomeia as colunas do DataFrame com base no mapeamento
                 df_renamed = pd.DataFrame()
                 for new_name, possible_names in column_mapping.items():
+                    found_col = None
                     for old_name in possible_names:
-                        if old_name.upper() in df.columns.str.upper():
-                            df_renamed[new_name] = df[df.columns[df.columns.str.upper() == old_name.upper()].iloc[0]]
+                        # Busca o nome da coluna no DataFrame original, ignorando maiúsculas/minúsculas
+                        matching_cols = df.columns[df.columns.str.upper() == old_name.upper()]
+                        if not matching_cols.empty:
+                            found_col = matching_cols[0]
                             break
-                    if new_name not in df_renamed.columns:
+                    
+                    if found_col:
+                        df_renamed[new_name] = df[found_col]
+                    else:
                         st.warning(f"Aviso: Coluna essencial '{new_name}' não foi encontrada. O processamento pode estar incompleto.")
                         df_renamed[new_name] = np.nan
                 
