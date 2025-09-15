@@ -545,19 +545,20 @@ def logistics_page():
                     'MOTORISTA': ['MOTORISTA', 'RESPONSÁVEL'],
                 }
                 
-                df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
-
                 # Renomeia as colunas do DataFrame com base no mapeamento
+                df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
+                
                 df_renamed = pd.DataFrame()
                 for new_name, possible_names in column_mapping.items():
+                    found = False
                     for old_name in possible_names:
-                        if old_name.upper() in df.columns.str.upper():
-                            df_renamed[new_name] = df[df.columns[df.columns.str.upper() == old_name.upper()][0]]
+                        if old_name.upper() in df.columns:
+                            df_renamed[new_name] = df[old_name.upper()]
+                            found = True
                             break
-                    if new_name not in df_renamed.columns:
+                    if not found:
                         st.warning(f"Aviso: Coluna essencial '{new_name}' não foi encontrada. O processamento pode estar incompleto.")
                         df_renamed[new_name] = np.nan
-                
                 df = df_renamed
 
                 # Garante que as colunas de data e hora estão no formato correto
@@ -720,7 +721,7 @@ def commercial_page():
                                 'PDV': pdv_info_val,
                                 'DE': de_category_val,
                                 'PARA': para_value,
-                                'Status': '' 
+                                'Status': ''  
                             })
                 except IndexError:
                     st.error(f"Erro: Estrutura de coluna inesperada na linha {index}. A linha será ignorada.")
@@ -1047,7 +1048,7 @@ def site_page():
                         'Justificativa Técnica para a Recomendação',
                         'PRODUTO (N.C*E I.A.**)','Volume de Calda Recomendado (L/ha)',
                         'Equipamento de aplicação', 'Número de Aplicações Recomendadas',
-                        'Intervalo entre Aplicações (dias - se houver mais de uma)', 
+                        'Intervalo entre Aplicações (dias - se houver mais de uma)',  
                         'Modo de Aplicação','Época/Estádio de Aplicação',
                         'Intervalo de Segurança/Período de Carência (dias)',
                         'Intervalo de Reentrada na Área (horas)',
@@ -1239,5 +1240,3 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
-
-
