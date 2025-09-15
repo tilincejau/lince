@@ -198,7 +198,7 @@ def logistics_page():
             data = []
             # Expressão regular para capturar todos os campos da linha de dados
             pattern = re.compile(
-                r'^\s*(\d{3}-\d{3})\s+'         # COD.RED.
+                r'^\s*(\d{3}-\d{3})\s+'         # COD.RED.   
                 r'(.+?)'                   # DESCRIÇÃO
                 r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'   # SLD INICIAL (CX UN)
                 r'\s*([-+]?\d*\.?\d*)\s*([-+]?\d*\.?\d*)\s*I'   # ENTRADAS (CX UN)
@@ -1229,3 +1229,4 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
