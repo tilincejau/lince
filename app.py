@@ -166,8 +166,8 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
 
-    elif script_choice == "Validade":
-        st.subheader("Controle de Validade")
+    elif script_choice == "Vasilhame":
+        st.subheader("Controle de Vasilhame")
         st.markdown("Consolida dados de validade de um arquivo Excel e um arquivo de texto, e gera um relatório com status de validade e contagens.")
         def parse_estoque_txt(file_content):
             lines = [line.decode('latin1') for line in file_content.getvalue().splitlines()]
@@ -224,7 +224,7 @@ def logistics_page():
                     debito = saldo if saldo >= 0 else 0.0
                     parsed_data.append({'Vasilhame': vasilhame, 'Dia': effective_date_str, f'Credito {col_suffix}': credito, f'Debito {col_suffix}': debito})
             if not parsed_data:
-                st.warning(f"Nenhum dado de PDV encontrado no arquivo: {pdf_file.name}")
+                st.warning(f"Nenhum dado de PDF encontrado no arquivo: {pdf_file.name}")
                 return pd.DataFrame()
             return pd.DataFrame(parsed_data).groupby(['Vasilhame', 'Dia'], as_index=False).sum()
         
@@ -1021,3 +1021,4 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
