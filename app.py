@@ -170,6 +170,7 @@ def logistics_page():
         st.subheader("Controle de Validade")
         st.markdown("Consolida dados de validade de um arquivo Excel e um arquivo de texto, e gera um relatório com status de validade e contagens.")
         
+        # FUNÇÃO ATUALIZADA PARA LER O TXT
         def parse_estoque_txt_st(file_content):
             """
             Analisa o arquivo TXT lendo linha por linha, utilizando uma
@@ -322,7 +323,7 @@ def logistics_page():
                 if not df_estoque.empty:
                     # A coluna SALDO FÍSICO CX no TXT não tem hífen no código de produto, mas a contagem tem.
                     # Mapeamos para o formato correto.
-                    df_estoque['COD.RED.'] = df_estoque['COD.RED.'].str.replace(r'(\d{3})(\d{3})', r'\1-\2', regex=True)
+                    df_estoque['COD.RED.'] = df_estoque['COD.RED.'].str.replace(r'(\d{6})', r'\1', regex=True)
                     df_saldo = df_estoque[['COD.RED.', 'SALDO FÍSICO CX', 'SALDO FÍSICO UN']].drop_duplicates('COD.RED.')
                     df_saldo.rename(columns={'SALDO FÍSICO CX': 'Saldo Físico TXT Caixa', 'SALDO FÍSICO UN': 'Saldo Físico TXT Unidade'}, inplace=True)
                     final_df = pd.merge(final_df, df_saldo, how='left', left_on='Codigo Produto', right_on='COD.RED.')
