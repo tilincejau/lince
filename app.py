@@ -589,11 +589,8 @@ def logistics_page():
                             
                             df_placa['ALERTA KM'] = ''
                             df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor que o registro anterior!'
-
-                            df_placa['Média de litros por KM'] = df_placa['MEDIA_LITROS_KM'].mean()
-                            df_placa.loc[df_placa.index[:-1], 'Média de litros por KM'] = ''
                             
-                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento'})
+                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'MEDIA_LITROS_KM': 'Média de litros por KM'})
                             
                             df_placa_output.to_excel(writer, sheet_name=placa, index=False)
                     
@@ -624,10 +621,7 @@ def logistics_page():
                             df_placa['ALERTA KM'] = ''
                             df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor que o registro anterior!'
                             
-                            df_placa['Média de litros por KM'] = df_placa['MEDIA_LITROS_KM'].mean()
-                            df_placa.loc[df_placa.index[:-1], 'Média de litros por KM'] = ''
-                            
-                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento'})
+                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'MEDIA_LITROS_KM': 'Média de litros por KM'})
                             
                             df_placa_output.to_excel(writer, sheet_name=placa, index=False)
                             
@@ -1100,7 +1094,7 @@ def site_page():
                     ],
                     'Limpeza dos Equipamentos e Dispositivos': [
                         'Qual a Limpeza (7)', 'Data da Lavagem (7)', 'Item Lavado (7)', 'Produto Utilizado (7)', 'Procedimento de Lavagem (Exemplo "submersão" , "pré-lavagem") (7)',
-                        'Responsável pela Lavagem (7)', 'Observações (7)' 
+                        'Responsável pela Lavagem (7)', 'Observações (7)'  
                     ]
                 }
                 
