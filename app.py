@@ -892,25 +892,25 @@ def rh_page():
                         time_str = row.get('Horário')
                         if pd.notna(date_str) and pd.notna(time_str):
                             start_time = pd.to_datetime(f"{date_str} {time_str}")
-                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': 'Inicio Jornada', 'Inicio': start_time, 'Fim': None, 'Motivo': None})
+                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': 'Inicio Jornada', 'Inicio': start_time, 'Fim': None, 'Motivo': None, 'Data Original': timestamp})
                     elif entry_type == 'Inicio de Viagem':
                         date_str = row.get('Dia.1')
                         time_str = row.get('Horário.1')
                         if pd.notna(date_str) and pd.notna(time_str):
                             start_time = pd.to_datetime(f"{date_str} {time_str}")
-                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': 'Inicio de Viagem', 'Inicio': start_time, 'Fim': None, 'Motivo': None})
+                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': 'Inicio de Viagem', 'Inicio': start_time, 'Fim': None, 'Motivo': None, 'Data Original': timestamp})
                     elif entry_type == 'Fim da Viagem':
                         time_str = row.get('Fim.5')
                         if pd.notna(time_str):
                             time_str = str(time_str).split(' ')[-1]
                             end_time = pd.to_datetime(f"{timestamp.strftime('%Y-%m-%d')} {time_str}")
-                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': 'Fim da Viagem', 'Inicio': None, 'Fim': end_time, 'Motivo': None})
+                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': 'Fim da Viagem', 'Inicio': None, 'Fim': end_time, 'Motivo': None, 'Data Original': timestamp})
                     elif entry_type == 'Fim de Jornada':
                         date_str = row.get('Dia.2')
                         time_str = row.get('Horário.3')
                         if pd.notna(date_str) and pd.notna(time_str):
                             end_time = pd.to_datetime(f"{date_str} {time_str}")
-                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': 'Fim de Jornada', 'Inicio': None, 'Fim': end_time, 'Motivo': None})
+                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': 'Fim de Jornada', 'Inicio': None, 'Fim': end_time, 'Motivo': None, 'Data Original': timestamp})
                     
                     parada_cols_map = {
                         '1': {'inicio': 'Inicio ', 'fim': 'Fim', 'motivo': 'Motivo'},
@@ -929,90 +929,99 @@ def rh_page():
                             try:
                                 start_time = pd.to_datetime(f"{date_str} {str(start_time_str).split(' ')[-1]}")
                                 end_time = pd.to_datetime(f"{date_str} {str(end_time_str).split(' ')[-1]}")
-                                all_events.append({'Motorista': motorista, 'Tipo de Lançamento': f'Parada {i}', 'Inicio': start_time, 'Fim': end_time, 'Motivo': motivo})
+                                all_events.append({'Motorista': motorista, 'Tipo de Lançamento': f'Parada {i}', 'Inicio': start_time, 'Fim': end_time, 'Motivo': motivo, 'Data Original': timestamp})
                             except ValueError:
                                 st.error(f"Erro ao converter data/hora na linha {index} para 'Parada {i}'.")
                                 continue
 
                 consolidated_df = pd.DataFrame(all_events)
                 consolidated_df.dropna(subset=['Motorista', 'Tipo de Lançamento'], how='all', inplace=True)
-                consolidated_df.sort_values(by=['Motorista', 'Inicio', 'Fim'], inplace=True)
+                consolidated_df.sort_values(by=['Motorista', 'Data Original'], inplace=True)
                 consolidated_df.reset_index(drop=True, inplace=True)
 
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     for motorista in sorted(consolidated_df['Motorista'].unique()):
                         df_motorista = consolidated_df[consolidated_df['Motorista'] == motorista].copy()
-                        df_motorista['Data'] = df_motorista['Inicio'].fillna(df_motorista['Fim']).dt.date
-                        df_motorista.sort_values(by=['Data', 'Inicio', 'Fim'], inplace=True)
+                        df_motorista.reset_index(drop=True, inplace=True)
 
-                        # Tabela de Resumo Diário
-                        summary_rows = []
-                        for dia, group in df_motorista.groupby('Data'):
-                            inicio_jornada = group[group['Tipo de Lançamento'] == 'Inicio Jornada']['Inicio'].min()
-                            fim_jornada = group[group['Tipo de Lançamento'] == 'Fim de Jornada']['Fim'].max()
-                            tempo_jornada = fim_jornada - inicio_jornada if pd.notnull(inicio_jornada) and pd.notnull(fim_jornada) else timedelta(seconds=0)
+                        trips = []
+                        current_trip_events = []
+                        trip_counter = 0
+
+                        for index, row in df_motorista.iterrows():
+                            if row['Tipo de Lançamento'] == 'Inicio de Viagem':
+                                if current_trip_events:
+                                    trips.append(current_trip_events)
+                                current_trip_events = [row]
+                                trip_counter += 1
+                            elif current_trip_events:
+                                current_trip_events.append(row)
                             
-                            inicio_viagem = group[group['Tipo de Lançamento'] == 'Inicio de Viagem']['Inicio'].min()
-                            fim_viagem = group[group['Tipo de Lançamento'] == 'Fim da Viagem']['Fim'].max()
+                        if current_trip_events:
+                            trips.append(current_trip_events)
+
+                        start_row = 0
+                        st.info(f"Processando viagens para o motorista: {motorista}")
+                        for i, trip_events in enumerate(trips):
+                            trip_events_df = pd.DataFrame(trip_events)
+                            trip_events_df.sort_values(by=['Data Original'], inplace=True)
+
+                            # Resumo da Viagem
+                            inicio_viagem = trip_events_df[trip_events_df['Tipo de Lançamento'] == 'Inicio de Viagem']['Inicio'].min()
+                            fim_viagem = trip_events_df[trip_events_df['Tipo de Lançamento'] == 'Fim da Viagem']['Fim'].max()
+                            
                             tempo_viagem = fim_viagem - inicio_viagem if pd.notnull(inicio_viagem) and pd.notnull(fim_viagem) else timedelta(seconds=0)
-
-                            break_durations = group.dropna(subset=['Motivo']).copy()
-                            if not break_durations.empty:
-                                break_durations['Duration'] = break_durations['Fim'] - break_durations['Inicio']
-                                total_stop_time = break_durations['Duration'].sum()
+                            
+                            all_pauses = trip_events_df[trip_events_df['Tipo de Lançamento'].str.contains('Parada')].copy()
+                            if not all_pauses.empty:
+                                all_pauses['Duration'] = all_pauses['Fim'] - all_pauses['Inicio']
+                                total_pause_time = all_pauses['Duration'].sum()
                             else:
-                                total_stop_time = timedelta(seconds=0)
-                            
-                            tempo_dirigibilidade = tempo_viagem - total_stop_time
-                            
-                            summary_rows.append({
-                                'Motorista': motorista,
-                                'Data': dia,
-                                'Tempo Total de Jornada': format_timedelta_as_dias_hms(tempo_jornada),
-                                'Tempo Total de Viagem': format_timedelta_as_dias_hms(tempo_viagem),
-                                'Tempo de Dirigibilidade': format_timedelta_as_hms(tempo_dirigibilidade)
-                            })
-                        
-                        df_summary = pd.DataFrame(summary_rows)
+                                total_pause_time = timedelta(seconds=0)
 
-                        # Tabela de Detalhes da Jornada
-                        df_details = pd.DataFrame()
-                        pausa_count = 1
-                        for _, row in df_motorista.iterrows():
-                            if 'Parada' in row['Tipo de Lançamento']:
-                                # Ignorar as linhas de "Parada" originais para não duplicar
-                                continue
+                            tempo_dirigibilidade = tempo_viagem - total_pause_time
 
-                            new_row = {
-                                'Data': row['Inicio'].date() if pd.notna(row['Inicio']) else row['Fim'].date(),
-                                'Tipo': row['Tipo de Lançamento'],
-                                'Inicio': row['Inicio'].strftime('%H:%M:%S') if pd.notna(row['Inicio']) else '',
-                                'Fim': row['Fim'].strftime('%H:%M:%S') if pd.notna(row['Fim']) else '',
-                                'Duração': format_timedelta_as_hms(row['Fim'] - row['Inicio']) if pd.notna(row['Inicio']) and pd.notna(row['Fim']) else ''
+                            summary_data = {
+                                'Viagem': [f"Viagem {i+1}"],
+                                'Início da Viagem': [inicio_viagem.strftime('%Y-%m-%d %H:%M:%S') if pd.notna(inicio_viagem) else 'N/A'],
+                                'Fim da Viagem': [fim_viagem.strftime('%Y-%m-%d %H:%M:%S') if pd.notna(fim_viagem) else 'N/A'],
+                                'Tempo Total de Viagem': [format_timedelta_as_dias_hms(tempo_viagem)],
+                                'Tempo de Dirigibilidade': [format_timedelta_as_hms(tempo_dirigibilidade)],
+                                'Tempo Total de Paradas': [format_timedelta_as_hms(total_pause_time)],
                             }
-                            df_details = pd.concat([df_details, pd.DataFrame([new_row])], ignore_index=True)
+                            df_summary = pd.DataFrame(summary_data)
+                            df_summary.to_excel(writer, sheet_name=motorista, startrow=start_row, index=False)
+                            start_row += df_summary.shape[0] + 2
 
-                            # Adicionar as pausas detalhadas
-                            pausas_do_dia = df_motorista[(df_motorista['Data'] == new_row['Data']) & (df_motorista['Tipo de Lançamento'].str.contains('Parada'))]
-                            for _, pausa_row in pausas_do_dia.iterrows():
-                                pausa_inicio = pausa_row['Inicio'].strftime('%H:%M:%S') if pd.notna(pausa_row['Inicio']) else ''
-                                pausa_fim = pausa_row['Fim'].strftime('%H:%M:%S') if pd.notna(pausa_row['Fim']) else ''
-                                pausa_duracao = format_timedelta_as_hms(pausa_row['Fim'] - pausa_row['Inicio']) if pd.notna(pausa_row['Inicio']) and pd.notna(pausa_row['Fim']) else ''
-                                
-                                pausa_row_detail = {
-                                    'Data': pausa_row['Data'],
-                                    'Tipo': f"Pausa: {pausa_row['Motivo']}",
-                                    'Inicio': pausa_inicio,
-                                    'Fim': pausa_fim,
-                                    'Duração': f"{pausa_duracao} de {pausa_row['Motivo']}"
-                                }
-                                df_details = pd.concat([df_details, pd.DataFrame([pausa_row_detail])], ignore_index=True)
+                            # Detalhes da Viagem
+                            detailed_events = []
+                            for _, event in trip_events_df.iterrows():
+                                inicio_str = event['Inicio'].strftime('%H:%M:%S') if pd.notna(event['Inicio']) else 'N/A'
+                                fim_str = event['Fim'].strftime('%H:%M:%S') if pd.notna(event['Fim']) else 'N/A'
+                                duracao = ''
+                                if pd.notna(event['Inicio']) and pd.notna(event['Fim']):
+                                    duracao = format_timedelta_as_hms(event['Fim'] - event['Inicio'])
+                                    
+                                if 'Parada' in event['Tipo de Lançamento']:
+                                    event_type_str = f"Pausa ({event['Motivo']})"
+                                    duracao_str = f"{duracao} de {event['Motivo']}"
+                                else:
+                                    event_type_str = event['Tipo de Lançamento']
+                                    duracao_str = duracao
 
-                        # Escrever os dados nas abas do Excel
-                        df_summary.to_excel(writer, sheet_name=motorista, startrow=0, startcol=0, index=False)
-                        df_details.to_excel(writer, sheet_name=motorista, startrow=df_summary.shape[0] + 2, startcol=0, index=False)
-                
+                                detailed_events.append({
+                                    'Evento': event_type_str,
+                                    'Data': event['Data Original'].date(),
+                                    'Início': inicio_str,
+                                    'Fim': fim_str,
+                                    'Duração': duracao_str
+                                })
+                            
+                            df_details = pd.DataFrame(detailed_events)
+                            df_details.to_excel(writer, sheet_name=motorista, startrow=start_row, index=False)
+                            start_row += df_details.shape[0] + 4
+
                 output.seek(0)
                 st.success("✅ Planilha de Controle de Jornada processada e pronta para download!")
                 
