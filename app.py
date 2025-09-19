@@ -1015,30 +1015,44 @@ def rh_page():
                             for event_name in required_events:
                                 matched_events = trip_events_df[trip_events_df['Tipo de Lançamento'] == event_name]
                                 
+                                data_str = ''
+                                inicio_str = ''
+                                fim_str = ''
+                                motivo_str = ''
+                                duracao_str = ''
+                                
                                 if not matched_events.empty:
                                     for _, event_row in matched_events.iterrows():
-                                        inicio_str = event_row['Inicio'].strftime('%H:%M') if pd.notna(event_row['Inicio']) else ''
-                                        fim_str = event_row['Fim'].strftime('%H:%M') if pd.notna(event_row['Fim']) else ''
+                                        if pd.notna(event_row['Inicio']):
+                                            data_str = event_row['Inicio'].strftime('%Y-%m-%d')
+                                            inicio_str = event_row['Inicio'].strftime('%H:%M')
+                                        elif pd.notna(event_row['Fim']):
+                                            data_str = event_row['Fim'].strftime('%Y-%m-%d')
+                                            fim_str = event_row['Fim'].strftime('%H:%M')
                                         
-                                        motivo_duracao = ''
-                                        if 'Parada' in event_name:
-                                            duracao_td = event_row['Fim'] - event_row['Inicio'] if pd.notna(event_row['Inicio']) and pd.notna(event_row['Fim']) else None
-                                            duracao_str = format_timedelta_as_hms_and_minutes(duracao_td) if duracao_td else ''
-                                            motivo = event_row['Motivo'] if pd.notna(event_row['Motivo']) else ''
-                                            motivo_duracao = f"início {inicio_str} fim {fim_str} motivo {motivo} {duracao_str}"
-                                        elif 'Inicio Jornada' in event_name or 'Inicio de Viagem' in event_name:
-                                            motivo_duracao = f"{inicio_str}"
-                                        elif 'Fim da Viagem' in event_name or 'Fim de Jornada' in event_name:
-                                            motivo_duracao = f"{fim_str}"
+                                        if pd.notna(event_row['Motivo']):
+                                            motivo_str = event_row['Motivo']
                                         
+                                        if pd.notna(event_row['Inicio']) and pd.notna(event_row['Fim']):
+                                            duracao_td = event_row['Fim'] - event_row['Inicio']
+                                            duracao_str = format_timedelta_as_hms_and_minutes(duracao_td)
+
                                         detailed_events_output.append({
                                             'Evento': event_name,
-                                            'Detalhes': motivo_duracao
+                                            'Data': data_str,
+                                            'Hora de Início': inicio_str,
+                                            'Hora de Fim': fim_str,
+                                            'Motivo': motivo_str,
+                                            'Duração': duracao_str
                                         })
                                 else:
                                     detailed_events_output.append({
                                         'Evento': event_name,
-                                        'Detalhes': 'Sem Lançamento'
+                                        'Data': 'Sem Lançamento',
+                                        'Hora de Início': '',
+                                        'Hora de Fim': '',
+                                        'Motivo': '',
+                                        'Duração': ''
                                     })
                             
                             # Totais de Viagem e Jornada
@@ -1060,8 +1074,12 @@ def rh_page():
                             start_row += df_details.shape[0] + 1
                             
                             totals_data = {
-                                'total de viagem': [format_timedelta_as_dias_hms(tempo_viagem)],
-                                'total jornada': [format_timedelta_as_dias_hms(tempo_jornada)],
+                                'Evento': ['total de viagem', 'total jornada'],
+                                'Data': ['',''],
+                                'Hora de Início': ['',''],
+                                'Hora de Fim': ['',''],
+                                'Motivo': ['',''],
+                                'Duração': [format_timedelta_as_dias_hms(tempo_viagem), format_timedelta_as_dias_hms(tempo_jornada)],
                             }
                             df_totals = pd.DataFrame(totals_data)
                             df_totals.to_excel(writer, sheet_name=motorista, startrow=start_row, index=False, header=False)
