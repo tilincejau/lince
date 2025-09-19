@@ -887,30 +887,41 @@ def rh_page():
                     timestamp = pd.to_datetime(timestamp_str)
                     entry_type = row.get('Qual o tipo de lançamento?')
 
-                    if entry_type == 'Inicio Jornada':
-                        date_str = row.get('Dia')
-                        time_str = row.get('Horário')
-                        if pd.notna(date_str) and pd.notna(time_str):
-                            start_time = pd.to_datetime(f"{date_str} {time_str}")
-                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': 'Inicio Jornada', 'Inicio': start_time, 'Fim': None, 'Motivo': None, 'Data Original': timestamp})
-                    elif entry_type == 'Inicio de Viagem':
-                        date_str = row.get('Dia.1')
-                        time_str = row.get('Horário.1')
-                        if pd.notna(date_str) and pd.notna(time_str):
-                            start_time = pd.to_datetime(f"{date_str} {time_str}")
-                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': 'Inicio de Viagem', 'Inicio': start_time, 'Fim': None, 'Motivo': None, 'Data Original': timestamp})
-                    elif entry_type == 'Fim da Viagem':
-                        time_str = row.get('Fim.5')
-                        if pd.notna(time_str):
-                            time_str = str(time_str).split(' ')[-1]
-                            end_time = pd.to_datetime(f"{timestamp.strftime('%Y-%m-%d')} {time_str}")
-                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': 'Fim da Viagem', 'Inicio': None, 'Fim': end_time, 'Motivo': None, 'Data Original': timestamp})
-                    elif entry_type == 'Fim de Jornada':
-                        date_str = row.get('Dia.2')
-                        time_str = row.get('Horário.3')
-                        if pd.notna(date_str) and pd.notna(time_str):
-                            end_time = pd.to_datetime(f"{date_str} {time_str}")
-                            all_events.append({'Motorista': motorista, 'Tipo de Lançamento': 'Fim de Jornada', 'Inicio': None, 'Fim': end_time, 'Motivo': None, 'Data Original': timestamp})
+                    event_type_map = {
+                        'Inicio Jornada': 'Jornada',
+                        'Inicio de Viagem': 'Viagem',
+                        'Fim da Viagem': 'Viagem',
+                        'Fim de Jornada': 'Jornada',
+                    }
+
+                    if entry_type in event_type_map:
+                        event_group = event_type_map[entry_type]
+                        if 'Jornada' in event_group:
+                            if entry_type == 'Inicio Jornada':
+                                date_str = row.get('Dia')
+                                time_str = row.get('Horário')
+                                if pd.notna(date_str) and pd.notna(time_str):
+                                    start_time = pd.to_datetime(f"{date_str} {time_str}")
+                                    all_events.append({'Motorista': motorista, 'Tipo de Lançamento': entry_type, 'Inicio': start_time, 'Fim': None, 'Motivo': None, 'Data Original': timestamp})
+                            elif entry_type == 'Fim de Jornada':
+                                date_str = row.get('Dia.2')
+                                time_str = row.get('Horário.3')
+                                if pd.notna(date_str) and pd.notna(time_str):
+                                    end_time = pd.to_datetime(f"{date_str} {time_str}")
+                                    all_events.append({'Motorista': motorista, 'Tipo de Lançamento': entry_type, 'Inicio': None, 'Fim': end_time, 'Motivo': None, 'Data Original': timestamp})
+                        elif 'Viagem' in event_group:
+                            if entry_type == 'Inicio de Viagem':
+                                date_str = row.get('Dia.1')
+                                time_str = row.get('Horário.1')
+                                if pd.notna(date_str) and pd.notna(time_str):
+                                    start_time = pd.to_datetime(f"{date_str} {time_str}")
+                                    all_events.append({'Motorista': motorista, 'Tipo de Lançamento': entry_type, 'Inicio': start_time, 'Fim': None, 'Motivo': None, 'Data Original': timestamp})
+                            elif entry_type == 'Fim da Viagem':
+                                time_str = row.get('Fim.5')
+                                if pd.notna(time_str):
+                                    time_str = str(time_str).split(' ')[-1]
+                                    end_time = pd.to_datetime(f"{timestamp.strftime('%Y-%m-%d')} {time_str}")
+                                    all_events.append({'Motorista': motorista, 'Tipo de Lançamento': entry_type, 'Inicio': None, 'Fim': end_time, 'Motivo': None, 'Data Original': timestamp})
                     
                     parada_cols_map = {
                         '1': {'inicio': 'Inicio ', 'fim': 'Fim', 'motivo': 'Motivo'},
@@ -947,20 +958,28 @@ def rh_page():
 
                         trips = []
                         current_trip_events = []
-                        trip_counter = 0
-
+                        
+                        # Agrupar eventos por viagem (início de viagem até fim de viagem)
+                        is_in_trip = False
                         for index, row in df_motorista.iterrows():
                             if row['Tipo de Lançamento'] == 'Inicio de Viagem':
+                                is_in_trip = True
                                 if current_trip_events:
                                     trips.append(current_trip_events)
                                 current_trip_events = [row]
-                                trip_counter += 1
-                            elif current_trip_events:
+                            elif is_in_trip:
                                 current_trip_events.append(row)
-                            
+                                if row['Tipo de Lançamento'] == 'Fim da Viagem':
+                                    is_in_trip = False
+                            else:
+                                if not trips:
+                                     # Adiciona eventos que ocorrem antes da primeira viagem
+                                     trips.append([row])
+                                else:
+                                     trips[-1].append(row)
                         if current_trip_events:
                             trips.append(current_trip_events)
-
+                        
                         start_row = 0
                         st.info(f"Processando viagens para o motorista: {motorista}")
                         for i, trip_events in enumerate(trips):
@@ -968,9 +987,12 @@ def rh_page():
                             trip_events_df.sort_values(by=['Data Original'], inplace=True)
 
                             # Resumo da Viagem
+                            inicio_jornada = trip_events_df[trip_events_df['Tipo de Lançamento'] == 'Inicio Jornada']['Inicio'].min()
+                            fim_jornada = trip_events_df[trip_events_df['Tipo de Lançamento'] == 'Fim de Jornada']['Fim'].max()
+                            tempo_jornada = fim_jornada - inicio_jornada if pd.notnull(inicio_jornada) and pd.notnull(fim_jornada) else timedelta(seconds=0)
+
                             inicio_viagem = trip_events_df[trip_events_df['Tipo de Lançamento'] == 'Inicio de Viagem']['Inicio'].min()
                             fim_viagem = trip_events_df[trip_events_df['Tipo de Lançamento'] == 'Fim da Viagem']['Fim'].max()
-                            
                             tempo_viagem = fim_viagem - inicio_viagem if pd.notnull(inicio_viagem) and pd.notnull(fim_viagem) else timedelta(seconds=0)
                             
                             all_pauses = trip_events_df[trip_events_df['Tipo de Lançamento'].str.contains('Parada')].copy()
@@ -984,8 +1006,9 @@ def rh_page():
 
                             summary_data = {
                                 'Viagem': [f"Viagem {i+1}"],
-                                'Início da Viagem': [inicio_viagem.strftime('%Y-%m-%d %H:%M:%S') if pd.notna(inicio_viagem) else 'N/A'],
-                                'Fim da Viagem': [fim_viagem.strftime('%Y-%m-%d %H:%M:%S') if pd.notna(fim_viagem) else 'N/A'],
+                                'Início da Jornada': [inicio_jornada.strftime('%Y-%m-%d %H:%M:%S') if pd.notna(inicio_jornada) else 'N/A'],
+                                'Fim da Jornada': [fim_jornada.strftime('%Y-%m-%d %H:%M:%S') if pd.notna(fim_jornada) else 'N/A'],
+                                'Tempo Total de Jornada': [format_timedelta_as_dias_hms(tempo_jornada)],
                                 'Tempo Total de Viagem': [format_timedelta_as_dias_hms(tempo_viagem)],
                                 'Tempo de Dirigibilidade': [format_timedelta_as_hms(tempo_dirigibilidade)],
                                 'Tempo Total de Paradas': [format_timedelta_as_hms(total_pause_time)],
@@ -994,29 +1017,33 @@ def rh_page():
                             df_summary.to_excel(writer, sheet_name=motorista, startrow=start_row, index=False)
                             start_row += df_summary.shape[0] + 2
 
-                            # Detalhes da Viagem
+                            # Tabela de Detalhes da Viagem
+                            required_events = ['Inicio Jornada', 'Inicio de Viagem', 'Parada 1', 'Parada 2', 'Parada 3', 'Parada 4', 'Parada 5', 'Fim da Viagem', 'Fim de Jornada']
+                            
                             detailed_events = []
-                            for _, event in trip_events_df.iterrows():
-                                inicio_str = event['Inicio'].strftime('%H:%M:%S') if pd.notna(event['Inicio']) else 'N/A'
-                                fim_str = event['Fim'].strftime('%H:%M:%S') if pd.notna(event['Fim']) else 'N/A'
-                                duracao = ''
-                                if pd.notna(event['Inicio']) and pd.notna(event['Fim']):
-                                    duracao = format_timedelta_as_hms(event['Fim'] - event['Inicio'])
+                            for event_name in required_events:
+                                matched_event = trip_events_df[trip_events_df['Tipo de Lançamento'] == event_name]
+                                
+                                if not matched_event.empty:
+                                    event_row = matched_event.iloc[0]
+                                    inicio_str = event_row['Inicio'].strftime('%H:%M:%S') if pd.notna(event_row['Inicio']) else ''
+                                    fim_str = event_row['Fim'].strftime('%H:%M:%S') if pd.notna(event_row['Fim']) else ''
+                                    duracao = format_timedelta_as_hms(event_row['Fim'] - event_row['Inicio']) if pd.notna(event_row['Inicio']) and pd.notna(event_row['Fim']) else ''
                                     
-                                if 'Parada' in event['Tipo de Lançamento']:
-                                    event_type_str = f"Pausa ({event['Motivo']})"
-                                    duracao_str = f"{duracao} de {event['Motivo']}"
+                                    evento_detalhado = {
+                                        'Evento': event_name,
+                                        'Inicio': inicio_str,
+                                        'Fim': fim_str,
+                                        'Motivo/Duração': f"{duracao} de {event_row['Motivo']}" if pd.notna(event_row['Motivo']) else duracao
+                                    }
                                 else:
-                                    event_type_str = event['Tipo de Lançamento']
-                                    duracao_str = duracao
-
-                                detailed_events.append({
-                                    'Evento': event_type_str,
-                                    'Data': event['Data Original'].date(),
-                                    'Início': inicio_str,
-                                    'Fim': fim_str,
-                                    'Duração': duracao_str
-                                })
+                                    evento_detalhado = {
+                                        'Evento': event_name,
+                                        'Inicio': 'Sem Lançamento',
+                                        'Fim': '',
+                                        'Motivo/Duração': 'Sem Lançamento'
+                                    }
+                                detailed_events.append(evento_detalhado)
                             
                             df_details = pd.DataFrame(detailed_events)
                             df_details.to_excel(writer, sheet_name=motorista, startrow=start_row, index=False)
