@@ -854,12 +854,6 @@ def rh_page():
             minutes, seconds = divmod(remainder, 60)
             return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
 
-        def format_timedelta_as_minutes(td):
-            if pd.isna(td):
-                return pd.NaT
-            total_minutes = td.total_seconds() / 60
-            return f"{round(total_minutes)} minutos"
-
         def format_timedelta_as_hms_and_minutes(td):
             if pd.isna(td):
                 return pd.NaT
@@ -867,18 +861,22 @@ def rh_page():
             hours, remainder = divmod(total_seconds, 3600)
             minutes, seconds = divmod(remainder, 60)
             
-            hours_str = f"{int(hours):02} hora" + ("s" if hours != 1 else "")
-            minutes_str = f"{int(minutes):02} minuto" + ("s" if minutes != 1 else "")
+            hours_str = f"{int(hours):02} hora" + ("s" if hours > 1 else "")
+            minutes_str = f"{int(minutes):02} minuto" + ("s" if minutes > 1 else "")
             
-            if hours > 0 and minutes > 0:
-                return f"{hours_str} e {minutes_str}"
-            elif hours > 0:
-                return f"{hours_str}"
-            elif minutes > 0:
-                return f"{minutes_str}"
-            else:
-                return f"0 minutos"
+            parts = []
+            if hours > 0:
+                parts.append(hours_str)
+            if minutes > 0:
+                parts.append(minutes_str)
 
+            if not parts:
+                return "0 minutos"
+            elif len(parts) == 1:
+                return parts[0]
+            else:
+                return f"{parts[0]} e {parts[1]}"
+        
         def format_timedelta_as_dias_hms(td):
             if pd.isna(td):
                 return pd.NaT
@@ -984,7 +982,6 @@ def rh_page():
                         trips = []
                         current_trip_events = []
                         
-                        # Agrupar eventos por viagem (início de viagem até fim de viagem)
                         is_in_trip = False
                         for index, row in df_motorista.iterrows():
                             if row['Tipo de Lançamento'] == 'Inicio de Viagem':
@@ -1000,7 +997,6 @@ def rh_page():
                                 if not trips:
                                      trips.append([row])
                                 else:
-                                     # Adiciona eventos que ocorrem fora de uma viagem, mas associados à jornada
                                      trips[-1].append(row)
                         if current_trip_events:
                             trips.append(current_trip_events)
@@ -1015,46 +1011,35 @@ def rh_page():
                             # Tabela de Detalhes da Viagem
                             required_events = ['Inicio Jornada', 'Inicio de Viagem', '1° Parada', '2° Parada', '3° Parada', '4° Parada', '5° Parada', 'Fim da Viagem', 'Fim de Jornada']
                             
-                            detailed_events = []
+                            detailed_events_output = []
                             for event_name in required_events:
-                                matched_event = trip_events_df[trip_events_df['Tipo de Lançamento'] == event_name]
+                                matched_events = trip_events_df[trip_events_df['Tipo de Lançamento'] == event_name]
                                 
-                                inicio_str = ''
-                                fim_str = ''
-                                duracao = ''
-                                motivo_duracao = 'Sem Lançamento'
-
-                                if not matched_event.empty:
-                                    event_row = matched_event.iloc[0]
-                                    if pd.notna(event_row['Inicio']):
-                                        inicio_str = event_row['Inicio'].strftime('%H:%M')
-                                    if pd.notna(event_row['Fim']):
-                                        fim_str = event_row['Fim'].strftime('%H:%M')
-                                    
-                                    if pd.notna(event_row['Inicio']) and pd.notna(event_row['Fim']):
-                                        duracao_td = event_row['Fim'] - event_row['Inicio']
-                                        duracao_min = round(duracao_td.total_seconds() / 60)
-                                        duracao = format_timedelta_as_hms_and_minutes(duracao_td)
-                                        motivo = event_row['Motivo'] if pd.notna(event_row['Motivo']) else ''
+                                if not matched_events.empty:
+                                    for _, event_row in matched_events.iterrows():
+                                        inicio_str = event_row['Inicio'].strftime('%H:%M') if pd.notna(event_row['Inicio']) else ''
+                                        fim_str = event_row['Fim'].strftime('%H:%M') if pd.notna(event_row['Fim']) else ''
                                         
+                                        motivo_duracao = ''
                                         if 'Parada' in event_name:
-                                            motivo_duracao = f"início {inicio_str} fim {fim_str} motivo {motivo} {duracao}"
-                                        else:
+                                            duracao_td = event_row['Fim'] - event_row['Inicio'] if pd.notna(event_row['Inicio']) and pd.notna(event_row['Fim']) else None
+                                            duracao_str = format_timedelta_as_hms_and_minutes(duracao_td) if duracao_td else ''
+                                            motivo = event_row['Motivo'] if pd.notna(event_row['Motivo']) else ''
+                                            motivo_duracao = f"início {inicio_str} fim {fim_str} motivo {motivo} {duracao_str}"
+                                        elif 'Inicio Jornada' in event_name or 'Inicio de Viagem' in event_name:
                                             motivo_duracao = f"{inicio_str}"
-                                    elif pd.notna(event_row['Inicio']):
-                                         motivo_duracao = f"{inicio_str}"
-                                    elif pd.notna(event_row['Fim']):
-                                         motivo_duracao = f"{fim_str}"
-                                
-                                evento_detalhado = {
-                                    'Evento': event_name,
-                                    'Detalhes': motivo_duracao
-                                }
-                                detailed_events.append(evento_detalhado)
-                            
-                            df_details = pd.DataFrame(detailed_events)
-                            df_details.to_excel(writer, sheet_name=motorista, startrow=start_row, index=False)
-                            start_row += df_details.shape[0] + 1
+                                        elif 'Fim da Viagem' in event_name or 'Fim de Jornada' in event_name:
+                                            motivo_duracao = f"{fim_str}"
+                                        
+                                        detailed_events_output.append({
+                                            'Evento': event_name,
+                                            'Detalhes': motivo_duracao
+                                        })
+                                else:
+                                    detailed_events_output.append({
+                                        'Evento': event_name,
+                                        'Detalhes': 'Sem Lançamento'
+                                    })
                             
                             # Totais de Viagem e Jornada
                             inicio_jornada_ts = trip_events_df[trip_events_df['Tipo de Lançamento'] == 'Inicio Jornada']['Inicio'].min()
@@ -1065,12 +1050,21 @@ def rh_page():
                             fim_viagem_ts = trip_events_df[trip_events_df['Tipo de Lançamento'] == 'Fim da Viagem']['Fim'].max()
                             tempo_viagem = fim_viagem_ts - inicio_viagem_ts if pd.notnull(inicio_viagem_ts) and pd.notnull(fim_viagem_ts) else timedelta(seconds=0)
 
+                            # Título para cada viagem
+                            df_viagem_titulo = pd.DataFrame([f"Viagem {i+1} - {inicio_viagem_ts.strftime('%d/%m/%Y') if pd.notna(inicio_viagem_ts) else 'Sem Data'}"])
+                            df_viagem_titulo.to_excel(writer, sheet_name=motorista, startrow=start_row, index=False, header=False)
+                            start_row += 2
+                            
+                            df_details = pd.DataFrame(detailed_events_output)
+                            df_details.to_excel(writer, sheet_name=motorista, startrow=start_row, index=False)
+                            start_row += df_details.shape[0] + 1
+                            
                             totals_data = {
                                 'total de viagem': [format_timedelta_as_dias_hms(tempo_viagem)],
                                 'total jornada': [format_timedelta_as_dias_hms(tempo_jornada)],
                             }
                             df_totals = pd.DataFrame(totals_data)
-                            df_totals.to_excel(writer, sheet_name=motorista, startrow=start_row, startcol=0, index=False, header=False)
+                            df_totals.to_excel(writer, sheet_name=motorista, startrow=start_row, index=False, header=False)
                             start_row += df_totals.shape[0] + 2
 
                 output.seek(0)
