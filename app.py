@@ -281,7 +281,7 @@ def logistics_page():
                         return factor1 * factor2
                     match_direct = re.search(r'(\d+)(?:UN|U)', product_name)
                     if match_direct:
-                        return int(match_direct.group(1))
+                        return int(match.group(1))
                     return 1
 
                 melted_df_validade_all['Units_Per_Box_Temp'] = melted_df_validade_all['Nome Produto'].apply(extract_units_per_box)
