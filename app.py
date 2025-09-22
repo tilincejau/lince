@@ -230,6 +230,21 @@ def logistics_page():
             df_txt_raw = pd.DataFrame(data, columns=col_names)
             return df_txt_raw
 
+        def extract_units_per_box(product_name):
+            """
+            Tenta extrair o número de unidades por caixa do nome do produto.
+            Lida com formatos como '12x200UN' e '24UN'.
+            """
+            product_name = str(product_name).upper().replace(' ', '')
+            match_multiplication = re.search(r'(\d+)X(\d+)(?:UN|U)', product_name)
+            if match_multiplication:
+                factor1 = int(match_multiplication.group(1))
+                factor2 = int(match_multiplication.group(2))
+                return factor1 * factor2
+            match_direct = re.search(r'(\d+)(?:UN|U)', product_name)
+            if match_direct:
+                return int(match_direct.group(1)) # <-- CORREÇÃO AQUI
+            return 1
 
         uploaded_excel_file = st.file_uploader("Envie o arquivo Excel 'Controle de Validade.xlsx'", type=["xlsx"])
         uploaded_txt_file = st.file_uploader("Envie o arquivo de texto de estoque", type=["txt"])
@@ -272,18 +287,6 @@ def logistics_page():
                 melted_df_validade_all['Codigo Produto'] = split_data_validade[0].str.strip()
                 melted_df_validade_all['Nome Produto'] = split_data_validade[1].str.strip()
                 
-                def extract_units_per_box(product_name):
-                    product_name = str(product_name).upper().replace(' ', '')
-                    match_multiplication = re.search(r'(\d+)X(\d+)(?:UN|U)', product_name)
-                    if match_multiplication:
-                        factor1 = int(match_multiplication.group(1))
-                        factor2 = int(match_multiplication.group(2))
-                        return factor1 * factor2
-                    match_direct = re.search(r'(\d+)(?:UN|U)', product_name)
-                    if match_direct:
-                        return int(match.group(1))
-                    return 1
-
                 melted_df_validade_all['Units_Per_Box_Temp'] = melted_df_validade_all['Nome Produto'].apply(extract_units_per_box)
                 
                 grouped = melted_df_validade_all.groupby(['Codigo Produto', 'Nome Produto', 'Validade']).agg({'Quantidade (CAIXA)': 'sum', 'Quantidade (UNIDADE)': 'sum', 'Units_Per_Box_Temp': 'first'}).reset_index()
@@ -568,7 +571,7 @@ def logistics_page():
                 
                 # Define as colunas de saída
                 colunas_saida = [
-                    'Data Abastecimento', 'HORÁRIO', 'TIPO DE ABASTECIMENTO', 
+                    'Data Abastecimento', 'HORÁRIO', 'TIPO DE ABASTECIMENTO',
                     'PLACA', 'KM', 'ALERTA KM', 'MOTORISTA', 'LITROS', 'Média de litros por KM'
                 ]
                 
@@ -1159,7 +1162,7 @@ def site_page():
                         'Observações Adicionais/Advertências',
                     ],
                     'Controle de Irrigação': [
-                        'Carimbo de data/hora', 'Qual lançamento', 'Período', 'Setor/Talhão', 
+                        'Carimbo de data/hora', 'Qual lançamento', 'Período', 'Setor/Talhão',
                         'Hora(s) de irrigação', 'Volume de Água (L)', 'Tipo de Irrigação',
                         'Observações (Clima/Outros)', 'Responsável', 'Próxima Irrigação Sugerida'
                     ],
@@ -1193,14 +1196,14 @@ def site_page():
                     'Limpeza do Local': [
                         'Carimbo de data/hora', 'Qual lançamento', 'LOCAL', 'Marque com "X" a opção que melhor descreve o estado de limpeza [PISOS]',
                         'Marque com "X" a opção que melhor descreve o estado de limpeza [LIXEIRAS]', 'Marque com "X" a opção que melhor descreve o estado de limpeza [Superfícies (mesas, bancadas)]',
-                        'Marque com "X" a opção que melhor descreve o estado de limpeza [Janelas e vidros]', 
+                        'Marque com "X" a opção que melhor descreve o estado de limpeza [Janelas e vidros]',
                         'Marque com "X" a opção que melhor descreve o estado de limpeza [Banheiros]', 'Marque com "X" a opção que melhor descreve o estado de limpeza [Descarte de resíduos]',
                         'Marque com "X" a opção que melhor descreve o estado de limpeza [Organização geral]',
                         'Problemas encontrados', 'Sugestões para melhoria'
                     ],
                     'Limpeza dos Equipamentos e Dispositivos': [
                         'Qual a Limpeza (7)', 'Data da Lavagem (7)', 'Item Lavado (7)', 'Produto Utilizado (7)', 'Procedimento de Lavagem (Exemplo "submersão" , "pré-lavagem") (7)',
-                        'Responsável pela Lavagem (7)', 'Observações (7)'  
+                        'Responsável pela Lavagem (7)', 'Observações (7)'
                     ]
                 }
                 
