@@ -136,8 +136,8 @@ def logistics_page():
                 df_data = df_data[~df_data.index.isin(products_to_remove)].copy()
                 df_data = df_data[~df_data.index.astype(str).str.contains('Totais', na=False)].copy()
                 
-                # 1. Definir as colunas que REALMENTE existem no arquivo
-                data_types_from_file = ['Contagem - $', 'Diferença - $'] 
+                # 1. Definir as colunas que REALMENTE existem no arquivo CSV
+                data_types_from_file = ['Contagem - $', 'Diferença - $', 'Diferença - $.1'] 
                 
                 unique_dates = sorted(list(set([
                     col for col in first_level_cols
@@ -170,18 +170,17 @@ def logistics_page():
                 
                 # 3. Renomear as colunas existentes para o nome desejado
                 df_final.rename(columns={
-                    'Contagem - $': 'Saldo Final', 
-                    'Diferença - $': 'Diferença'
+                    'Contagem - $': 'Contagem', 
+                    'Diferença - $': 'Diferença',
+                    'Diferença - $.1': 'Saldo Final' # Mapeamento conforme solicitado
                 }, inplace=True)
 
                 # 4. Tratar NaNs
                 df_final['Saldo Final'] = df_final['Saldo Final'].fillna(0).apply(lambda x: max(0, x))
                 df_final['Diferença'] = df_final['Diferença'].fillna(0).abs()
-
-                # 5. Criar a coluna 'Contagem' como uma CÓPIA do Saldo Final
-                df_final['Contagem'] = df_final['Saldo Final'] 
+                df_final['Contagem'] = df_final['Contagem'].fillna(0)
                 
-                # 6. Cálculo da acurácia (agora usando 'Saldo Final' e 'Diferença')
+                # 5. Cálculo da acurácia (agora usando 'Saldo Final' e 'Diferença')
                 daily_accuracy = df_final.groupby('Dia').apply(
                     lambda x: (x['Saldo Final'].sum() - x['Diferença'].sum()) / x['Saldo Final'].sum() if x['Saldo Final'].sum() != 0 else 0
                 ).reset_index(name='Acurácia Diária')
@@ -195,13 +194,13 @@ def logistics_page():
                 df_final = df_final.sort_values(by=['Dia', 'Prod Cód'])
                 df_final['Dia'] = pd.to_datetime(df_final['Dia']).dt.strftime('%Y-%m-%d')
                 
-                # 7. Ajustar colunas numéricas
+                # 6. Ajustar colunas numéricas
                 numeric_cols = ['Saldo Final', 'Contagem', 'Diferença'] 
                 
                 existing_numeric_cols = [col for col in numeric_cols if col in df_final.columns]
                 df_final[existing_numeric_cols] = df_final[existing_numeric_cols].round(2)
 
-                # 8. Reordenar colunas para a ordem exata que o usuário pediu
+                # 7. Reordenar colunas para a ordem exata que o usuário pediu
                 desired_order = [
                     'Prod Cód', 
                     'Dia', 
@@ -231,7 +230,7 @@ def logistics_page():
                 )
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
-                st.error("Verifique se o arquivo (CSV ou XLSX) tem um cabeçalho de duas linhas e se os nomes das colunas estão corretos (ex: 'Contagem - $', 'Diferença - $').")
+                st.error("Verifique se o arquivo (CSV ou XLSX) tem um cabeçalho de duas linhas e se os nomes das colunas estão corretos (ex: 'Contagem - $', 'Diferença - $', 'Diferença - $.1').")
     # ### FIM DA SEÇÃO MODIFICADA ###
 
     elif script_choice == "Validade":
@@ -1026,7 +1025,7 @@ def rh_page():
                         '1': {'inicio': 'Inicio ', 'fim': 'Fim', 'motivo': 'Motivo'},
                         '2': {'inicio': 'Inicio', 'fim': 'Fim.1', 'motivo': 'Motivo.1'},
                         '3': {'inicio': 'Inicio.1', 'fim': 'Fim.2', 'motivo': 'Motivo.2'},
-                        '4.': {'inicio': 'Inicio.2', 'fim': 'Fim.3', 'motivo': 'Motivo.3'},
+                        '4': {'inicio': 'Inicio.2', 'fim': 'Fim.3', 'motivo': 'Motivo.3'},
                         '5': {'inicio': 'Inicio.3', 'fim': 'Fim.4', 'motivo': 'Motivo.4'}
                     }
                     for i in range(1, 6):
