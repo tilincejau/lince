@@ -174,12 +174,12 @@ def logistics_page():
                     'Diferença - $': 'Diferença'
                 }, inplace=True)
 
-                # 4. Criar a coluna 'Contagem' (vazia/zero) que o usuário pediu
-                df_final['Contagem'] = 0.0
-
-                # 5. Tratar NaNs nas colunas de dados
+                # 4. Tratar NaNs
                 df_final['Saldo Final'] = df_final['Saldo Final'].fillna(0).apply(lambda x: max(0, x))
                 df_final['Diferença'] = df_final['Diferença'].fillna(0).abs()
+
+                # 5. Criar a coluna 'Contagem' como uma CÓPIA do Saldo Final
+                df_final['Contagem'] = df_final['Saldo Final'] 
                 
                 # 6. Cálculo da acurácia (agora usando 'Saldo Final' e 'Diferença')
                 daily_accuracy = df_final.groupby('Dia').apply(
@@ -211,7 +211,7 @@ def logistics_page():
                     'Acurácia Diária', 
                     'Acurácia Mensal'
                 ]
-                # Pega quaisquer outras colunas que possam ter sido criadas (para não perdê-las)
+                # Pega quaisquer outras colunas que possam ter sido criadas
                 other_cols = [col for col in df_final.columns if col not in desired_order]
                 df_final = df_final[desired_order + other_cols]
 
@@ -1026,7 +1026,7 @@ def rh_page():
                         '1': {'inicio': 'Inicio ', 'fim': 'Fim', 'motivo': 'Motivo'},
                         '2': {'inicio': 'Inicio', 'fim': 'Fim.1', 'motivo': 'Motivo.1'},
                         '3': {'inicio': 'Inicio.1', 'fim': 'Fim.2', 'motivo': 'Motivo.2'},
-                        '4': {'inicio': 'Inicio.2', 'fim': 'Fim.3', 'motivo': 'Motivo.3'},
+                        '4.': {'inicio': 'Inicio.2', 'fim': 'Fim.3', 'motivo': 'Motivo.3'},
                         '5': {'inicio': 'Inicio.3', 'fim': 'Fim.4', 'motivo': 'Motivo.4'}
                     }
                     for i in range(1, 6):
