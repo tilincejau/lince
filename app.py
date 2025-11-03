@@ -137,6 +137,7 @@ def logistics_page():
                 df_data = df_data[~df_data.index.astype(str).str.contains('Totais', na=False)].copy()
                 
                 # 1. Usar os nomes de coluna corretos do arquivo
+                # (Adicione 'Diferença - $.1' se também for relevante)
                 data_types_from_file = ['Contagem - $', 'Diferença - $'] 
                 
                 unique_dates = sorted(list(set([
@@ -160,30 +161,25 @@ def logistics_page():
                                 if isinstance(value, str):
                                     if value.strip() == '-':
                                         value = 0
-                                    # (Não mexer em '.' ou ',' pois o formato parece ser '1234.56')
                                 
                                 row_data[data_type] = pd.to_numeric(value, errors='coerce')
                             except KeyError:
-                                # Se a coluna (ex: 'Diferença - $') não existir para uma data
                                 row_data[data_type] = np.nan
                         new_rows.append(row_data)
                 
                 df_final = pd.DataFrame(new_rows)
-
-                # 3. Renomear colunas para a lógica de cálculo
-                df_final.rename(columns={'Contagem - $': 'Saldo Final', 'Diferença - $': 'Diferença'}, inplace=True)
-
-                # 4. Corrigir o apply para lidar com NaNs (gerados pelo to_numeric)
-                df_final['Saldo Final'] = df_final['Saldo Final'].fillna(0).apply(lambda x: max(0, x))
-                df_final['Diferença'] = df_final['Diferença'].fillna(0).abs()
                 
-                # 5. Cálculo da acurácia (agora deve funcionar)
+                # 3. NÃO renomear. Tratar NaNs e calcular.
+                df_final['Contagem - $'] = df_final['Contagem - $'].fillna(0).apply(lambda x: max(0, x))
+                df_final['Diferença - $'] = df_final['Diferença - $'].fillna(0).abs()
+                
+                # 4. Cálculo da acurácia usando os nomes corretos
                 daily_accuracy = df_final.groupby('Dia').apply(
-                    lambda x: (x['Saldo Final'].sum() - x['Diferença'].sum()) / x['Saldo Final'].sum() if x['Saldo Final'].sum() != 0 else 0
+                    lambda x: (x['Contagem - $'].sum() - x['Diferença - $'].sum()) / x['Contagem - $'].sum() if x['Contagem - $'].sum() != 0 else 0
                 ).reset_index(name='Acurácia Diária')
                 
-                total_saldo_final_mes = df_final['Saldo Final'].sum()
-                total_diferenca_mes = df_final['Diferença'].sum()
+                total_saldo_final_mes = df_final['Contagem - $'].sum()
+                total_diferenca_mes = df_final['Diferença - $'].sum()
                 monthly_accuracy = (total_saldo_final_mes - total_diferenca_mes) / total_saldo_final_mes if total_saldo_final_mes != 0 else 0
                 
                 df_final = pd.merge(df_final, daily_accuracy, on='Dia', how='left')
@@ -191,13 +187,14 @@ def logistics_page():
                 df_final = df_final.sort_values(by=['Dia', 'Prod Cód'])
                 df_final['Dia'] = pd.to_datetime(df_final['Dia']).dt.strftime('%Y-%m-%d')
                 
-                # 6. Ajustar colunas numéricas (só temos Saldo Final e Diferença)
-                numeric_cols = ['Saldo Final', 'Diferença'] 
+                # 5. Ajustar colunas numéricas
+                numeric_cols = ['Contagem - $', 'Diferença - $'] 
                 
                 existing_numeric_cols = [col for col in numeric_cols if col in df_final.columns]
                 df_final[existing_numeric_cols] = df_final[existing_numeric_cols].round(2)
                 
                 st.subheader("📊 Resultado da Acurácia")
+                # O DataFrame agora terá 'Contagem - $' e 'Diferença - $'
                 st.dataframe(df_final)
                 
                 excel_data = io.BytesIO()
