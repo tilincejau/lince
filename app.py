@@ -88,6 +88,9 @@ def load_from_db(table_name, engine):
         return pd.read_sql_table(table_name, con=engine)
     return pd.DataFrame()
 
+# ====================================================================
+# FUNÇÃO DE LOGÍSTICA ATUALIZADA
+# ====================================================================
 def logistics_page():
     st.title("Setor de Logística")
     st.markdown("Bem-vindo(a) ao setor de Logística. Abaixo estão os scripts disponíveis para análise.")
@@ -99,13 +102,27 @@ def logistics_page():
     
     st.write("---")
 
+    # ### INÍCIO DA SEÇÃO MODIFICADA ###
     if script_choice == "Acurácia":
         st.subheader("Acurácia de Estoque")
-        st.markdown("Calcula a acurácia diária e mensal do estoque a partir de um arquivo Excel.")
-        uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque.xlsx'", type=["xlsx"])
+        st.markdown("Calcula a acurácia diária e mensal do estoque (em unidades ou valores) a partir de um arquivo CSV ou Excel.")
+        
+        # 1. Alterado para aceitar CSV e XLSX
+        uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque' (.csv ou .xlsx)", type=["csv", "xlsx"])
+        
         if uploaded_file is not None:
             try:
-                df = pd.read_excel(uploaded_file, header=[0, 1], sheet_name=0)
+                df = None
+                # 2. Lógica para ler CSV ou Excel
+                if uploaded_file.name.endswith('.csv'):
+                    df = pd.read_csv(uploaded_file, header=[0, 1])
+                elif uploaded_file.name.endswith('.xlsx'):
+                    df = pd.read_excel(uploaded_file, header=[0, 1], sheet_name=0)
+                else:
+                    st.error("Formato de arquivo não suportado. Por favor, use .csv ou .xlsx.")
+                    return # Para a execução se o formato for inválido
+
+                # --- Lógica original mantida ---
                 products_to_remove = ['185039 - Garrafa 0,30l', '471 - Garrafa 0,60l (3 )']
                 first_level_cols = [col[0] for col in df.columns]
                 second_level_cols = [col[1] for col in df.columns]
@@ -114,10 +131,18 @@ def logistics_page():
                     df_data = df.set_index(prod_cod_col)
                 except IndexError:
                     df_data = df.set_index(df.columns[0])
+                
                 df_data = df_data[~df_data.index.isin(products_to_remove)].copy()
                 df_data = df_data[~df_data.index.astype(str).str.contains('Totais', na=False)].copy()
+                
                 data_types = ['Saldo Final', 'Contagem', 'Diferença', 'Acuracidade Estoque']
-                unique_dates = sorted(list(set([col for col in first_level_cols if col not in ['Data', 'Prod Cód']])))
+                
+                # 3. Lógica de datas ajustada para ignorar colunas 'Totais' ou 'Unnamed'
+                unique_dates = sorted(list(set([
+                    col for col in first_level_cols
+                    if col not in ['Data', 'Prod Cód', 'Totais'] and 'Unnamed' not in str(col)
+                ])))
+                
                 new_rows = []
                 for product in df_data.index:
                     for date in unique_dates:
@@ -129,32 +154,55 @@ def logistics_page():
                             try:
                                 col_name = (date, data_type)
                                 value = df_data.loc[product, col_name]
-                                if isinstance(value, str) and value == '-':
-                                    value = 0
+                                
+                                if isinstance(value, str):
+                                    if value == '-':
+                                        value = 0
+                                    else:
+                                        # 4. (Opcional) Adicionado para limpar valores monetários
+                                        # Se seus "valores" usam R$ ou formatação brasileira (1.234,56)
+                                        # descomente as linhas abaixo:
+                                        # value = str(value).replace('R$', '').strip()
+                                        # value = value.replace('.', '') # Remove separador de milhar
+                                        # value = value.replace(',', '.') # Troca vírgula decimal
+                                        pass # Por enquanto, assume que os números são lidos corretamente
+                                
                                 row_data[data_type] = pd.to_numeric(value, errors='coerce')
                             except KeyError:
                                 row_data[data_type] = np.nan
                         new_rows.append(row_data)
+                
                 df_final = pd.DataFrame(new_rows)
                 df_final['Saldo Final'] = df_final['Saldo Final'].apply(lambda x: max(0, x))
                 df_final['Diferença'] = df_final['Diferença'].abs()
+                
+                # --- Lógica de cálculo original mantida ---
                 daily_accuracy = df_final.groupby('Dia').apply(
                     lambda x: (x['Saldo Final'].sum() - x['Diferença'].sum()) / x['Saldo Final'].sum() if x['Saldo Final'].sum() != 0 else 0
                 ).reset_index(name='Acurácia Diária')
+                
                 total_saldo_final_mes = df_final['Saldo Final'].sum()
                 total_diferenca_mes = df_final['Diferença'].sum()
                 monthly_accuracy = (total_saldo_final_mes - total_diferenca_mes) / total_saldo_final_mes if total_saldo_final_mes != 0 else 0
+                
                 df_final = pd.merge(df_final, daily_accuracy, on='Dia', how='left')
                 df_final['Acurácia Mensal'] = monthly_accuracy
                 df_final = df_final.sort_values(by=['Dia', 'Prod Cód'])
                 df_final['Dia'] = pd.to_datetime(df_final['Dia']).dt.strftime('%Y-%m-%d')
+                
                 numeric_cols = ['Saldo Final', 'Contagem', 'Diferença', 'Acuracidade Estoque']
-                df_final[numeric_cols] = df_final[numeric_cols].round(2)
+                
+                # 5. Arredondamento mais robusto (só arredonda colunas que existem)
+                existing_numeric_cols = [col for col in numeric_cols if col in df_final.columns]
+                df_final[existing_numeric_cols] = df_final[existing_numeric_cols].round(2)
+                
                 st.subheader("📊 Resultado da Acurácia")
                 st.dataframe(df_final)
+                
                 excel_data = io.BytesIO()
                 df_final.to_excel(excel_data, index=False, engine='xlsxwriter')
                 excel_data.seek(0)
+                
                 st.download_button(
                     label="📥 Baixar Arquivo Processado",
                     data=excel_data,
@@ -163,6 +211,9 @@ def logistics_page():
                 )
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
+                # 6. Mensagem de erro mais específica
+                st.error("Verifique se o arquivo (CSV ou XLSX) tem um cabeçalho de duas linhas e se as colunas 'Saldo Final' e 'Diferença' existem.")
+    # ### FIM DA SEÇÃO MODIFICADA ###
 
     elif script_choice == "Validade":
         st.subheader("Controle de Validade")
@@ -643,6 +694,9 @@ def logistics_page():
     if st.button("Voltar para o Início"):
         st.session_state['current_page'] = 'home'
         st.rerun()
+# ====================================================================
+# FIM DA FUNÇÃO ATUALIZADA
+# ====================================================================
 
 def commercial_page():
     st.title("Setor Comercial")
@@ -998,9 +1052,9 @@ def rh_page():
                                     is_in_trip = False
                             else:
                                 if not trips:
-                                     trips.append([row])
+                                    trips.append([row])
                                 else:
-                                     trips[-1].append(row)
+                                    trips[-1].append(row)
                         if current_trip_events:
                             trips.append(current_trip_events)
                         
@@ -1040,14 +1094,14 @@ def rh_page():
                                             duracao_td = event_row['Fim'] - event_row['Inicio']
                                             duracao_str = format_timedelta_as_hms_and_minutes(duracao_td)
 
-                                        detailed_events_output.append({
-                                            'Evento': event_name,
-                                            'Data': data_str,
-                                            'Hora de Início': inicio_str,
-                                            'Hora de Fim': fim_str,
-                                            'Motivo': motivo_str,
-                                            'Duração': duracao_str
-                                        })
+                                    detailed_events_output.append({
+                                        'Evento': event_name,
+                                        'Data': data_str,
+                                        'Hora de Início': inicio_str,
+                                        'Hora de Fim': fim_str,
+                                        'Motivo': motivo_str,
+                                        'Duração': duracao_str
+                                    })
                                 else:
                                     detailed_events_output.append({
                                         'Evento': event_name,
