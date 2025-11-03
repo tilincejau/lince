@@ -138,7 +138,7 @@ def logistics_page():
                 
                 # 1. Definir as colunas que REALMENTE existem no arquivo CSV
                 # Conforme mapeamento do usuário
-                data_types_from_file = ['Contagem - $', 'Diferença - $', 'Diferença - $.1'] 
+                data_types_from_file = ['Contagem - $', 'Diferença - $', 'Saldo Final - $'] 
                 
                 unique_dates = sorted(list(set([
                     col for col in first_level_cols
@@ -173,7 +173,7 @@ def logistics_page():
                 df_final.rename(columns={
                     'Contagem - $': 'Contagem', 
                     'Diferença - $': 'Diferença',
-                    'Diferença - $.1': 'Saldo Final' # Mapeamento conforme solicitado
+                    'Saldo Final - $': 'Saldo Final' # Mapeamento CORRIGIDO
                 }, inplace=True)
 
                 # 4. Tratar NaNs
@@ -219,7 +219,7 @@ def logistics_page():
                 )
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
-                st.error("Verifique se o arquivo (CSV ou XLSX) tem um cabeçalho de duas linhas e se os nomes das colunas estão corretos (ex: 'Contagem - $', 'Diferença - $', 'Diferença - $.1').")
+                st.error("Verifique se o arquivo (CSV ou XLSX) tem um cabeçalho de duas linhas e se os nomes das colunas estão corretos (ex: 'Contagem - $', 'Diferença - $', 'Saldo Final - $').")
     # ### FIM DA SEÇÃO MODIFICADA ###
 
     elif script_choice == "Validade":
