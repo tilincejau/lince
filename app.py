@@ -105,7 +105,7 @@ def logistics_page():
     # ### INÍCIO DA SEÇÃO MODIFICADA ###
     if script_choice == "Acurácia":
         st.subheader("Acurácia de Estoque")
-        st.markdown("Calcula a acurácia diária e mensal do estoque (em unidades ou valores) a partir de um arquivo CSV ou Excel.")
+        st.markdown("Transforma e reorganiza os dados do arquivo de Acurácia.")
         
         # Aceita CSV e XLSX
         uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque' (.csv ou .xlsx)", type=["csv", "xlsx"])
@@ -137,6 +137,7 @@ def logistics_page():
                 df_data = df_data[~df_data.index.astype(str).str.contains('Totais', na=False)].copy()
                 
                 # 1. Definir as colunas que REALMENTE existem no arquivo CSV
+                # Conforme mapeamento do usuário
                 data_types_from_file = ['Contagem - $', 'Diferença - $', 'Diferença - $.1'] 
                 
                 unique_dates = sorted(list(set([
@@ -180,17 +181,8 @@ def logistics_page():
                 df_final['Diferença'] = df_final['Diferença'].fillna(0).abs()
                 df_final['Contagem'] = df_final['Contagem'].fillna(0)
                 
-                # 5. Cálculo da acurácia (agora usando 'Saldo Final' e 'Diferença')
-                daily_accuracy = df_final.groupby('Dia').apply(
-                    lambda x: (x['Saldo Final'].sum() - x['Diferença'].sum()) / x['Saldo Final'].sum() if x['Saldo Final'].sum() != 0 else 0
-                ).reset_index(name='Acurácia Diária')
+                # 5. REMOVIDOS CÁLCULOS DE ACURÁCIA
                 
-                total_saldo_final_mes = df_final['Saldo Final'].sum()
-                total_diferenca_mes = df_final['Diferença'].sum()
-                monthly_accuracy = (total_saldo_final_mes - total_diferenca_mes) / total_saldo_final_mes if total_saldo_final_mes != 0 else 0
-                
-                df_final = pd.merge(df_final, daily_accuracy, on='Dia', how='left')
-                df_final['Acurácia Mensal'] = monthly_accuracy
                 df_final = df_final.sort_values(by=['Dia', 'Prod Cód'])
                 df_final['Dia'] = pd.to_datetime(df_final['Dia']).dt.strftime('%Y-%m-%d')
                 
@@ -204,16 +196,13 @@ def logistics_page():
                 desired_order = [
                     'Prod Cód', 
                     'Dia', 
-                    'Saldo Final', 
-                    'Contagem', 
+                    'Contagem', # Ordem alterada conforme pedido
                     'Diferença', 
-                    'Acurácia Diária', 
-                    'Acurácia Mensal'
+                    'Saldo Final'
                 ]
-                # Pega quaisquer outras colunas que possam ter sido criadas
-                other_cols = [col for col in df_final.columns if col not in desired_order]
-                df_final = df_final[desired_order + other_cols]
-
+                
+                # Seleciona APENAS essas colunas
+                df_final = df_final[desired_order]
                 
                 st.subheader("📊 Resultado da Acurácia")
                 st.dataframe(df_final)
