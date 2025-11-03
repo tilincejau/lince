@@ -107,37 +107,38 @@ def logistics_page():
         st.subheader("Acurácia de Estoque")
         st.markdown("Calcula a acurácia diária e mensal do estoque (em unidades ou valores) a partir de um arquivo CSV ou Excel.")
         
-        # 1. Alterado para aceitar CSV e XLSX
+        # Aceita CSV e XLSX
         uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque' (.csv ou .xlsx)", type=["csv", "xlsx"])
         
         if uploaded_file is not None:
             try:
                 df = None
-                # 2. Lógica para ler CSV ou Excel
+                # Lógica para ler CSV ou Excel
                 if uploaded_file.name.endswith('.csv'):
                     df = pd.read_csv(uploaded_file, header=[0, 1])
                 elif uploaded_file.name.endswith('.xlsx'):
                     df = pd.read_excel(uploaded_file, header=[0, 1], sheet_name=0)
                 else:
-                    st.error("Formato de arquivo não suportado. Por favor, use .csv ou .xlsx.")
-                    return # Para a execução se o formato for inválido
+                    st.error("Formato de arquivo não suportado.")
+                    return # Para a execução
 
-                # --- Lógica original mantida ---
                 products_to_remove = ['185039 - Garrafa 0,30l', '471 - Garrafa 0,60l (3 )']
                 first_level_cols = [col[0] for col in df.columns]
-                second_level_cols = [col[1] for col in df.columns]
+                
                 try:
-                    prod_cod_col = [col for col in df.columns if col[1] == 'Prod Cód'][0]
+                    # O índice ainda é a primeira coluna
+                    prod_cod_col = df.columns[0]
                     df_data = df.set_index(prod_cod_col)
                 except IndexError:
-                    df_data = df.set_index(df.columns[0])
+                    st.error("Erro ao definir o índice do DataFrame.")
+                    return
                 
                 df_data = df_data[~df_data.index.isin(products_to_remove)].copy()
                 df_data = df_data[~df_data.index.astype(str).str.contains('Totais', na=False)].copy()
                 
-                data_types = ['Saldo Final', 'Contagem', 'Diferença', 'Acuracidade Estoque']
+                # 1. Usar os nomes de coluna corretos do arquivo
+                data_types_from_file = ['Contagem - $', 'Diferença - $'] 
                 
-                # 3. Lógica de datas ajustada para ignorar colunas 'Totais' ou 'Unnamed'
                 unique_dates = sorted(list(set([
                     col for col in first_level_cols
                     if col not in ['Data', 'Prod Cód', 'Totais'] and 'Unnamed' not in str(col)
@@ -150,33 +151,33 @@ def logistics_page():
                             'Prod Cód': product,
                             'Dia': date,
                         }
-                        for data_type in data_types:
+                        # 2. Loop sobre os data_types corretos
+                        for data_type in data_types_from_file: 
                             try:
                                 col_name = (date, data_type)
                                 value = df_data.loc[product, col_name]
                                 
                                 if isinstance(value, str):
-                                    if value == '-':
+                                    if value.strip() == '-':
                                         value = 0
-                                    else:
-                                        # 4. (Opcional) Adicionado para limpar valores monetários
-                                        # Se seus "valores" usam R$ ou formatação brasileira (1.234,56)
-                                        # descomente as linhas abaixo:
-                                        # value = str(value).replace('R$', '').strip()
-                                        # value = value.replace('.', '') # Remove separador de milhar
-                                        # value = value.replace(',', '.') # Troca vírgula decimal
-                                        pass # Por enquanto, assume que os números são lidos corretamente
+                                    # (Não mexer em '.' ou ',' pois o formato parece ser '1234.56')
                                 
                                 row_data[data_type] = pd.to_numeric(value, errors='coerce')
                             except KeyError:
+                                # Se a coluna (ex: 'Diferença - $') não existir para uma data
                                 row_data[data_type] = np.nan
                         new_rows.append(row_data)
                 
                 df_final = pd.DataFrame(new_rows)
-                df_final['Saldo Final'] = df_final['Saldo Final'].apply(lambda x: max(0, x))
-                df_final['Diferença'] = df_final['Diferença'].abs()
+
+                # 3. Renomear colunas para a lógica de cálculo
+                df_final.rename(columns={'Contagem - $': 'Saldo Final', 'Diferença - $': 'Diferença'}, inplace=True)
+
+                # 4. Corrigir o apply para lidar com NaNs (gerados pelo to_numeric)
+                df_final['Saldo Final'] = df_final['Saldo Final'].fillna(0).apply(lambda x: max(0, x))
+                df_final['Diferença'] = df_final['Diferença'].fillna(0).abs()
                 
-                # --- Lógica de cálculo original mantida ---
+                # 5. Cálculo da acurácia (agora deve funcionar)
                 daily_accuracy = df_final.groupby('Dia').apply(
                     lambda x: (x['Saldo Final'].sum() - x['Diferença'].sum()) / x['Saldo Final'].sum() if x['Saldo Final'].sum() != 0 else 0
                 ).reset_index(name='Acurácia Diária')
@@ -190,9 +191,9 @@ def logistics_page():
                 df_final = df_final.sort_values(by=['Dia', 'Prod Cód'])
                 df_final['Dia'] = pd.to_datetime(df_final['Dia']).dt.strftime('%Y-%m-%d')
                 
-                numeric_cols = ['Saldo Final', 'Contagem', 'Diferença', 'Acuracidade Estoque']
+                # 6. Ajustar colunas numéricas (só temos Saldo Final e Diferença)
+                numeric_cols = ['Saldo Final', 'Diferença'] 
                 
-                # 5. Arredondamento mais robusto (só arredonda colunas que existem)
                 existing_numeric_cols = [col for col in numeric_cols if col in df_final.columns]
                 df_final[existing_numeric_cols] = df_final[existing_numeric_cols].round(2)
                 
@@ -211,8 +212,7 @@ def logistics_page():
                 )
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
-                # 6. Mensagem de erro mais específica
-                st.error("Verifique se o arquivo (CSV ou XLSX) tem um cabeçalho de duas linhas e se as colunas 'Saldo Final' e 'Diferença' existem.")
+                st.error("Verifique se o arquivo (CSV ou XLSX) tem um cabeçalho de duas linhas e se os nomes das colunas estão corretos (ex: 'Contagem - $', 'Diferença - $').")
     # ### FIM DA SEÇÃO MODIFICADA ###
 
     elif script_choice == "Validade":
