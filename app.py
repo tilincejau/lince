@@ -136,8 +136,7 @@ def logistics_page():
                 df_data = df_data[~df_data.index.isin(products_to_remove)].copy()
                 df_data = df_data[~df_data.index.astype(str).str.contains('Totais', na=False)].copy()
                 
-                # 1. Usar os nomes de coluna corretos do arquivo
-                # (Adicione 'Diferença - $.1' se também for relevante)
+                # 1. Definir as colunas que REALMENTE existem no arquivo
                 data_types_from_file = ['Contagem - $', 'Diferença - $'] 
                 
                 unique_dates = sorted(list(set([
@@ -152,7 +151,7 @@ def logistics_page():
                             'Prod Cód': product,
                             'Dia': date,
                         }
-                        # 2. Loop sobre os data_types corretos
+                        # 2. Loop sobre os data_types que existem
                         for data_type in data_types_from_file: 
                             try:
                                 col_name = (date, data_type)
@@ -169,17 +168,26 @@ def logistics_page():
                 
                 df_final = pd.DataFrame(new_rows)
                 
-                # 3. NÃO renomear. Tratar NaNs e calcular.
-                df_final['Contagem - $'] = df_final['Contagem - $'].fillna(0).apply(lambda x: max(0, x))
-                df_final['Diferença - $'] = df_final['Diferença - $'].fillna(0).abs()
+                # 3. Renomear as colunas existentes para o nome desejado
+                df_final.rename(columns={
+                    'Contagem - $': 'Saldo Final', 
+                    'Diferença - $': 'Diferença'
+                }, inplace=True)
+
+                # 4. Criar a coluna 'Contagem' (vazia/zero) que o usuário pediu
+                df_final['Contagem'] = 0.0
+
+                # 5. Tratar NaNs nas colunas de dados
+                df_final['Saldo Final'] = df_final['Saldo Final'].fillna(0).apply(lambda x: max(0, x))
+                df_final['Diferença'] = df_final['Diferença'].fillna(0).abs()
                 
-                # 4. Cálculo da acurácia usando os nomes corretos
+                # 6. Cálculo da acurácia (agora usando 'Saldo Final' e 'Diferença')
                 daily_accuracy = df_final.groupby('Dia').apply(
-                    lambda x: (x['Contagem - $'].sum() - x['Diferença - $'].sum()) / x['Contagem - $'].sum() if x['Contagem - $'].sum() != 0 else 0
+                    lambda x: (x['Saldo Final'].sum() - x['Diferença'].sum()) / x['Saldo Final'].sum() if x['Saldo Final'].sum() != 0 else 0
                 ).reset_index(name='Acurácia Diária')
                 
-                total_saldo_final_mes = df_final['Contagem - $'].sum()
-                total_diferenca_mes = df_final['Diferença - $'].sum()
+                total_saldo_final_mes = df_final['Saldo Final'].sum()
+                total_diferenca_mes = df_final['Diferença'].sum()
                 monthly_accuracy = (total_saldo_final_mes - total_diferenca_mes) / total_saldo_final_mes if total_saldo_final_mes != 0 else 0
                 
                 df_final = pd.merge(df_final, daily_accuracy, on='Dia', how='left')
@@ -187,14 +195,28 @@ def logistics_page():
                 df_final = df_final.sort_values(by=['Dia', 'Prod Cód'])
                 df_final['Dia'] = pd.to_datetime(df_final['Dia']).dt.strftime('%Y-%m-%d')
                 
-                # 5. Ajustar colunas numéricas
-                numeric_cols = ['Contagem - $', 'Diferença - $'] 
+                # 7. Ajustar colunas numéricas
+                numeric_cols = ['Saldo Final', 'Contagem', 'Diferença'] 
                 
                 existing_numeric_cols = [col for col in numeric_cols if col in df_final.columns]
                 df_final[existing_numeric_cols] = df_final[existing_numeric_cols].round(2)
+
+                # 8. Reordenar colunas para a ordem exata que o usuário pediu
+                desired_order = [
+                    'Prod Cód', 
+                    'Dia', 
+                    'Saldo Final', 
+                    'Contagem', 
+                    'Diferença', 
+                    'Acurácia Diária', 
+                    'Acurácia Mensal'
+                ]
+                # Pega quaisquer outras colunas que possam ter sido criadas (para não perdê-las)
+                other_cols = [col for col in df_final.columns if col not in desired_order]
+                df_final = df_final[desired_order + other_cols]
+
                 
                 st.subheader("📊 Resultado da Acurácia")
-                # O DataFrame agora terá 'Contagem - $' e 'Diferença - $'
                 st.dataframe(df_final)
                 
                 excel_data = io.BytesIO()
