@@ -14,10 +14,6 @@ import os
 import xlsxwriter
 
 # Funções que representam cada página
-
-# ====================================================================
-# FUNÇÃO DE LOGIN CORRIGIDA
-# ====================================================================
 def login_form():
     """Exibe o formulário de login com um design aprimorado."""
     
@@ -41,13 +37,9 @@ def login_form():
                 st.session_state['is_logged_in'] = True
                 st.session_state['username'] = username
                 st.session_state['current_page'] = 'home'
-                # st.success(...) e st.balloons() REMOVIDOS DAQUI PARA EVITAR O ERRO
                 st.rerun()
             else:
                 st.error("Usuário ou senha incorretos.")
-# ====================================================================
-# FIM DA CORREÇÃO
-# ====================================================================
 
 def main_page():
     st.markdown(f"<h1 style='text-align: center;'>Página Inicial</h1>", unsafe_allow_html=True)
@@ -95,7 +87,7 @@ def load_from_db(table_name, engine):
     return pd.DataFrame()
 
 # ====================================================================
-# FUNÇÃO DE LOGÍSTICA
+# FUNÇÃO DE LOGÍSTICA ATUALIZADA
 # ====================================================================
 def logistics_page():
     st.title("Setor de Logística")
@@ -109,6 +101,7 @@ def logistics_page():
     
     st.write("---")
 
+    # ### INÍCIO DA SEÇÃO MODIFICADA ###
     if script_choice == "Acurácia":
         st.subheader("Acurácia de Estoque")
         st.markdown("Transforma e reorganiza os dados do arquivo de Acurácia.")
@@ -226,6 +219,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
                 st.error("Verifique se o arquivo (CSV ou XLSX) tem um cabeçalho de duas linhas e se os nomes das colunas estão corretos (ex: 'Contagem - $', 'Diferença - $', 'Saldo Final - $').")
+    # ### FIM DA SEÇÃO MODIFICADA ###
 
     elif script_choice == "Validade":
         st.subheader("Controle de Validade")
@@ -561,6 +555,15 @@ def logistics_page():
                         df_new_txt = pd.concat(new_txt_data_list, ignore_index=True)
                         # Combina dados antigos e novos
                         df_all_txt_combined = pd.concat([df_old_txt_data, df_new_txt], ignore_index=True)
+                        
+                        # ==========================================================
+                        # ### INÍCIO DA CORREÇÃO 1 ###
+                        # Garante que a coluna 'DataCompleta' é datetime antes de agregar
+                        if 'DataCompleta' in df_all_txt_combined.columns:
+                            df_all_txt_combined['DataCompleta'] = pd.to_datetime(df_all_txt_combined['DataCompleta'], errors='coerce')
+                        # ### FIM DA CORREÇÃO 1 ###
+                        # ==========================================================
+                        
                         # RE-AGREGA: Se houver múltiplas entradas para o mesmo (Vasilhame, Dia), elas são somadas
                         df_all_processed_txt_data = df_all_txt_combined.groupby(['Vasilhame', 'Dia']).agg(
                             Qtd_emprestimo=('Qtd. emprestimo', 'sum'),
@@ -592,6 +595,14 @@ def logistics_page():
                         # Identifica colunas de valor (Crédito/Débito)
                         pdf_value_cols = [col for col in df_all_pdf_combined.columns if 'Credito' in col or 'Debito' in col]
                         df_all_pdf_combined[pdf_value_cols] = df_all_pdf_combined[pdf_value_cols].fillna(0)
+                        
+                        # ==========================================================
+                        # ### INÍCIO DA CORREÇÃO 2 ###
+                        # Garante que a coluna 'DataCompleta' é datetime antes de agregar
+                        if 'DataCompleta' in df_all_pdf_combined.columns:
+                            df_all_pdf_combined['DataCompleta'] = pd.to_datetime(df_all_pdf_combined['DataCompleta'], errors='coerce')
+                        # ### FIM DA CORREÇÃO 2 ###
+                        # ==========================================================
 
                         agg_dict = {col: 'sum' for col in pdf_value_cols}
                         agg_dict['DataCompleta'] = 'max' # Pega a data mais recente
@@ -618,6 +629,14 @@ def logistics_page():
                     # Salva a data completa
                     df_historical_excel['DataCompleta'] = df_historical_excel['Carimbo de data/hora'].dt.date
                     df_historical_excel['Dia'] = df_historical_excel['Carimbo de data/hora'].dt.strftime('%d/%m')
+                    
+                    # ==========================================================
+                    # ### INÍCIO DA CORREÇÃO 3 ###
+                    # Garante que a coluna 'DataCompleta' é datetime antes de agregar
+                    if 'DataCompleta' in df_historical_excel.columns:
+                         df_historical_excel['DataCompleta'] = pd.to_datetime(df_historical_excel['DataCompleta'], errors='coerce')
+                    # ### FIM DA CORREÇÃO 3 ###
+                    # ==========================================================
                     
                     # Agrupa por Vasilhame e Dia, mas mantém a data completa (ex: pegando a mais recente)
                     df_excel_agg = df_historical_excel.groupby(['Qual vasilhame ?', 'Dia']).agg(
@@ -826,6 +845,10 @@ def logistics_page():
     if st.button("Voltar para o Início", key="log_voltar"):
         st.session_state['current_page'] = 'home'
         st.rerun()
+
+# ====================================================================
+# FIM DA FUNÇÃO ATUALIZADA
+# ====================================================================
 
 def commercial_page():
     st.title("Setor Comercial")
