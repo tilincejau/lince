@@ -96,7 +96,7 @@ def logistics_page():
     script_choice = st.selectbox(
         "Selecione um script para executar:",
         ("Selecione...", "Acurácia", "Validade", "Vasilhames", "Abastecimento"),
-        key="log_select" # <-- CHAVE ÚNICA ADICIONADA
+        key="log_select" 
     )
     
     st.write("---")
@@ -105,7 +105,7 @@ def logistics_page():
         st.subheader("Acurácia de Estoque")
         st.markdown("Transforma e reorganiza os dados do arquivo de Acurácia.")
         
-        uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque' (.csv ou .xlsx)", type=["csv", "xlsx"], key="acuracia_uploader") # <-- CHAVE ÚNICA ADICIONADA
+        uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque' (.csv ou .xlsx)", type=["csv", "xlsx"], key="acuracia_uploader")
         
         if uploaded_file is not None:
             try:
@@ -394,7 +394,6 @@ def logistics_page():
         st.subheader("Controle de Vasilhames")
         st.markdown("Este script consolida dados de vasilhames de diferentes fontes (Excel, TXT, PDF) e gera um relatório unificado.")
         
-        # Cria a conexão com o banco de dados
         engine = setup_database()
 
         def process_txt_file_st(file_content):
@@ -444,23 +443,31 @@ def logistics_page():
             df_txt_qty = df_estoque.groupby('Vasilhame')['QUANTIDADE'].sum().reset_index()
             
             # ==========================================================
-            # ### INÍCIO DA CORREÇÃO 1 ###
+            # ### CORREÇÃO 1 (KeyError) ###
             # Padroniza o nome da coluna paraNÃO ter o ponto
             df_txt_qty.rename(columns={'QUANTIDADE': 'Qtd_emprestimo'}, inplace=True)
-            # ### FIM DA CORREÇÃO 1 ###
             # ==========================================================
             
             return df_txt_qty, effective_date_str, effective_date_full
 
         def process_pdf_content(pdf_file, product_map):
+            """
+            Processa o arquivo PDF e retorna um DataFrame agregado
+            por (Vasilhame, Dia) e incluindo 'DataCompleta'.
+            """
             parsed_data = []
+            
+            # ==========================================================
+            # ### CORREÇÃO 2 (Leitura PDF) ###
+            # Regex corrigido e mensagem de erro melhorada
             filename_match = re.search(r'([a-zA-Z\s]+)\s+(\d{2}-\d{2}-\d{4})\.pdf', pdf_file.name)
             if not filename_match:
-                st.error(f"Erro: Nome de arquivo PDF inválido: {pdf_file.name}. Formato esperado: 'PDV DD-MM-YYYY.pdf'")
+                st.error(f"Erro: Nome de arquivo PDF inválido: {pdf_file.name}. Formato esperado: 'NOME DD-MM-YYYY.pdf' (ex: 'PONTA GROSSA 07-11-2025.pdf')")
                 return pd.DataFrame()
+            # ==========================================================
             
             source_name = filename_match.group(1).strip()
-            date_str = filename_match.group(2)
+            date_str = filename_match.group(2) 
             effective_date_obj = datetime.strptime(date_str, '%d-%m-%Y')
             effective_date_str = effective_date_obj.strftime('%d/%m')
             effective_date_full = effective_date_obj.date()
@@ -481,6 +488,7 @@ def logistics_page():
                     saldo = float(saldo_str)
                 except ValueError:
                     saldo = 0.0
+                
                 if material_code in product_map:
                     vasilhame = product_map[material_code]
                     credito = abs(saldo) if saldo < 0 else 0.0
@@ -494,7 +502,7 @@ def logistics_page():
                     })
                     
             if not parsed_data:
-                st.warning(f"Nenhum dado de PDV encontrado no arquivo: {pdf_file.name}")
+                st.warning(f"Nenhum dado de PDV encontrado no arquivo: {pdf_file.name}. Verifique se os códigos de material no 'pdf_material_code_to_vasilhame_map' estão corretos e completos.")
                 return pd.DataFrame()
             
             df_parsed = pd.DataFrame(parsed_data)
@@ -506,7 +514,7 @@ def logistics_page():
         
         uploaded_txt_files = st.file_uploader("Envie os arquivos TXT de empréstimos (Ex: ESTOQUE0102.TXT)", type=["txt"], accept_multiple_files=True, key="vasil_txt_uploader") 
         uploaded_excel_contagem = st.file_uploader("Envie o arquivo Excel de contagem (Ex: Contagem Vasilhames.xlsx)", type=["xlsx"], key="vasil_excel_uploader")
-        uploaded_pdf_files = st.file_uploader("Envie os arquivos PDF de fábrica", type=["pdf"], accept_multiple_files=True, key="vasil_pdf_uploader")
+        uploaded_pdf_files = st.file_uploader("Envie os arquivos PDF de fábrica (Ex: PONTA GROSSA 07-11-2025.pdf)", type=["pdf"], accept_multiple_files=True, key="vasil_pdf_uploader")
         
         if st.button("Processar e Consolidar Dados"):
             if uploaded_txt_files and uploaded_excel_contagem is not None:
@@ -532,13 +540,12 @@ def logistics_page():
                             df_all_txt_combined['DataCompleta'] = pd.to_datetime(df_all_txt_combined['DataCompleta'], errors='coerce')
                         
                         # ==========================================================
-                        # ### INÍCIO DA CORREÇÃO 2 ###
+                        # ### CORREÇÃO 3 (KeyError) ###
                         # Garante que a agregação leia e escreva o nome da coluna SEM o ponto
                         df_all_processed_txt_data = df_all_txt_combined.groupby(['Vasilhame', 'Dia']).agg(
                             Qtd_emprestimo=('Qtd_emprestimo', 'sum'),
                             DataCompleta=('DataCompleta', 'max') 
                         ).reset_index()
-                        # ### FIM DA CORREÇÃO 2 ###
                         # ==========================================================
 
                         df_all_processed_txt_data.to_sql('txt_data', con=engine, if_exists='replace', index=False)
@@ -549,9 +556,25 @@ def logistics_page():
 
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
+                        
+                        # ==========================================================
+                        # ### CORREÇÃO 4 (Leitura PDF) ###
+                        # Adicionados os códigos de Barril que estavam faltando
                         pdf_material_code_to_vasilhame_map = {
-                            '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', '000000000000107380': '555-001 - CAIXA PLASTICA 1L', '000000000000152598': '546-004 - CAIXA PLASTICA 24UN 300ML', '000000000000000470': '550-001 - CAIXA PLASTICA 600ML'
+                            # Códigos Antigos
+                            '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
+                            '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
+                            '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
+                            '000000000000107380': '555-001 - CAIXA PLASTICA 1L', 
+                            '000000000000152598': '546-004 - CAIXA PLASTICA 24UN 300ML', 
+                            '000000000000000470': '550-001 - CAIXA PLASTICA 600ML',
+                            
+                            # Novos Códigos (dos Barris de Ponta Grossa)
+                            '000000000000048261': '563-008 - BARRIL INOX 30L',
+                            '000000000000048272': '564-009 - BARRIL INOX 50L'
                         }
+                        # ==========================================================
+
                         for pdf_file in uploaded_pdf_files:
                             df_pdf_current = process_pdf_content(pdf_file, pdf_material_code_to_vasilhame_map)
                             if not df_pdf_current.empty:
@@ -622,10 +645,9 @@ def logistics_page():
                     df_final.drop(cols_to_drop, axis=1, inplace=True)
 
                     # ==========================================================
-                    # ### INÍCIO DA CORREÇÃO 3 ###
+                    # ### CORREÇÃO 5 (KeyError) ###
                     # Usa o nome da coluna SEM o ponto
                     numeric_cols = ['Contagem', 'Qtd_emprestimo'] + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
-                    # ### FIM DA CORREÇÃO 3 ###
                     # ==========================================================
                     
                     for col in numeric_cols:
@@ -633,10 +655,9 @@ def logistics_page():
                             df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0)
                         
                     # ==========================================================
-                    # ### INÍCIO DA CORREÇÃO 4 ###
+                    # ### CORREÇÃO 6 (KeyError) ###
                     # Usa o nome da coluna SEM o ponto no cálculo
                     df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1)
-                    # ### FIM DA CORREÇÃO 4 ###
                     # ==========================================================
                     
                     df_final['DataCompleta'] = pd.to_datetime(df_final['DataCompleta'], errors='coerce')
@@ -671,7 +692,7 @@ def logistics_page():
         st.subheader("Análise de Abastecimento")
         st.markdown("Este script processa dados de abastecimento e gera relatórios separados para Diesel e Arla, com médias de consumo por KM.")
         
-        uploaded_file = st.file_uploader("Envie o arquivo de abastecimento (.xlsx ou .csv)", type=["xlsx", "csv"], key="abastec_uploader") # <-- CHAVE ÚNICA ADICIONADA
+        uploaded_file = st.file_uploader("Envie o arquivo de abastecimento (.xlsx ou .csv)", type=["xlsx", "csv"], key="abastec_uploader") 
         
         if uploaded_file is not None:
             try:
