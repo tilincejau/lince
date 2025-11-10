@@ -101,31 +101,27 @@ def logistics_page():
     
     st.write("---")
 
-    # ### INÍCIO DA SEÇÃO MODIFICADA ###
     if script_choice == "Acurácia":
         st.subheader("Acurácia de Estoque")
         st.markdown("Transforma e reorganiza os dados do arquivo de Acurácia.")
         
-        # Aceita CSV e XLSX
         uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque' (.csv ou .xlsx)", type=["csv", "xlsx"], key="acuracia_uploader") # <-- CHAVE ÚNICA ADICIONADA
         
         if uploaded_file is not None:
             try:
                 df = None
-                # Lógica para ler CSV ou Excel
                 if uploaded_file.name.endswith('.csv'):
                     df = pd.read_csv(uploaded_file, header=[0, 1])
                 elif uploaded_file.name.endswith('.xlsx'):
                     df = pd.read_excel(uploaded_file, header=[0, 1], sheet_name=0)
                 else:
                     st.error("Formato de arquivo não suportado.")
-                    return # Para a execução
+                    return 
 
                 products_to_remove = ['185039 - Garrafa 0,30l', '471 - Garrafa 0,60l (3 )']
                 first_level_cols = [col[0] for col in df.columns]
                 
                 try:
-                    # O índice ainda é a primeira coluna
                     prod_cod_col = df.columns[0]
                     df_data = df.set_index(prod_cod_col)
                 except IndexError:
@@ -135,8 +131,6 @@ def logistics_page():
                 df_data = df_data[~df_data.index.isin(products_to_remove)].copy()
                 df_data = df_data[~df_data.index.astype(str).str.contains('Totais', na=False)].copy()
                 
-                # 1. Definir as colunas que REALMENTE existem no arquivo CSV
-                # Conforme mapeamento do usuário
                 data_types_from_file = ['Contagem - $', 'Diferença - $', 'Saldo Final - $'] 
                 
                 unique_dates = sorted(list(set([
@@ -151,7 +145,6 @@ def logistics_page():
                             'Prod Cód': product,
                             'Dia': date,
                         }
-                        # 2. Loop sobre os data_types que existem
                         for data_type in data_types_from_file: 
                             try:
                                 col_name = (date, data_type)
@@ -168,39 +161,32 @@ def logistics_page():
                 
                 df_final = pd.DataFrame(new_rows)
                 
-                # 3. Renomear as colunas existentes para o nome desejado
                 df_final.rename(columns={
                     'Contagem - $': 'Contagem', 
                     'Diferença - $': 'Diferença',
-                    'Saldo Final - $': 'Saldo Final' # Mapeamento CORRIGIDO
+                    'Saldo Final - $': 'Saldo Final'
                 }, inplace=True)
 
-                # 4. Tratar NaNs
                 df_final['Saldo Final'] = df_final['Saldo Final'].fillna(0).apply(lambda x: max(0, x))
                 df_final['Diferença'] = df_final['Diferença'].fillna(0).abs()
                 df_final['Contagem'] = df_final['Contagem'].fillna(0)
                 
-                # 5. REMOVIDOS CÁLCULOS DE ACURÁCIA
-                
                 df_final = df_final.sort_values(by=['Dia', 'Prod Cód'])
                 df_final['Dia'] = pd.to_datetime(df_final['Dia']).dt.strftime('%Y-%m-%d')
                 
-                # 6. Ajustar colunas numéricas
                 numeric_cols = ['Saldo Final', 'Contagem', 'Diferença'] 
                 
                 existing_numeric_cols = [col for col in numeric_cols if col in df_final.columns]
                 df_final[existing_numeric_cols] = df_final[existing_numeric_cols].round(2)
 
-                # 7. Reordenar colunas para a ordem exata que o usuário pediu
                 desired_order = [
                     'Prod Cód', 
                     'Dia', 
-                    'Contagem', # Ordem alterada conforme pedido
+                    'Contagem',
                     'Diferença', 
                     'Saldo Final'
                 ]
                 
-                # Seleciona APENAS essas colunas
                 df_final = df_final[desired_order]
                 
                 st.subheader("📊 Resultado da Acurácia")
@@ -219,18 +205,12 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
                 st.error("Verifique se o arquivo (CSV ou XLSX) tem um cabeçalho de duas linhas e se os nomes das colunas estão corretos (ex: 'Contagem - $', 'Diferença - $', 'Saldo Final - $').")
-    # ### FIM DA SEÇÃO MODIFICADA ###
 
     elif script_choice == "Validade":
         st.subheader("Controle de Validade")
         st.markdown("Consolida dados de validade de um arquivo Excel e um arquivo de texto, e gera um relatório com status de validade e contagens.")
         
-        # FUNÇÃO CORRIGIDA PARA LER O TXT
         def parse_estoque_txt_st(file_content):
-            """
-            Analisa o arquivo TXT lendo linha por linha, extraindo dados 
-            de forma robusta, ignorando o espaçamento inconsistente.
-            """
             lines = [line.decode('latin1') for line in file_content.getvalue().splitlines()]
             
             separator_string = '-' * 116
@@ -252,7 +232,6 @@ def logistics_page():
             ]
             data = []
             
-            # Regex para capturar campos individuais de forma flexível
             pattern = re.compile(
                 r'^\s*(\d+)\s+'
                 r'(.+?)'
@@ -275,7 +254,6 @@ def logistics_page():
                     
                     row_values = [groups[0], groups[1].strip()]
                     
-                    # Extrai os 6 pares de CX e UN e converte para inteiros
                     for i in range(2, len(groups), 2):
                         cx = groups[i].strip() if groups[i] and groups[i].strip() else '0'
                         un = groups[i+1].strip() if groups[i+1] and groups[i+1].strip() else '0'
@@ -288,10 +266,6 @@ def logistics_page():
             return df_txt_raw
 
         def extract_units_per_box(product_name):
-            """
-            Tenta extrair o número de unidades por caixa do nome do produto.
-            Lida com formatos como '12x200UN' e '24UN'.
-            """
             product_name = str(product_name).upper().replace(' ', '')
             match_multiplication = re.search(r'(\d+)X(\d+)(?:UN|U)', product_name)
             if match_multiplication:
@@ -300,11 +274,11 @@ def logistics_page():
                 return factor1 * factor2
             match_direct = re.search(r'(\d+)(?:UN|U)', product_name)
             if match_direct:
-                return int(match_direct.group(1)) # <-- CORREÇÃO AQUI
+                return int(match_direct.group(1)) 
             return 1
 
-        uploaded_excel_file = st.file_uploader("Envie o arquivo Excel 'Controle de Validade.xlsx'", type=["xlsx"], key="validade_excel_uploader") # <-- CHAVE ÚNICA ADICIONADA
-        uploaded_txt_file = st.file_uploader("Envie o arquivo de texto de estoque", type=["txt"], key="validade_txt_uploader") # <-- CHAVE ÚNICA ADICIONADA
+        uploaded_excel_file = st.file_uploader("Envie o arquivo Excel 'Controle de Validade.xlsx'", type=["xlsx"], key="validade_excel_uploader") 
+        uploaded_txt_file = st.file_uploader("Envie o arquivo de texto de estoque", type=["txt"], key="validade_txt_uploader")
         
         if uploaded_excel_file is not None and uploaded_txt_file is not None:
             try:
@@ -426,7 +400,7 @@ def logistics_page():
         def process_txt_file_st(file_content):
             """
             Processa o arquivo TXT e retorna:
-            1. DataFrame com (Vasilhame, Qtd. emprestimo)
+            1. DataFrame com (Vasilhame, Qtd_emprestimo)
             2. String 'Dia' (DD/MM)
             3. Objeto 'DataCompleta' (date)
             """
@@ -441,7 +415,6 @@ def logistics_page():
                 month = filename_date_match.group(1)[2:]
                 year = datetime.now().year
                 
-                # Tenta adivinhar o ano correto (se for janeiro e o mês do arquivo for dezembro, assume ano passado)
                 now = datetime.now()
                 if now.month == 1 and month == '12':
                     year = year - 1
@@ -451,7 +424,7 @@ def logistics_page():
                 effective_date_full = effective_date_obj.date()
             else:
                 st.error(f"Nome do arquivo TXT inválido: {file_content.name}. O formato deve ser 'ESTOQUEDDMM.TXT'.")
-                return None, None, None # Retorna None 3x
+                return None, None, None 
 
             product_code_to_vasilhame_map = {'563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', '550-012': '550-001 - CAIXA PLASTICA 600ML', '803-039': '550-001 - CAIXA PLASTICA 600ML', '803-037': '550-001 - CAIXA PLASTICA 600ML'}
             parsed_data = []
@@ -469,14 +442,17 @@ def logistics_page():
             df_estoque = pd.DataFrame(parsed_data)
             df_estoque['Vasilhame'] = df_estoque['PRODUTO_CODE'].map(product_code_to_vasilhame_map)
             df_txt_qty = df_estoque.groupby('Vasilhame')['QUANTIDADE'].sum().reset_index()
-            df_txt_qty.rename(columns={'QUANTIDADE': 'Qtd. emprestimo'}, inplace=True)
+            
+            # ==========================================================
+            # ### INÍCIO DA CORREÇÃO 1 ###
+            # Padroniza o nome da coluna paraNÃO ter o ponto
+            df_txt_qty.rename(columns={'QUANTIDADE': 'Qtd_emprestimo'}, inplace=True)
+            # ### FIM DA CORREÇÃO 1 ###
+            # ==========================================================
+            
             return df_txt_qty, effective_date_str, effective_date_full
 
         def process_pdf_content(pdf_file, product_map):
-            """
-            Processa o arquivo PDF e retorna um DataFrame agregado
-            por (Vasilhame, Dia) e incluindo 'DataCompleta'.
-            """
             parsed_data = []
             filename_match = re.search(r'([a-zA-Z\s]+)\s+(\d{2}-\d{2}-\d{4})\.pdf', pdf_file.name)
             if not filename_match:
@@ -484,10 +460,10 @@ def logistics_page():
                 return pd.DataFrame()
             
             source_name = filename_match.group(1).strip()
-            date_str = filename_match.group(2) # Formato DD-MM-YYYY
+            date_str = filename_match.group(2)
             effective_date_obj = datetime.strptime(date_str, '%d-%m-%Y')
-            effective_date_str = effective_date_obj.strftime('%d/%m') # DD/MM
-            effective_date_full = effective_date_obj.date() # Data completa
+            effective_date_str = effective_date_obj.strftime('%d/%m')
+            effective_date_full = effective_date_obj.date()
             
             source_to_col_map = {'PONTA GROSSA': 'Ponta Grossa (0328)', 'ARARAQUARA': 'Araraquara (0336)', 'ITU': 'Itu (0002)'}
             col_suffix = source_to_col_map.get(source_name.upper(), source_name)
@@ -512,7 +488,7 @@ def logistics_page():
                     parsed_data.append({
                         'Vasilhame': vasilhame, 
                         'Dia': effective_date_str, 
-                        'DataCompleta': effective_date_full, # Adiciona data completa
+                        'DataCompleta': effective_date_full, 
                         f'Credito {col_suffix}': credito, 
                         f'Debito {col_suffix}': debito
                     })
@@ -521,28 +497,25 @@ def logistics_page():
                 st.warning(f"Nenhum dado de PDV encontrado no arquivo: {pdf_file.name}")
                 return pd.DataFrame()
             
-            # Agrupa e mantém a DataCompleta
             df_parsed = pd.DataFrame(parsed_data)
             pdf_value_cols = [col for col in df_parsed.columns if 'Credito' in col or 'Debito' in col]
             agg_dict = {col: 'sum' for col in pdf_value_cols}
-            agg_dict['DataCompleta'] = 'max' # Pega a data mais recente
+            agg_dict['DataCompleta'] = 'max'
             
             return df_parsed.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
         
-        uploaded_txt_files = st.file_uploader("Envie os arquivos TXT de empréstimos (Ex: ESTOQUE0102.TXT)", type=["txt"], accept_multiple_files=True, key="vasil_txt_uploader") # <-- CHAVE ÚNICA ADICIONADA
-        uploaded_excel_contagem = st.file_uploader("Envie o arquivo Excel de contagem (Ex: Contagem Vasilhames.xlsx)", type=["xlsx"], key="vasil_excel_uploader") # <-- CHAVE ÚNICA ADICIONADA
-        uploaded_pdf_files = st.file_uploader("Envie os arquivos PDF de fábrica", type=["pdf"], accept_multiple_files=True, key="vasil_pdf_uploader") # <-- CHAVE ÚNICA ADICIONADA
+        uploaded_txt_files = st.file_uploader("Envie os arquivos TXT de empréstimos (Ex: ESTOQUE0102.TXT)", type=["txt"], accept_multiple_files=True, key="vasil_txt_uploader") 
+        uploaded_excel_contagem = st.file_uploader("Envie o arquivo Excel de contagem (Ex: Contagem Vasilhames.xlsx)", type=["xlsx"], key="vasil_excel_uploader")
+        uploaded_pdf_files = st.file_uploader("Envie os arquivos PDF de fábrica", type=["pdf"], accept_multiple_files=True, key="vasil_pdf_uploader")
         
         if st.button("Processar e Consolidar Dados"):
             if uploaded_txt_files and uploaded_excel_contagem is not None:
                 try:
                     st.info("Processando e salvando novos dados. Por favor, aguarde...")
                     
-                    # --- Carrega dados antigos do BD ---
                     df_old_txt_data = load_from_db('txt_data', engine)
                     df_old_pdf_data = load_from_db('pdf_data', engine)
 
-                    # --- Processa novos arquivos TXT ---
                     new_txt_data_list = []
                     for uploaded_txt_file in uploaded_txt_files:
                         df_txt_qty, effective_date_str, effective_date_full = process_txt_file_st(uploaded_txt_file)
@@ -553,30 +526,27 @@ def logistics_page():
                     
                     if new_txt_data_list:
                         df_new_txt = pd.concat(new_txt_data_list, ignore_index=True)
-                        # Combina dados antigos e novos
                         df_all_txt_combined = pd.concat([df_old_txt_data, df_new_txt], ignore_index=True)
                         
-                        # ==========================================================
-                        # ### INÍCIO DA CORREÇÃO 1 ###
-                        # Garante que a coluna 'DataCompleta' é datetime antes de agregar
                         if 'DataCompleta' in df_all_txt_combined.columns:
                             df_all_txt_combined['DataCompleta'] = pd.to_datetime(df_all_txt_combined['DataCompleta'], errors='coerce')
-                        # ### FIM DA CORREÇÃO 1 ###
-                        # ==========================================================
                         
-                        # RE-AGREGA: Se houver múltiplas entradas para o mesmo (Vasilhame, Dia), elas são somadas
+                        # ==========================================================
+                        # ### INÍCIO DA CORREÇÃO 2 ###
+                        # Garante que a agregação leia e escreva o nome da coluna SEM o ponto
                         df_all_processed_txt_data = df_all_txt_combined.groupby(['Vasilhame', 'Dia']).agg(
-                            Qtd_emprestimo=('Qtd. emprestimo', 'sum'),
-                            DataCompleta=('DataCompleta', 'max') # Pega a data mais recente
+                            Qtd_emprestimo=('Qtd_emprestimo', 'sum'),
+                            DataCompleta=('DataCompleta', 'max') 
                         ).reset_index()
-                        # Salva a tabela agregada e limpa de volta
+                        # ### FIM DA CORREÇÃO 2 ###
+                        # ==========================================================
+
                         df_all_processed_txt_data.to_sql('txt_data', con=engine, if_exists='replace', index=False)
                         st.success("Dados TXT atualizados no banco de dados!")
                     else:
                         st.warning("Nenhum dado TXT novo para processar.")
-                        df_all_processed_txt_data = df_old_txt_data # Usa apenas os dados antigos
+                        df_all_processed_txt_data = df_old_txt_data 
 
-                    # --- Processa novos arquivos PDF ---
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
                         pdf_material_code_to_vasilhame_map = {
@@ -589,110 +559,91 @@ def logistics_page():
                     
                     if new_pdf_data_list:
                         df_new_pdf = pd.concat(new_pdf_data_list, ignore_index=True)
-                        # Combina dados antigos e novos
                         df_all_pdf_combined = pd.concat([df_old_pdf_data, df_new_pdf], ignore_index=True)
                         
-                        # Identifica colunas de valor (Crédito/Débito)
                         pdf_value_cols = [col for col in df_all_pdf_combined.columns if 'Credito' in col or 'Debito' in col]
                         df_all_pdf_combined[pdf_value_cols] = df_all_pdf_combined[pdf_value_cols].fillna(0)
                         
-                        # ==========================================================
-                        # ### INÍCIO DA CORREÇÃO 2 ###
-                        # Garante que a coluna 'DataCompleta' é datetime antes de agregar
                         if 'DataCompleta' in df_all_pdf_combined.columns:
                             df_all_pdf_combined['DataCompleta'] = pd.to_datetime(df_all_pdf_combined['DataCompleta'], errors='coerce')
-                        # ### FIM DA CORREÇÃO 2 ###
-                        # ==========================================================
 
                         agg_dict = {col: 'sum' for col in pdf_value_cols}
-                        agg_dict['DataCompleta'] = 'max' # Pega a data mais recente
+                        agg_dict['DataCompleta'] = 'max' 
 
                         if pdf_value_cols:
-                            # RE-AGREGA: Soma todas as colunas de valor para (Vasilhame, Dia) únicos
                             df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
                         else:
-                            # Se não houver colunas de valor, apenas pegue as chaves únicas
                             df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(DataCompleta=('DataCompleta', 'max')).reset_index()
                             
-                        # Salva a tabela agregada e limpa de volta
                         df_all_processed_pdf_data.to_sql('pdf_data', con=engine, if_exists='replace', index=False)
                         st.success("Dados PDF atualizados no banco de dados!")
                     else:
                         st.warning("Nenhum dado PDF novo para processar.")
-                        df_all_processed_pdf_data = df_old_pdf_data # Usa apenas os dados antigos
+                        df_all_processed_pdf_data = df_old_pdf_data
                     
-
-                    # --- Processa Excel (Contagem) ---
                     df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                     df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
                     df_historical_excel = df_contagem.copy()
-                    # Salva a data completa
                     df_historical_excel['DataCompleta'] = df_historical_excel['Carimbo de data/hora'].dt.date
                     df_historical_excel['Dia'] = df_historical_excel['Carimbo de data/hora'].dt.strftime('%d/%m')
                     
-                    # ==========================================================
-                    # ### INÍCIO DA CORREÇÃO 3 ###
-                    # Garante que a coluna 'DataCompleta' é datetime antes de agregar
                     if 'DataCompleta' in df_historical_excel.columns:
                          df_historical_excel['DataCompleta'] = pd.to_datetime(df_historical_excel['DataCompleta'], errors='coerce')
-                    # ### FIM DA CORREÇÃO 3 ###
-                    # ==========================================================
                     
-                    # Agrupa por Vasilhame e Dia, mas mantém a data completa (ex: pegando a mais recente)
                     df_excel_agg = df_historical_excel.groupby(['Qual vasilhame ?', 'Dia']).agg(
                         Contagem=('Total', 'sum'),
-                        DataCompleta=('DataCompleta', 'max') # Pega a data mais recente para esse 'Dia'
+                        DataCompleta=('DataCompleta', 'max')
                     ).reset_index()
                     df_excel_agg.rename(columns={'Qual vasilhame ?': 'Vasilhame'}, inplace=True)
                     
-                    # --- Consolidação ---
-                    
-                    # Renomeia colunas de data ANTES do merge para evitar conflitos
                     df_excel_agg.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
                     if 'DataCompleta' in df_all_processed_txt_data.columns:
                         df_all_processed_txt_data.rename(columns={'DataCompleta': 'DataCompleta_txt'}, inplace=True)
                     if 'DataCompleta' in df_all_processed_pdf_data.columns:
                         df_all_processed_pdf_data.rename(columns={'DataCompleta': 'DataCompleta_pdf'}, inplace=True)
 
-                    # Cria a lista mestre de (Vasilhame, Dia) de todas as fontes
                     df_master_combinations = pd.concat([
                         df_excel_agg[['Vasilhame', 'Dia']],
                         df_all_processed_txt_data[['Vasilhame', 'Dia']],
                         df_all_processed_pdf_data[['Vasilhame', 'Dia']]
                     ]).drop_duplicates().reset_index(drop=True)
 
-                    # Faz o merge com os dados JÁ AGREGADOS do BD e o Excel
                     df_final = pd.merge(df_master_combinations, df_excel_agg, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_txt_data, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
                     
-                    # Combina as colunas 'DataCompleta' de todas as fontes
                     df_final['DataCompleta'] = df_final['DataCompleta_excel'].fillna(np.nan)
                     if 'DataCompleta_txt' in df_final.columns:
                         df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_txt'])
                     if 'DataCompleta_pdf' in df_final.columns:
                         df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_pdf'])
                     
-                    # Drop colunas extras de data
                     cols_to_drop = [col for col in df_final.columns if col.startswith('DataCompleta_')]
                     df_final.drop(cols_to_drop, axis=1, inplace=True)
 
-                    # Preenche NaNs para colunas numéricas
-                    numeric_cols = ['Contagem', 'Qtd. emprestimo'] + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
+                    # ==========================================================
+                    # ### INÍCIO DA CORREÇÃO 3 ###
+                    # Usa o nome da coluna SEM o ponto
+                    numeric_cols = ['Contagem', 'Qtd_emprestimo'] + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
+                    # ### FIM DA CORREÇÃO 3 ###
+                    # ==========================================================
+                    
                     for col in numeric_cols:
                         if col in df_final.columns:
                             df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0)
                         
-                    # Recalcula os totais
-                    df_final['Total Revenda'] = df_final['Qtd. emprestimo'] + df_final['Contagem'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1)
+                    # ==========================================================
+                    # ### INÍCIO DA CORREÇÃO 4 ###
+                    # Usa o nome da coluna SEM o ponto no cálculo
+                    df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1)
+                    # ### FIM DA CORREÇÃO 4 ###
+                    # ==========================================================
                     
-                    # Ordena por DataCompleta para garantir que .diff() funcione
                     df_final['DataCompleta'] = pd.to_datetime(df_final['DataCompleta'], errors='coerce')
                     df_final.sort_values(by=['Vasilhame', 'DataCompleta'], inplace=True, na_position='first')
                     
                     df_final['Diferença'] = df_final.groupby('Vasilhame')['Total Revenda'].diff()
                     
-                    # Remove a coluna de ordenação antes de exibir/salvar
                     df_final_output = df_final.drop('DataCompleta', axis=1)
                     
                     st.subheader("✅ Tabela Consolidada de Vasilhames")
@@ -711,7 +662,7 @@ def logistics_page():
                 except Exception as e:
                     st.error(f"Ocorreu um erro durante o processamento: {e}")
                     import traceback
-                    st.error(traceback.format_exc()) # Adiciona mais detalhes do erro
+                    st.error(traceback.format_exc())
     # ====================================================================
     # ### FIM DA SEÇÃO VASILHAMES CORRIGIDA ###
     # ====================================================================
@@ -726,7 +677,6 @@ def logistics_page():
             try:
                 st.info("Processando arquivo de abastecimento. Isso pode levar alguns segundos...")
                 
-                # Leitura do arquivo e tratamento de erro
                 try:
                     if uploaded_file.name.endswith('.csv'):
                         df = pd.read_csv(uploaded_file)
@@ -739,10 +689,8 @@ def logistics_page():
                     st.error(f"Erro ao ler o arquivo: {e}")
                     return
 
-                # Normalização das colunas
                 df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
 
-                # Mapeamento e unificação das colunas
                 column_mapping = {
                     'DATA ABASTECIMENTO': ['DATA', 'DATA ABASTECIMENTO', 'DATE', 'DATA_ABASTECIMENTO'],
                     'HORÁRIO': ['HORÁRIO', 'HORA', 'HORA DO ABASTECIMENTO'],
@@ -764,20 +712,17 @@ def logistics_page():
                         df_unified[new_name] = np.nan
                 df = df_unified
 
-                # Garante que as colunas de data e hora estão no formato correto
                 df['DATA ABASTECIMENTO'] = pd.to_datetime(df['DATA ABASTECIMENTO'], errors='coerce').dt.date
                 df['HORÁRIO'] = pd.to_datetime(df['HORÁRIO'], format='%H:%M:%S', errors='coerce').dt.time
                 df['KM'] = pd.to_numeric(df['KM'], errors='coerce')
                 df['LITROS'] = pd.to_numeric(df['LITROS'], errors='coerce')
                 df.dropna(subset=['DATA ABASTECIMENTO', 'KM', 'LITROS'], inplace=True)
                 
-                # Define as colunas de saída
                 colunas_saida = [
                     'Data Abastecimento', 'HORÁRIO', 'TIPO DE ABASTECIMENTO',
                     'PLACA', 'KM', 'ALERTA KM', 'MOTORISTA', 'LITROS', 'Média de litros por KM'
                 ]
                 
-                # Processa a planilha de Diesel
                 df_diesel = df[df['TIPO DE ABASTECIMENTO'].str.upper() == 'DIESEL'].copy()
                 if not df_diesel.empty:
                     excel_data_diesel = io.BytesIO()
@@ -808,7 +753,6 @@ def logistics_page():
                 else:
                     st.warning("Não foram encontrados dados de 'DIESEL' no arquivo.")
                 
-                # Processa a planilha de Arla
                 df_arla = df[df['TIPO DE ABASTECIMENTO'].str.upper() == 'ARLA'].copy()
                 if not df_arla.empty:
                     excel_data_arla = io.BytesIO()
@@ -846,10 +790,6 @@ def logistics_page():
         st.session_state['current_page'] = 'home'
         st.rerun()
 
-# ====================================================================
-# FIM DA FUNÇÃO ATUALIZADA
-# ====================================================================
-
 def commercial_page():
     st.title("Setor Comercial")
     st.markdown("Bem-vindo(a) ao setor Comercial. Abaixo estão os scripts disponíveis para análise.")
@@ -857,7 +797,7 @@ def commercial_page():
     script_selection = st.selectbox(
         "Selecione o script que deseja executar:",
         ("Selecione...", "Troca de Canal", "Circuito Execução"),
-        key="com_select" # <-- CHAVE ÚNICA ADICIONADA
+        key="com_select" 
     )
 
     if script_selection == "Troca de Canal":
@@ -866,7 +806,6 @@ def commercial_page():
         st.markdown("Este script transforma e consolida dados de planilhas de Google Forms, adicionando uma coluna de status com lista suspensa.")
 
         def normalize_columns(columns_list):
-            """Normaliza uma lista de nomes de colunas."""
             normalized_list = []
             for col in columns_list:
                 col = re.sub(r'\s+', ' ', col).strip()
@@ -875,22 +814,16 @@ def commercial_page():
             return normalized_list
 
         def transform_google_forms_data(df):
-            """
-            Transforma dados de Google Forms, consolidando informações e adicionando
-            uma coluna 'Status' com validação de dados.
-            """
             processed_records = []
             if df.empty or len(df.columns) < 28:
                 st.error("A planilha não contém o número mínimo de colunas esperado para este script.")
                 return pd.DataFrame()
 
             for index, row in df.iterrows():
-                # Verificação de segurança para garantir que 'row' é um Series.
                 if not isinstance(row, pd.Series):
                     st.warning(f"Aviso: A linha {index} não é um Series e foi ignorada.")
                     continue
                 
-                # Verificação de segurança para o tamanho da linha
                 if len(row) < 28:
                     st.warning(f"Aviso: A linha {index} tem menos de 28 colunas e será ignorada.")
                     continue
@@ -932,7 +865,7 @@ def commercial_page():
             final_df = pd.DataFrame(processed_records)
             return final_df
 
-        uploaded_file_1 = st.file_uploader("Envie o arquivo para 'Troca de Canal' (.xlsx)", type=["xlsx"], key="troca_canal_uploader") # <-- CHAVE ÚNICA ADICIONADA
+        uploaded_file_1 = st.file_uploader("Envie o arquivo para 'Troca de Canal' (.xlsx)", type=["xlsx"], key="troca_canal_uploader") 
 
         if uploaded_file_1 is not None:
             try:
@@ -987,15 +920,10 @@ def commercial_page():
         st.markdown("Este script converte os valores 'Presença' em pontuação, com base no nome das colunas.")
 
         def extract_points(column_name):
-            """Função para extrair o valor numérico entre parênteses em uma string de cabeçalho."""
             match = re.search(r"\(\s*(\d+)\s*Pontos\s*\)", column_name)
             return int(match.group(1)) if match else None
 
         def transform_points_columns(df):
-            """
-            Aplica a transformação de 'Presença' para pontos nas colunas
-            que contêm 'Pontos' no nome.
-            """
             df_transformed = df.copy()
             for col in df_transformed.columns:
                 if "Pontos" in col:
@@ -1006,14 +934,13 @@ def commercial_page():
 
         @st.cache_data
         def convert_df_to_excel(df):
-            """Converte DataFrame para um arquivo Excel em memória."""
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 df.to_excel(writer, index=False)
             processed_data = output.getvalue()
             return processed_data
 
-        uploaded_file_2 = st.file_uploader("Envie o arquivo para 'Circuito Execução' (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") # <-- CHAVE ÚNICA ADICIONADA
+        uploaded_file_2 = st.file_uploader("Envie o arquivo para 'Circuito Execução' (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
 
         if uploaded_file_2 is not None:
             try:
@@ -1049,7 +976,7 @@ def rh_page():
     script_choice = st.selectbox(
         "Selecione um script para executar:",
         ("Selecione...", "Controle de Jornada"),
-        key="rh_select" # <-- CHAVE ÚNICA ADICIONADA
+        key="rh_select" 
     )
 
     st.write("---")
@@ -1101,7 +1028,7 @@ def rh_page():
             else:
                 return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
 
-        uploaded_file = st.file_uploader("Envie o arquivo 'Controle de Jornada.xlsx'", type=["xlsx", "csv"], key="jornada_uploader") # <-- CHAVE ÚNICA ADICIONADA
+        uploaded_file = st.file_uploader("Envie o arquivo 'Controle de Jornada.xlsx'", type=["xlsx", "csv"], key="jornada_uploader") 
 
         if uploaded_file is not None:
             try:
@@ -1220,7 +1147,6 @@ def rh_page():
                             trip_events_df = pd.DataFrame(trip_events)
                             trip_events_df.sort_values(by=['Data Original'], inplace=True)
 
-                            # Tabela de Detalhes da Viagem
                             required_events = ['Inicio Jornada', 'Inicio de Viagem', '1° Parada', '2° Parada', '3° Parada', '4° Parada', '5° Parada', 'Fim da Viagem', 'Fim de Jornada']
                             
                             detailed_events_output = []
@@ -1267,7 +1193,6 @@ def rh_page():
                                         'Duração': ''
                                     })
                             
-                            # Totais de Viagem e Jornada
                             inicio_jornada_ts = trip_events_df[trip_events_df['Tipo de Lançamento'] == 'Inicio Jornada']['Inicio'].min()
                             fim_jornada_ts = trip_events_df[trip_events_df['Tipo de Lançamento'] == 'Fim de Jornada']['Fim'].max()
                             tempo_jornada = fim_jornada_ts - inicio_jornada_ts if pd.notnull(inicio_jornada_ts) and pd.notnull(fim_jornada_ts) else timedelta(seconds=0)
@@ -1276,7 +1201,6 @@ def rh_page():
                             fim_viagem_ts = trip_events_df[trip_events_df['Tipo de Lançamento'] == 'Fim da Viagem']['Fim'].max()
                             tempo_viagem = fim_viagem_ts - inicio_viagem_ts if pd.notnull(inicio_viagem_ts) and pd.notnull(fim_viagem_ts) else timedelta(seconds=0)
 
-                            # Título para cada viagem
                             df_viagem_titulo = pd.DataFrame([f"Viagem {i+1} - {inicio_viagem_ts.strftime('%d/%m/%Y') if pd.notna(inicio_viagem_ts) else 'Sem Data'}"])
                             df_viagem_titulo.to_excel(writer, sheet_name=motorista, startrow=start_row, index=False, header=False)
                             start_row += 2
@@ -1321,7 +1245,7 @@ def site_page():
     script_choice = st.selectbox(
         "Selecione um script para executar:",
         ("Selecione...", "Sítio Santa Izabel"),
-        key="site_select" # <-- CHAVE ÚNICA ADICIONADA
+        key="site_select" 
     )
 
     st.write("---")
@@ -1331,10 +1255,6 @@ def site_page():
         st.markdown("Este script processa a planilha de controle do Sítio Santa Izabel e a divide em abas com base nos lançamentos.")
 
         def normalize_columns(columns_list):
-            """
-            Normaliza uma lista de nomes de colunas, removendo espaços extras,
-            caracteres especiais e quebras de linha.
-            """
             normalized_list = []
             for col in columns_list:
                 col = re.sub(r'\s+', ' ', col).strip()
@@ -1342,7 +1262,7 @@ def site_page():
                 normalized_list.append(col)
             return normalized_list
 
-        uploaded_file = st.file_uploader("Envie o arquivo 'SÍTIO SANTA IZABEL.xlsx'", type=["xlsx"], key="sitio_uploader") # <-- CHAVE ÚNICA ADICIONADA
+        uploaded_file = st.file_uploader("Envie o arquivo 'SÍTIO SANTA IZABEL.xlsx'", type=["xlsx"], key="sitio_uploader") 
 
         if uploaded_file is not None:
             try:
@@ -1452,7 +1372,7 @@ def site_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
     
-    if st.button("Voltar para o Início", key="site_voltar"): # <-- CHAVE ÚNICA ADICIONADA
+    if st.button("Voltar para o Início", key="site_voltar"): 
         st.session_state['current_page'] = 'home'
         st.rerun()
 
@@ -1468,14 +1388,12 @@ if 'LOGIN_INFO' not in st.session_state:
         "marcia": "54321"
     }
 
-# Configurações iniciais da página
 st.set_page_config(
     page_title="Lince Distribuidora de Bebidas - Login",
     page_icon="🏠",
     layout="centered"
 )
 
-# Adiciona CSS personalizado para um visual mais limpo e profissional
 st.markdown("""
 <style>
     .stApp {
