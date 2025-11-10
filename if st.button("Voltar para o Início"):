@@ -818,7 +818,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-    if st.button("Voltar para o Início"):
+    if st.button("Voltar para o Início", key="log_voltar"):
         st.session_state['current_page'] = 'home'
         st.rerun()
     
@@ -948,7 +948,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-    if st.button("Voltar para o Início"):
+    if st.button("Voltar para o Início", key="com_voltar"):
         st.session_state['current_page'] = 'home'
         st.rerun()
 # ====================================================================
@@ -1141,7 +1141,7 @@ def commercial_page():
                 
             except Exception as e:
                 st.error(f"Ocorreu um erro durante o processamento de 'Circuito Execução': {e}")
-    if st.button("Voltar para o Início"):
+    if st.button("Voltar para o Início", key="com_voltar"):
         st.session_state['current_page'] = 'home'
         st.rerun()
 
@@ -1412,7 +1412,7 @@ def rh_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-    if st.button("Voltar para o Início"):
+    if st.button("Voltar para o Início", key="rh_voltar"):
         st.session_state['current_page'] = 'home'
         st.rerun()
 
@@ -1654,4 +1654,5 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
 
