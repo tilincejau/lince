@@ -14,6 +14,10 @@ import os
 import xlsxwriter
 
 # Funções que representam cada página
+
+# ====================================================================
+# FUNÇÃO DE LOGIN CORRIGIDA
+# ====================================================================
 def login_form():
     """Exibe o formulário de login com um design aprimorado."""
     
@@ -37,11 +41,13 @@ def login_form():
                 st.session_state['is_logged_in'] = True
                 st.session_state['username'] = username
                 st.session_state['current_page'] = 'home'
-                st.success("Login realizado com sucesso! Redirecionando...")
-                st.balloons()
+                # st.success(...) e st.balloons() REMOVIDOS DAQUI PARA EVITAR O ERRO
                 st.rerun()
             else:
                 st.error("Usuário ou senha incorretos.")
+# ====================================================================
+# FIM DA CORREÇÃO
+# ====================================================================
 
 def main_page():
     st.markdown(f"<h1 style='text-align: center;'>Página Inicial</h1>", unsafe_allow_html=True)
@@ -89,7 +95,7 @@ def load_from_db(table_name, engine):
     return pd.DataFrame()
 
 # ====================================================================
-# FUNÇÃO DE LOGÍSTICA ATUALIZADA
+# FUNÇÃO DE LOGÍSTICA
 # ====================================================================
 def logistics_page():
     st.title("Setor de Logística")
@@ -103,7 +109,6 @@ def logistics_page():
     
     st.write("---")
 
-    # ### INÍCIO DA SEÇÃO MODIFICADA ###
     if script_choice == "Acurácia":
         st.subheader("Acurácia de Estoque")
         st.markdown("Transforma e reorganiza os dados do arquivo de Acurácia.")
@@ -221,7 +226,6 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
                 st.error("Verifique se o arquivo (CSV ou XLSX) tem um cabeçalho de duas linhas e se os nomes das colunas estão corretos (ex: 'Contagem - $', 'Diferença - $', 'Saldo Final - $').")
-    # ### FIM DA SEÇÃO MODIFICADA ###
 
     elif script_choice == "Validade":
         st.subheader("Controle de Validade")
@@ -822,14 +826,6 @@ def logistics_page():
     if st.button("Voltar para o Início", key="log_voltar"):
         st.session_state['current_page'] = 'home'
         st.rerun()
-
-# ====================================================================
-# FIM DA FUNÇÃO ATUALIZADA
-# ====================================================================
-
-# ***** INÍCIO DO BLOCO DUPLICADO QUE FOI REMOVIDO *****
-# (O bloco de código para "Abastecimento" estava repetido aqui)
-# ***** FIM DO BLOCO DUPLICADO QUE FOI REMOVIDO *****
 
 def commercial_page():
     st.title("Setor Comercial")
