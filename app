@@ -97,7 +97,8 @@ def logistics_page():
     
     script_choice = st.selectbox(
         "Selecione um script para executar:",
-        ("Selecione...", "Acurácia", "Validade", "Vasilhames", "Abastecimento")
+        ("Selecione...", "Acurácia", "Validade", "Vasilhames", "Abastecimento"),
+        key="log_select" # <-- CHAVE ÚNICA ADICIONADA
     )
     
     st.write("---")
@@ -108,7 +109,7 @@ def logistics_page():
         st.markdown("Transforma e reorganiza os dados do arquivo de Acurácia.")
         
         # Aceita CSV e XLSX
-        uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque' (.csv ou .xlsx)", type=["csv", "xlsx"])
+        uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque' (.csv ou .xlsx)", type=["csv", "xlsx"], key="acuracia_uploader") # <-- CHAVE ÚNICA ADICIONADA
         
         if uploaded_file is not None:
             try:
@@ -304,8 +305,8 @@ def logistics_page():
                 return int(match_direct.group(1)) # <-- CORREÇÃO AQUI
             return 1
 
-        uploaded_excel_file = st.file_uploader("Envie o arquivo Excel 'Controle de Validade.xlsx'", type=["xlsx"])
-        uploaded_txt_file = st.file_uploader("Envie o arquivo de texto de estoque", type=["txt"])
+        uploaded_excel_file = st.file_uploader("Envie o arquivo Excel 'Controle de Validade.xlsx'", type=["xlsx"], key="validade_excel_uploader") # <-- CHAVE ÚNICA ADICIONADA
+        uploaded_txt_file = st.file_uploader("Envie o arquivo de texto de estoque", type=["txt"], key="validade_txt_uploader") # <-- CHAVE ÚNICA ADICIONADA
         
         if uploaded_excel_file is not None and uploaded_txt_file is not None:
             try:
@@ -530,9 +531,9 @@ def logistics_page():
             
             return df_parsed.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
         
-        uploaded_txt_files = st.file_uploader("Envie os arquivos TXT de empréstimos (Ex: ESTOQUE0102.TXT)", type=["txt"], accept_multiple_files=True)
-        uploaded_excel_contagem = st.file_uploader("Envie o arquivo Excel de contagem (Ex: Contagem Vasilhames.xlsx)", type=["xlsx"])
-        uploaded_pdf_files = st.file_uploader("Envie os arquivos PDF de fábrica", type=["pdf"], accept_multiple_files=True)
+        uploaded_txt_files = st.file_uploader("Envie os arquivos TXT de empréstimos (Ex: ESTOQUE0102.TXT)", type=["txt"], accept_multiple_files=True, key="vasil_txt_uploader") # <-- CHAVE ÚNICA ADICIONADA
+        uploaded_excel_contagem = st.file_uploader("Envie o arquivo Excel de contagem (Ex: Contagem Vasilhames.xlsx)", type=["xlsx"], key="vasil_excel_uploader") # <-- CHAVE ÚNICA ADICIONADA
+        uploaded_pdf_files = st.file_uploader("Envie os arquivos PDF de fábrica", type=["pdf"], accept_multiple_files=True, key="vasil_pdf_uploader") # <-- CHAVE ÚNICA ADICIONADA
         
         if st.button("Processar e Consolidar Dados"):
             if uploaded_txt_files and uploaded_excel_contagem is not None:
@@ -696,7 +697,7 @@ def logistics_page():
         st.subheader("Análise de Abastecimento")
         st.markdown("Este script processa dados de abastecimento e gera relatórios separados para Diesel e Arla, com médias de consumo por KM.")
         
-        uploaded_file = st.file_uploader("Envie o arquivo de abastecimento (.xlsx ou .csv)", type=["xlsx", "csv"])
+        uploaded_file = st.file_uploader("Envie o arquivo de abastecimento (.xlsx ou .csv)", type=["xlsx", "csv"], key="abastec_uploader") # <-- CHAVE ÚNICA ADICIONADA
         
         if uploaded_file is not None:
             try:
@@ -821,139 +822,14 @@ def logistics_page():
     if st.button("Voltar para o Início", key="log_voltar"):
         st.session_state['current_page'] = 'home'
         st.rerun()
-    
-    elif script_choice == "Abastecimento":
-        st.subheader("Análise de Abastecimento")
-        st.markdown("Este script processa dados de abastecimento e gera relatórios separados para Diesel e Arla, com médias de consumo por KM.")
-        
-        uploaded_file = st.file_uploader("Envie o arquivo de abastecimento (.xlsx ou .csv)", type=["xlsx", "csv"])
-        
-        if uploaded_file is not None:
-            try:
-                st.info("Processando arquivo de abastecimento. Isso pode levar alguns segundos...")
-                
-                # Leitura do arquivo e tratamento de erro
-                try:
-                    if uploaded_file.name.endswith('.csv'):
-                        df = pd.read_csv(uploaded_file)
-                    elif uploaded_file.name.endswith('.xlsx'):
-                        df = pd.read_excel(uploaded_file)
-                    else:
-                        st.error("Formato de arquivo não suportado. Por favor, use um arquivo .csv ou .xlsx.")
-                        return
-                except Exception as e:
-                    st.error(f"Erro ao ler o arquivo: {e}")
-                    return
 
-                # Normalização das colunas
-                df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
-
-                # Mapeamento e unificação das colunas
-                column_mapping = {
-                    'DATA ABASTECIMENTO': ['DATA', 'DATA ABASTECIMENTO', 'DATE', 'DATA_ABASTECIMENTO'],
-                    'HORÁRIO': ['HORÁRIO', 'HORA', 'HORA DO ABASTECIMENTO'],
-                    'TIPO DE ABASTECIMENTO': ['TIPO DE ABASTECIMENTO', 'TIPO_ABASTECIMENTO', 'COMBUSTÍVEL', 'TIPO'],
-                    'PLACA': ['PLACA', 'PLACA_VEICULO'],
-                    'KM': ['KM', 'QUILOMETRAGEM'],
-                    'LITROS': ['LITROS', 'VOLUME'],
-                    'MOTORISTA': ['MOTORISTA', 'RESPONSÁVEL'],
-                }
-
-                df_unified = pd.DataFrame()
-                for new_name, possible_names in column_mapping.items():
-                    for old_name in possible_names:
-                        if old_name.upper() in df.columns:
-                            df_unified[new_name] = df[old_name.upper()]
-                            break
-                    else:
-                        st.warning(f"Aviso: Coluna essencial '{new_name}' não foi encontrada. O processamento pode estar incompleto.")
-                        df_unified[new_name] = np.nan
-                df = df_unified
-
-                # Garante que as colunas de data e hora estão no formato correto
-                df['DATA ABASTECIMENTO'] = pd.to_datetime(df['DATA ABASTECIMENTO'], errors='coerce').dt.date
-                df['HORÁRIO'] = pd.to_datetime(df['HORÁRIO'], format='%H:%M:%S', errors='coerce').dt.time
-                df['KM'] = pd.to_numeric(df['KM'], errors='coerce')
-                df['LITROS'] = pd.to_numeric(df['LITROS'], errors='coerce')
-                df.dropna(subset=['DATA ABASTECIMENTO', 'KM', 'LITROS'], inplace=True)
-                
-                # Define as colunas de saída
-                colunas_saida = [
-                    'Data Abastecimento', 'HORÁRIO', 'TIPO DE ABASTECIMENTO',
-                    'PLACA', 'KM', 'ALERTA KM', 'MOTORISTA', 'LITROS', 'Média de litros por KM'
-                ]
-                
-                # Processa a planilha de Diesel
-                df_diesel = df[df['TIPO DE ABASTECIMENTO'].str.upper() == 'DIESEL'].copy()
-                if not df_diesel.empty:
-                    excel_data_diesel = io.BytesIO()
-                    with pd.ExcelWriter(excel_data_diesel, engine='xlsxwriter') as writer:
-                        placas_diesel = sorted(df_diesel['PLACA'].unique())
-                        for placa in placas_diesel:
-                            df_placa = df_diesel[df_diesel['PLACA'] == placa].copy()
-                            df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
-                            
-                            df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
-                            df_placa['MEDIA_LITROS_KM'] = df_placa['LITROS'] / df_placa['DISTANCIA_PERCORRIDA']
-                            
-                            df_placa['ALERTA KM'] = ''
-                            df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor que o registro anterior!'
-                            
-                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'MEDIA_LITROS_KM': 'Média de litros por KM'})
-                            
-                            df_placa_output.to_excel(writer, sheet_name=placa, index=False)
-                    
-                    excel_data_diesel.seek(0)
-                    st.success("Planilha de Diesel processada com sucesso!")
-                    st.download_button(
-                        label="📥 Baixar Planilha de Diesel",
-                        data=excel_data_diesel,
-                        file_name="planilha_diesel.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-                else:
-                    st.warning("Não foram encontrados dados de 'DIESEL' no arquivo.")
-                
-                # Processa a planilha de Arla
-                df_arla = df[df['TIPO DE ABASTECIMENTO'].str.upper() == 'ARLA'].copy()
-                if not df_arla.empty:
-                    excel_data_arla = io.BytesIO()
-                    with pd.ExcelWriter(excel_data_arla, engine='xlsxwriter') as writer:
-                        placas_arla = sorted(df_arla['PLACA'].unique())
-                        for placa in placas_arla:
-                            df_placa = df_arla[df_arla['PLACA'] == placa].copy()
-                            df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
-                            
-                            df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
-                            df_placa['MEDIA_LITROS_KM'] = df_placa['LITROS'] / df_placa['DISTANCIA_PERCORRIDA']
-                            
-                            df_placa['ALERTA KM'] = ''
-                            df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor que o registro anterior!'
-                            
-                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'MEDIA_LITROS_KM': 'Média de litros por KM'})
-                            
-                            df_placa_output.to_excel(writer, sheet_name=placa, index=False)
-                            
-                    excel_data_arla.seek(0)
-                    st.success("Planilha de Arla processada com sucesso!")
-                    st.download_button(
-                        label="📥 Baixar Planilha de Arla",
-                        data=excel_data_arla,
-                        file_name="planilha_arla.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-                else:
-                    st.warning("Não foram encontrados dados de 'ARLA' no arquivo.")
-
-            except Exception as e:
-                st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
-
-    if st.button("Voltar para o Início", key="com_voltar"):
-        st.session_state['current_page'] = 'home'
-        st.rerun()
 # ====================================================================
 # FIM DA FUNÇÃO ATUALIZADA
 # ====================================================================
+
+# ***** INÍCIO DO BLOCO DUPLICADO QUE FOI REMOVIDO *****
+# (O bloco de código para "Abastecimento" estava repetido aqui)
+# ***** FIM DO BLOCO DUPLICADO QUE FOI REMOVIDO *****
 
 def commercial_page():
     st.title("Setor Comercial")
@@ -961,7 +837,8 @@ def commercial_page():
 
     script_selection = st.selectbox(
         "Selecione o script que deseja executar:",
-        ("Selecione...", "Troca de Canal", "Circuito Execução")
+        ("Selecione...", "Troca de Canal", "Circuito Execução"),
+        key="com_select" # <-- CHAVE ÚNICA ADICIONADA
     )
 
     if script_selection == "Troca de Canal":
@@ -1027,7 +904,7 @@ def commercial_page():
                                 'PDV': pdv_info_val,
                                 'DE': de_category_val,
                                 'PARA': para_value,
-                                'Status': ''  
+                                'Status': '' 
                             })
                 except IndexError:
                     st.error(f"Erro: Estrutura de coluna inesperada na linha {index}. A linha será ignorada.")
@@ -1036,7 +913,7 @@ def commercial_page():
             final_df = pd.DataFrame(processed_records)
             return final_df
 
-        uploaded_file_1 = st.file_uploader("Envie o arquivo para 'Troca de Canal' (.xlsx)", type=["xlsx"])
+        uploaded_file_1 = st.file_uploader("Envie o arquivo para 'Troca de Canal' (.xlsx)", type=["xlsx"], key="troca_canal_uploader") # <-- CHAVE ÚNICA ADICIONADA
 
         if uploaded_file_1 is not None:
             try:
@@ -1117,7 +994,7 @@ def commercial_page():
             processed_data = output.getvalue()
             return processed_data
 
-        uploaded_file_2 = st.file_uploader("Envie o arquivo para 'Circuito Execução' (.xlsx)", type=["xlsx"])
+        uploaded_file_2 = st.file_uploader("Envie o arquivo para 'Circuito Execução' (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") # <-- CHAVE ÚNICA ADICIONADA
 
         if uploaded_file_2 is not None:
             try:
@@ -1141,6 +1018,7 @@ def commercial_page():
                 
             except Exception as e:
                 st.error(f"Ocorreu um erro durante o processamento de 'Circuito Execução': {e}")
+                
     if st.button("Voltar para o Início", key="com_voltar"):
         st.session_state['current_page'] = 'home'
         st.rerun()
@@ -1151,7 +1029,8 @@ def rh_page():
 
     script_choice = st.selectbox(
         "Selecione um script para executar:",
-        ("Selecione...", "Controle de Jornada")
+        ("Selecione...", "Controle de Jornada"),
+        key="rh_select" # <-- CHAVE ÚNICA ADICIONADA
     )
 
     st.write("---")
@@ -1203,7 +1082,7 @@ def rh_page():
             else:
                 return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
 
-        uploaded_file = st.file_uploader("Envie o arquivo 'Controle de Jornada.xlsx'", type=["xlsx", "csv"])
+        uploaded_file = st.file_uploader("Envie o arquivo 'Controle de Jornada.xlsx'", type=["xlsx", "csv"], key="jornada_uploader") # <-- CHAVE ÚNICA ADICIONADA
 
         if uploaded_file is not None:
             try:
@@ -1422,7 +1301,8 @@ def site_page():
     
     script_choice = st.selectbox(
         "Selecione um script para executar:",
-        ("Selecione...", "Sítio Santa Izabel")
+        ("Selecione...", "Sítio Santa Izabel"),
+        key="site_select" # <-- CHAVE ÚNICA ADICIONADA
     )
 
     st.write("---")
@@ -1443,7 +1323,7 @@ def site_page():
                 normalized_list.append(col)
             return normalized_list
 
-        uploaded_file = st.file_uploader("Envie o arquivo 'SÍTIO SANTA IZABEL.xlsx'", type=["xlsx"])
+        uploaded_file = st.file_uploader("Envie o arquivo 'SÍTIO SANTA IZABEL.xlsx'", type=["xlsx"], key="sitio_uploader") # <-- CHAVE ÚNICA ADICIONADA
 
         if uploaded_file is not None:
             try:
@@ -1462,7 +1342,7 @@ def site_page():
                         'Justificativa Técnica para a Recomendação',
                         'PRODUTO (N.C*E I.A.**)','Volume de Calda Recomendado (L/ha)',
                         'Equipamento de aplicação', 'Número de Aplicações Recomendadas',
-                        'Intervalo entre Aplicações (dias - se houver mais de uma)',  
+                        'Intervalo entre Aplicações (dias - se houver mais de uma)', 
                         'Modo de Aplicação','Época/Estádio de Aplicação',
                         'Intervalo de Segurança/Período de Carência (dias)',
                         'Intervalo de Reentrada na Área (horas)',
@@ -1553,7 +1433,7 @@ def site_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
     
-    if st.button("Voltar para o Início"):
+    if st.button("Voltar para o Início", key="site_voltar"): # <-- CHAVE ÚNICA ADICIONADA
         st.session_state['current_page'] = 'home'
         st.rerun()
 
@@ -1654,5 +1534,3 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
-
-
