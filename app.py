@@ -414,6 +414,9 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
+    # ====================================================================
+    # ### INÍCIO DA SEÇÃO VASILHAMES CORRIGIDA ###
+    # ====================================================================
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         st.markdown("Este script consolida dados de vasilhames de diferentes fontes (Excel, TXT, PDF) e gera um relatório unificado.")
@@ -422,16 +425,35 @@ def logistics_page():
         engine = setup_database()
 
         def process_txt_file_st(file_content):
+            """
+            Processa o arquivo TXT e retorna:
+            1. DataFrame com (Vasilhame, Qtd. emprestimo)
+            2. String 'Dia' (DD/MM)
+            3. Objeto 'DataCompleta' (date)
+            """
             content = file_content.getvalue().decode('latin1')
             filename_date_match = re.search(r'ESTOQUE(\d{4})\.TXT', file_content.name)
+            
+            effective_date_str = None
+            effective_date_full = None
+            
             if filename_date_match:
                 day = filename_date_match.group(1)[:2]
                 month = filename_date_match.group(1)[2:]
                 year = datetime.now().year
-                effective_date_str = datetime.strptime(f"{day}/{month}/{year}", '%d/%m/%Y').strftime('%d/%m')
+                
+                # Tenta adivinhar o ano correto (se for janeiro e o mês do arquivo for dezembro, assume ano passado)
+                now = datetime.now()
+                if now.month == 1 and month == '12':
+                    year = year - 1
+                    
+                effective_date_obj = datetime.strptime(f"{day}/{month}/{year}", '%d/%m/%Y')
+                effective_date_str = effective_date_obj.strftime('%d/%m')
+                effective_date_full = effective_date_obj.date()
             else:
-                st.error("Nome do arquivo TXT inválido. O formato deve ser 'ESTOQUEDDMM.TXT'.")
-                return None, None
+                st.error(f"Nome do arquivo TXT inválido: {file_content.name}. O formato deve ser 'ESTOQUEDDMM.TXT'.")
+                return None, None, None # Retorna None 3x
+
             product_code_to_vasilhame_map = {'563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', '550-012': '550-001 - CAIXA PLASTICA 600ML', '803-039': '550-001 - CAIXA PLASTICA 600ML', '803-037': '550-001 - CAIXA PLASTICA 600ML'}
             parsed_data = []
             pattern = re.compile(r'^\s*"?(\d{3}-\d{3})[^"\n]*?"?.*?"?([\d.]+)"?\s*$', re.MULTILINE)
@@ -443,28 +465,39 @@ def logistics_page():
                     if product_code in product_code_to_vasilhame_map:
                         parsed_data.append({'PRODUTO_CODE': product_code, 'QUANTIDADE': int(quantity) if quantity.isdigit() else 0})
             if not parsed_data:
-                return None, effective_date_str
+                return None, effective_date_str, effective_date_full
+            
             df_estoque = pd.DataFrame(parsed_data)
             df_estoque['Vasilhame'] = df_estoque['PRODUTO_CODE'].map(product_code_to_vasilhame_map)
             df_txt_qty = df_estoque.groupby('Vasilhame')['QUANTIDADE'].sum().reset_index()
             df_txt_qty.rename(columns={'QUANTIDADE': 'Qtd. emprestimo'}, inplace=True)
-            return df_txt_qty, effective_date_str
+            return df_txt_qty, effective_date_str, effective_date_full
 
         def process_pdf_content(pdf_file, product_map):
+            """
+            Processa o arquivo PDF e retorna um DataFrame agregado
+            por (Vasilhame, Dia) e incluindo 'DataCompleta'.
+            """
             parsed_data = []
             filename_match = re.search(r'([a-zA-Z\s]+)\s+(\d{2}-\d{2}-\d{4})\.pdf', pdf_file.name)
             if not filename_match:
                 st.error(f"Erro: Nome de arquivo PDF inválido: {pdf_file.name}. Formato esperado: 'PDV DD-MM-YYYY.pdf'")
                 return pd.DataFrame()
+            
             source_name = filename_match.group(1).strip()
-            date_str = filename_match.group(2)
-            effective_date_str = datetime.strptime(date_str, '%d-%m-%Y').strftime('%d/%m')
+            date_str = filename_match.group(2) # Formato DD-MM-YYYY
+            effective_date_obj = datetime.strptime(date_str, '%d-%m-%Y')
+            effective_date_str = effective_date_obj.strftime('%d/%m') # DD/MM
+            effective_date_full = effective_date_obj.date() # Data completa
+            
             source_to_col_map = {'PONTA GROSSA': 'Ponta Grossa (0328)', 'ARARAQUARA': 'Araraquara (0336)', 'ITU': 'Itu (0002)'}
             col_suffix = source_to_col_map.get(source_name.upper(), source_name)
+            
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_file.getvalue()))
             pdf_content = ""
             for page in pdf_reader.pages:
                 pdf_content += page.extract_text()
+                
             data_line_pattern = re.compile(r'^\s*"?(\d{15,})[^"\n]*?"?.*?"?([-+]?[\d.,]+)"?\s*$', re.MULTILINE)
             for line_match in data_line_pattern.finditer(pdf_content):
                 material_code = line_match.group(1).strip()
@@ -477,11 +510,25 @@ def logistics_page():
                     vasilhame = product_map[material_code]
                     credito = abs(saldo) if saldo < 0 else 0.0
                     debito = saldo if saldo >= 0 else 0.0
-                    parsed_data.append({'Vasilhame': vasilhame, 'Dia': effective_date_str, f'Credito {col_suffix}': credito, f'Debito {col_suffix}': debito})
+                    parsed_data.append({
+                        'Vasilhame': vasilhame, 
+                        'Dia': effective_date_str, 
+                        'DataCompleta': effective_date_full, # Adiciona data completa
+                        f'Credito {col_suffix}': credito, 
+                        f'Debito {col_suffix}': debito
+                    })
+                    
             if not parsed_data:
                 st.warning(f"Nenhum dado de PDV encontrado no arquivo: {pdf_file.name}")
                 return pd.DataFrame()
-            return pd.DataFrame(parsed_data).groupby(['Vasilhame', 'Dia'], as_index=False).sum()
+            
+            # Agrupa e mantém a DataCompleta
+            df_parsed = pd.DataFrame(parsed_data)
+            pdf_value_cols = [col for col in df_parsed.columns if 'Credito' in col or 'Debito' in col]
+            agg_dict = {col: 'sum' for col in pdf_value_cols}
+            agg_dict['DataCompleta'] = 'max' # Pega a data mais recente
+            
+            return df_parsed.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
         
         uploaded_txt_files = st.file_uploader("Envie os arquivos TXT de empréstimos (Ex: ESTOQUE0102.TXT)", type=["txt"], accept_multiple_files=True)
         uploaded_excel_contagem = st.file_uploader("Envie o arquivo Excel de contagem (Ex: Contagem Vasilhames.xlsx)", type=["xlsx"])
@@ -492,22 +539,37 @@ def logistics_page():
                 try:
                     st.info("Processando e salvando novos dados. Por favor, aguarde...")
                     
-                    # --- Processamento e Salvamento dos novos arquivos ---
-                    new_txt_data = []
+                    # --- Carrega dados antigos do BD ---
+                    df_old_txt_data = load_from_db('txt_data', engine)
+                    df_old_pdf_data = load_from_db('pdf_data', engine)
+
+                    # --- Processa novos arquivos TXT ---
+                    new_txt_data_list = []
                     for uploaded_txt_file in uploaded_txt_files:
-                        df_txt_qty, effective_date_str = process_txt_file_st(uploaded_txt_file)
+                        df_txt_qty, effective_date_str, effective_date_full = process_txt_file_st(uploaded_txt_file)
                         if df_txt_qty is not None:
                             df_txt_qty['Dia'] = effective_date_str
-                            new_txt_data.append(df_txt_qty)
+                            df_txt_qty['DataCompleta'] = effective_date_full
+                            new_txt_data_list.append(df_txt_qty)
                     
-                    if new_txt_data:
-                        df_new_txt = pd.concat(new_txt_data, ignore_index=True)
-                        df_new_txt.to_sql('txt_data', con=engine, if_exists='append', index=False)
-                        st.success("Novos dados TXT salvos no banco de dados!")
+                    if new_txt_data_list:
+                        df_new_txt = pd.concat(new_txt_data_list, ignore_index=True)
+                        # Combina dados antigos e novos
+                        df_all_txt_combined = pd.concat([df_old_txt_data, df_new_txt], ignore_index=True)
+                        # RE-AGREGA: Se houver múltiplas entradas para o mesmo (Vasilhame, Dia), elas são somadas
+                        df_all_processed_txt_data = df_all_txt_combined.groupby(['Vasilhame', 'Dia']).agg(
+                            Qtd_emprestimo=('Qtd. emprestimo', 'sum'),
+                            DataCompleta=('DataCompleta', 'max') # Pega a data mais recente
+                        ).reset_index()
+                        # Salva a tabela agregada e limpa de volta
+                        df_all_processed_txt_data.to_sql('txt_data', con=engine, if_exists='replace', index=False)
+                        st.success("Dados TXT atualizados no banco de dados!")
                     else:
-                        st.warning("Nenhum dado TXT para salvar.")
+                        st.warning("Nenhum dado TXT novo para processar.")
+                        df_all_processed_txt_data = df_old_txt_data # Usa apenas os dados antigos
 
-                    new_pdf_data = []
+                    # --- Processa novos arquivos PDF ---
+                    new_pdf_data_list = []
                     if uploaded_pdf_files:
                         pdf_material_code_to_vasilhame_map = {
                             '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', '000000000000107380': '555-001 - CAIXA PLASTICA 1L', '000000000000152598': '546-004 - CAIXA PLASTICA 24UN 300ML', '000000000000000470': '550-001 - CAIXA PLASTICA 600ML'
@@ -515,52 +577,105 @@ def logistics_page():
                         for pdf_file in uploaded_pdf_files:
                             df_pdf_current = process_pdf_content(pdf_file, pdf_material_code_to_vasilhame_map)
                             if not df_pdf_current.empty:
-                                new_pdf_data.append(df_pdf_current)
+                                new_pdf_data_list.append(df_pdf_current)
                     
-                    if new_pdf_data:
-                        df_new_pdf = pd.concat(new_pdf_data, ignore_index=True)
-                        df_new_pdf.to_sql('pdf_data', con=engine, if_exists='append', index=False)
-                        st.success("Novos dados PDF salvos no banco de dados!")
+                    if new_pdf_data_list:
+                        df_new_pdf = pd.concat(new_pdf_data_list, ignore_index=True)
+                        # Combina dados antigos e novos
+                        df_all_pdf_combined = pd.concat([df_old_pdf_data, df_new_pdf], ignore_index=True)
+                        
+                        # Identifica colunas de valor (Crédito/Débito)
+                        pdf_value_cols = [col for col in df_all_pdf_combined.columns if 'Credito' in col or 'Debito' in col]
+                        df_all_pdf_combined[pdf_value_cols] = df_all_pdf_combined[pdf_value_cols].fillna(0)
+
+                        agg_dict = {col: 'sum' for col in pdf_value_cols}
+                        agg_dict['DataCompleta'] = 'max' # Pega a data mais recente
+
+                        if pdf_value_cols:
+                            # RE-AGREGA: Soma todas as colunas de valor para (Vasilhame, Dia) únicos
+                            df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
+                        else:
+                            # Se não houver colunas de valor, apenas pegue as chaves únicas
+                            df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(DataCompleta=('DataCompleta', 'max')).reset_index()
+                            
+                        # Salva a tabela agregada e limpa de volta
+                        df_all_processed_pdf_data.to_sql('pdf_data', con=engine, if_exists='replace', index=False)
+                        st.success("Dados PDF atualizados no banco de dados!")
                     else:
-                        st.warning("Nenhum dado PDF para salvar.")
-
-                    # --- Carregamento dos dados históricos (do banco) ---
-                    df_all_processed_txt_data = load_from_db('txt_data', engine)
-                    df_all_processed_pdf_data = load_from_db('pdf_data', engine)
+                        st.warning("Nenhum dado PDF novo para processar.")
+                        df_all_processed_pdf_data = df_old_pdf_data # Usa apenas os dados antigos
                     
-                    if df_all_processed_txt_data.empty and df_all_processed_pdf_data.empty:
-                        st.warning("Nenhum dado TXT ou PDF encontrado no banco de dados.")
-                        return
 
-                    # --- O restante do seu código de consolidação ---
+                    # --- Processa Excel (Contagem) ---
                     df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                     df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
                     df_historical_excel = df_contagem.copy()
+                    # Salva a data completa
+                    df_historical_excel['DataCompleta'] = df_historical_excel['Carimbo de data/hora'].dt.date
                     df_historical_excel['Dia'] = df_historical_excel['Carimbo de data/hora'].dt.strftime('%d/%m')
-                    df_excel_daily_counts = df_historical_excel.groupby(['Qual vasilhame ?', 'Dia'])['Total'].sum().reset_index()
-                    df_excel_daily_counts.rename(columns={'Qual vasilhame ?': 'Vasilhame', 'Total': 'Contagem'}, inplace=True)
                     
+                    # Agrupa por Vasilhame e Dia, mas mantém a data completa (ex: pegando a mais recente)
+                    df_excel_agg = df_historical_excel.groupby(['Qual vasilhame ?', 'Dia']).agg(
+                        Contagem=('Total', 'sum'),
+                        DataCompleta=('DataCompleta', 'max') # Pega a data mais recente para esse 'Dia'
+                    ).reset_index()
+                    df_excel_agg.rename(columns={'Qual vasilhame ?': 'Vasilhame'}, inplace=True)
+                    
+                    # --- Consolidação ---
+                    
+                    # Renomeia colunas de data ANTES do merge para evitar conflitos
+                    df_excel_agg.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
+                    if 'DataCompleta' in df_all_processed_txt_data.columns:
+                        df_all_processed_txt_data.rename(columns={'DataCompleta': 'DataCompleta_txt'}, inplace=True)
+                    if 'DataCompleta' in df_all_processed_pdf_data.columns:
+                        df_all_processed_pdf_data.rename(columns={'DataCompleta': 'DataCompleta_pdf'}, inplace=True)
+
+                    # Cria a lista mestre de (Vasilhame, Dia) de todas as fontes
                     df_master_combinations = pd.concat([
-                        df_excel_daily_counts[['Vasilhame', 'Dia']],
-                        df_all_processed_txt_data[['Vasilhame', 'Dia']] if 'Vasilhame' in df_all_processed_txt_data.columns else pd.DataFrame(columns=['Vasilhame', 'Dia']),
-                        df_all_processed_pdf_data[['Vasilhame', 'Dia']] if 'Vasilhame' in df_all_processed_pdf_data.columns else pd.DataFrame(columns=['Vasilhames', 'Dia'])
+                        df_excel_agg[['Vasilhame', 'Dia']],
+                        df_all_processed_txt_data[['Vasilhame', 'Dia']],
+                        df_all_processed_pdf_data[['Vasilhame', 'Dia']]
                     ]).drop_duplicates().reset_index(drop=True)
 
-                    df_final = pd.merge(df_master_combinations, df_excel_daily_counts, on=['Vasilhame', 'Dia'], how='left')
+                    # Faz o merge com os dados JÁ AGREGADOS do BD e o Excel
+                    df_final = pd.merge(df_master_combinations, df_excel_agg, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_txt_data, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
                     
-                    df_final['Contagem'] = pd.to_numeric(df_final['Contagem'], errors='coerce').fillna(0)
-                    df_final['Qtd. emprestimo'] = pd.to_numeric(df_final['Qtd. emprestimo'], errors='coerce').fillna(0)
+                    # Combina as colunas 'DataCompleta' de todas as fontes
+                    df_final['DataCompleta'] = df_final['DataCompleta_excel'].fillna(np.nan)
+                    if 'DataCompleta_txt' in df_final.columns:
+                        df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_txt'])
+                    if 'DataCompleta_pdf' in df_final.columns:
+                        df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_pdf'])
                     
+                    # Drop colunas extras de data
+                    cols_to_drop = [col for col in df_final.columns if col.startswith('DataCompleta_')]
+                    df_final.drop(cols_to_drop, axis=1, inplace=True)
+
+                    # Preenche NaNs para colunas numéricas
+                    numeric_cols = ['Contagem', 'Qtd. emprestimo'] + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
+                    for col in numeric_cols:
+                        if col in df_final.columns:
+                            df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0)
+                        
+                    # Recalcula os totais
                     df_final['Total Revenda'] = df_final['Qtd. emprestimo'] + df_final['Contagem'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1)
+                    
+                    # Ordena por DataCompleta para garantir que .diff() funcione
+                    df_final['DataCompleta'] = pd.to_datetime(df_final['DataCompleta'], errors='coerce')
+                    df_final.sort_values(by=['Vasilhame', 'DataCompleta'], inplace=True, na_position='first')
+                    
                     df_final['Diferença'] = df_final.groupby('Vasilhame')['Total Revenda'].diff()
                     
+                    # Remove a coluna de ordenação antes de exibir/salvar
+                    df_final_output = df_final.drop('DataCompleta', axis=1)
+                    
                     st.subheader("✅ Tabela Consolidada de Vasilhames")
-                    st.dataframe(df_final)
+                    st.dataframe(df_final_output)
 
                     output = io.BytesIO()
-                    df_final.to_excel(output, index=False)
+                    df_final_output.to_excel(output, index=False)
                     output.seek(0)
                     st.download_button(
                         label="📥 Baixar Tabela Consolidada",
@@ -571,6 +686,141 @@ def logistics_page():
 
                 except Exception as e:
                     st.error(f"Ocorreu um erro durante o processamento: {e}")
+                    import traceback
+                    st.error(traceback.format_exc()) # Adiciona mais detalhes do erro
+    # ====================================================================
+    # ### FIM DA SEÇÃO VASILHAMES CORRIGIDA ###
+    # ====================================================================
+
+    elif script_choice == "Abastecimento":
+        st.subheader("Análise de Abastecimento")
+        st.markdown("Este script processa dados de abastecimento e gera relatórios separados para Diesel e Arla, com médias de consumo por KM.")
+        
+        uploaded_file = st.file_uploader("Envie o arquivo de abastecimento (.xlsx ou .csv)", type=["xlsx", "csv"])
+        
+        if uploaded_file is not None:
+            try:
+                st.info("Processando arquivo de abastecimento. Isso pode levar alguns segundos...")
+                
+                # Leitura do arquivo e tratamento de erro
+                try:
+                    if uploaded_file.name.endswith('.csv'):
+                        df = pd.read_csv(uploaded_file)
+                    elif uploaded_file.name.endswith('.xlsx'):
+                        df = pd.read_excel(uploaded_file)
+                    else:
+                        st.error("Formato de arquivo não suportado. Por favor, use um arquivo .csv ou .xlsx.")
+                        return
+                except Exception as e:
+                    st.error(f"Erro ao ler o arquivo: {e}")
+                    return
+
+                # Normalização das colunas
+                df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
+
+                # Mapeamento e unificação das colunas
+                column_mapping = {
+                    'DATA ABASTECIMENTO': ['DATA', 'DATA ABASTECIMENTO', 'DATE', 'DATA_ABASTECIMENTO'],
+                    'HORÁRIO': ['HORÁRIO', 'HORA', 'HORA DO ABASTECIMENTO'],
+                    'TIPO DE ABASTECIMENTO': ['TIPO DE ABASTECIMENTO', 'TIPO_ABASTECIMENTO', 'COMBUSTÍVEL', 'TIPO'],
+                    'PLACA': ['PLACA', 'PLACA_VEICULO'],
+                    'KM': ['KM', 'QUILOMETRAGEM'],
+                    'LITROS': ['LITROS', 'VOLUME'],
+                    'MOTORISTA': ['MOTORISTA', 'RESPONSÁVEL'],
+                }
+
+                df_unified = pd.DataFrame()
+                for new_name, possible_names in column_mapping.items():
+                    for old_name in possible_names:
+                        if old_name.upper() in df.columns:
+                            df_unified[new_name] = df[old_name.upper()]
+                            break
+                    else:
+                        st.warning(f"Aviso: Coluna essencial '{new_name}' não foi encontrada. O processamento pode estar incompleto.")
+                        df_unified[new_name] = np.nan
+                df = df_unified
+
+                # Garante que as colunas de data e hora estão no formato correto
+                df['DATA ABASTECIMENTO'] = pd.to_datetime(df['DATA ABASTECIMENTO'], errors='coerce').dt.date
+                df['HORÁRIO'] = pd.to_datetime(df['HORÁRIO'], format='%H:%M:%S', errors='coerce').dt.time
+                df['KM'] = pd.to_numeric(df['KM'], errors='coerce')
+                df['LITROS'] = pd.to_numeric(df['LITROS'], errors='coerce')
+                df.dropna(subset=['DATA ABASTECIMENTO', 'KM', 'LITROS'], inplace=True)
+                
+                # Define as colunas de saída
+                colunas_saida = [
+                    'Data Abastecimento', 'HORÁRIO', 'TIPO DE ABASTECIMENTO',
+                    'PLACA', 'KM', 'ALERTA KM', 'MOTORISTA', 'LITROS', 'Média de litros por KM'
+                ]
+                
+                # Processa a planilha de Diesel
+                df_diesel = df[df['TIPO DE ABASTECIMENTO'].str.upper() == 'DIESEL'].copy()
+                if not df_diesel.empty:
+                    excel_data_diesel = io.BytesIO()
+                    with pd.ExcelWriter(excel_data_diesel, engine='xlsxwriter') as writer:
+                        placas_diesel = sorted(df_diesel['PLACA'].unique())
+                        for placa in placas_diesel:
+                            df_placa = df_diesel[df_diesel['PLACA'] == placa].copy()
+                            df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
+                            
+                            df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
+                            df_placa['MEDIA_LITROS_KM'] = df_placa['LITROS'] / df_placa['DISTANCIA_PERCORRIDA']
+                            
+                            df_placa['ALERTA KM'] = ''
+                            df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor que o registro anterior!'
+                            
+                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'MEDIA_LITROS_KM': 'Média de litros por KM'})
+                            
+                            df_placa_output.to_excel(writer, sheet_name=placa, index=False)
+                    
+                    excel_data_diesel.seek(0)
+                    st.success("Planilha de Diesel processada com sucesso!")
+                    st.download_button(
+                        label="📥 Baixar Planilha de Diesel",
+                        data=excel_data_diesel,
+                        file_name="planilha_diesel.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.warning("Não foram encontrados dados de 'DIESEL' no arquivo.")
+                
+                # Processa a planilha de Arla
+                df_arla = df[df['TIPO DE ABASTECIMENTO'].str.upper() == 'ARLA'].copy()
+                if not df_arla.empty:
+                    excel_data_arla = io.BytesIO()
+                    with pd.ExcelWriter(excel_data_arla, engine='xlsxwriter') as writer:
+                        placas_arla = sorted(df_arla['PLACA'].unique())
+                        for placa in placas_arla:
+                            df_placa = df_arla[df_arla['PLACA'] == placa].copy()
+                            df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
+                            
+                            df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
+                            df_placa['MEDIA_LITROS_KM'] = df_placa['LITROS'] / df_placa['DISTANCIA_PERCORRIDA']
+                            
+                            df_placa['ALERTA KM'] = ''
+                            df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor que o registro anterior!'
+                            
+                            df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'MEDIA_LITROS_KM': 'Média de litros por KM'})
+                            
+                            df_placa_output.to_excel(writer, sheet_name=placa, index=False)
+                            
+                    excel_data_arla.seek(0)
+                    st.success("Planilha de Arla processada com sucesso!")
+                    st.download_button(
+                        label="📥 Baixar Planilha de Arla",
+                        data=excel_data_arla,
+                        file_name="planilha_arla.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.warning("Não foram encontrados dados de 'ARLA' no arquivo.")
+
+            except Exception as e:
+                st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
+
+    if st.button("Voltar para o Início"):
+        st.session_state['current_page'] = 'home'
+        st.rerun()
     
     elif script_choice == "Abastecimento":
         st.subheader("Análise de Abastecimento")
@@ -1404,3 +1654,4 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
