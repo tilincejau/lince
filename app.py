@@ -343,7 +343,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES (COM LÓGICA NOVA E BOTÃO DE LIMPEZA) ---
+    # --- SCRIPT VASILHAMES (COM LÓGICA NOVA, BOTÃO DE LIMPEZA E MAPA ATUALIZADO) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         st.markdown("Este script consolida dados de vasilhames de diferentes fontes (Excel, TXT, PDF) e gera um relatório unificado.")
@@ -391,14 +391,25 @@ def logistics_page():
                 st.error(f"Nome do arquivo TXT inválido: {file_content.name}. O formato deve ser 'ESTOQUEDDMM.TXT'.")
                 return None, None, None 
 
+            # MAPA ATUALIZADO COM AS NOVAS CAIXAS SENDO SOMADAS NA 550-001
             product_code_to_vasilhame_map = {
-                '563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', 
-                '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
-                '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', 
-                '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', 
-                '550-012': '550-001 - CAIXA PLASTICA 600ML', '803-039': '550-001 - CAIXA PLASTICA 600ML', 
-                '803-037': '550-001 - CAIXA PLASTICA 600ML'
+                '563-008': '563-008 - BARRIL INOX 30L', 
+                '564-009': '564-009 - BARRIL INOX 50L', 
+                '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
+                '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
+                '550-001': '550-001 - CAIXA PLASTICA 600ML', 
+                '555-001': '555-001 - CAIXA PLASTICA 1L', 
+                '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', 
+                '565-002': '565-002 - CILINDRO CO2', 
+                
+                # Itens que devem somar na 550-001
+                '550-012': '550-001 - CAIXA PLASTICA 600ML', # EISENBAHN 0,6L 24U
+                '803-025': '550-001 - CAIXA PLASTICA 600ML', # CAIXA PLAS MISTA 24X1
+                '803-036': '550-001 - CAIXA PLASTICA 600ML', # CAIXA PLASTICA AMBEV
+                '803-037': '550-001 - CAIXA PLASTICA 600ML', # CAIXA PLASTICA MISTA 24X1
+                '803-039': '550-001 - CAIXA PLASTICA 600ML'  # CAIXA PLASTICA HNK CINZA 600ML
             }
+
             parsed_data = []
             pattern = re.compile(r'^\s*"?(\d{3}-\d{3})[^"\n]*?"?.*?"?([\d.]+)"?\s*$', re.MULTILINE)
             for line in content.splitlines():
@@ -412,7 +423,9 @@ def logistics_page():
                 return None, effective_date_str, effective_date_full
             
             df_estoque = pd.DataFrame(parsed_data)
+            # Mapeia todos os códigos para o nome do vasilhame (aqui acontece a unificação)
             df_estoque['Vasilhame'] = df_estoque['PRODUTO_CODE'].map(product_code_to_vasilhame_map)
+            # Agrupa pelo nome do vasilhame e soma as quantidades
             df_txt_qty = df_estoque.groupby('Vasilhame')['QUANTIDADE'].sum().reset_index()
             df_txt_qty.rename(columns={'QUANTIDADE': 'Qtd_emprestimo'}, inplace=True)
             return df_txt_qty, effective_date_str, effective_date_full
