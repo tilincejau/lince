@@ -269,7 +269,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES FINAL (TXT PARSING ATUALIZADO) ---
+    # --- SCRIPT VASILHAMES FINAL (063-005 REMOVIDO) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -311,7 +311,9 @@ def logistics_page():
                 '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', 
                 '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', 
                 
-                '063-005': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
+                # 063-005 REMOVIDO DA LEITURA DO TXT
+                # '063-005': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'], 
+
                 '546-001': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                 '540-001': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],
                 '541-002': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],
@@ -326,38 +328,28 @@ def logistics_page():
             parsed_data = []
             lines = content.splitlines()
             current_code = None
-            
-            # LÓGICA DE 3 PASSOS PARA LER LINHAS QUEBRADAS
             for line in lines:
                 line = line.strip()
                 if not line or '---' in line or 'DATA' in line or 'REFERENTE' in line: continue
                 
-                # 1. Tenta achar o código
                 code_match = re.search(r'^(\d{3}-\d{3})', line)
                 
                 if code_match:
                     current_code = code_match.group(1)
-                    # Tenta achar Qtd+Valor na mesma linha
                     qty_match_full = re.search(r'\s+([\d\.]+)\s+[\d\.]+,\d+', line)
-                    
                     if qty_match_full:
-                        # Cenário 1: Tudo na mesma linha
                         qty_str = qty_match_full.group(1).replace('.', '')
                         if current_code in product_code_to_vasilhame_map:
                             parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(qty_str)})
-                        current_code = None # Reset
+                        current_code = None
                     else:
-                         # Tenta achar Qtd no final da linha (Cenário 2: Quebra depois da Qtd)
                          qty_match_end = re.search(r'\s+([\d\.]+)$', line)
                          if qty_match_end:
                              qty_str = qty_match_end.group(1).replace('.', '')
                              if current_code in product_code_to_vasilhame_map:
                                  parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(qty_str)})
-                             current_code = None # Reset (Já pegamos a qtd, ignoramos a linha de valor seguinte)
-                
+                             current_code = None
                 elif current_code:
-                    # Cenário 3: Código estava na linha anterior (sozinho ou sem qtd), Qtd está aqui
-                    # Procura Qtd+Valor nesta linha
                     qty_match_next = re.search(r'([\d\.]+)\s+[\d\.]+,\d+', line)
                     if qty_match_next:
                         qty_str = qty_match_next.group(1).replace('.', '')
@@ -435,7 +427,6 @@ def logistics_page():
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
                         pdf_map = {
-                            # CAIXAS PADRÃO
                             '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
                             '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
                             '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
@@ -445,7 +436,6 @@ def logistics_page():
                             '000000000000048261': '563-008 - BARRIL INOX 30L', 
                             '000000000000048272': '564-009 - BARRIL INOX 50L',
                             
-                            # GARRAFAS
                             '000000000000185039': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                             '000000000000002496': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],
                             '000000000000107523': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],
