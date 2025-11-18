@@ -17,7 +17,7 @@ import xlsxwriter
 # CONFIGURAÇÃO E CONSTANTES GLOBAIS
 # ====================================================================
 
-# 1. MAPA DE RELACIONAMENTO (Qual Caixa gera qual Garrafa?)
+# Mapa: Nome da Caixa no Excel -> Nome da Garrafa (para separar linhas)
 CRATE_TO_BOTTLE_MAP = {
     '546-004 - CAIXA PLASTICA 24UN 300ML': '546-001 - GARRAFA 300ML',
     '550-001 - CAIXA PLASTICA 600ML': '540-001 - GARRAFA 600ML',
@@ -26,7 +26,7 @@ CRATE_TO_BOTTLE_MAP = {
     '555-001 - CAIXA PLASTICA 1L': '541-002 - GARRAFA 1L'
 }
 
-# 2. FATORES DE MULTIPLICAÇÃO (Quantas garrafas vêm na caixa?)
+# Fatores de conversão (Quantas garrafas cabem na caixa)
 FACTORS = {
     '546-004 - CAIXA PLASTICA 24UN 300ML': 24,
     '550-001 - CAIXA PLASTICA 600ML': 24,
@@ -269,7 +269,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES FINAL ---
+    # --- SCRIPT VASILHAMES FINAL (TXT PARSING ATUALIZADO) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -310,12 +310,14 @@ def logistics_page():
                 '563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
                 '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', 
                 '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', 
+                
                 '063-005': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                 '546-001': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                 '540-001': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],
                 '541-002': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],
                 '586-001': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'],
                 '593-001': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML'],
+                
                 '550-012': '550-001 - CAIXA PLASTICA 600ML', '803-025': '550-001 - CAIXA PLASTICA 600ML',
                 '803-036': '550-001 - CAIXA PLASTICA 600ML', '803-037': '550-001 - CAIXA PLASTICA 600ML',
                 '803-039': '550-001 - CAIXA PLASTICA 600ML' 
@@ -324,25 +326,45 @@ def logistics_page():
             parsed_data = []
             lines = content.splitlines()
             current_code = None
+            
+            # LÓGICA DE 3 PASSOS PARA LER LINHAS QUEBRADAS
             for line in lines:
                 line = line.strip()
                 if not line or '---' in line or 'DATA' in line or 'REFERENTE' in line: continue
-                code_match = re.search(r'(\d{3}-\d{3})', line)
+                
+                # 1. Tenta achar o código
+                code_match = re.search(r'^(\d{3}-\d{3})', line)
+                
                 if code_match:
                     current_code = code_match.group(1)
-                    qty_match = re.search(r'\s+([\d\.]+)\s+[\d\.]+,\d+', line)
-                    if qty_match:
-                        quantity_str = qty_match.group(1).replace('.', '')
+                    # Tenta achar Qtd+Valor na mesma linha
+                    qty_match_full = re.search(r'\s+([\d\.]+)\s+[\d\.]+,\d+', line)
+                    
+                    if qty_match_full:
+                        # Cenário 1: Tudo na mesma linha
+                        qty_str = qty_match_full.group(1).replace('.', '')
                         if current_code in product_code_to_vasilhame_map:
-                            parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(quantity_str)})
-                        current_code = None 
+                            parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(qty_str)})
+                        current_code = None # Reset
+                    else:
+                         # Tenta achar Qtd no final da linha (Cenário 2: Quebra depois da Qtd)
+                         qty_match_end = re.search(r'\s+([\d\.]+)$', line)
+                         if qty_match_end:
+                             qty_str = qty_match_end.group(1).replace('.', '')
+                             if current_code in product_code_to_vasilhame_map:
+                                 parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(qty_str)})
+                             current_code = None # Reset (Já pegamos a qtd, ignoramos a linha de valor seguinte)
+                
                 elif current_code:
+                    # Cenário 3: Código estava na linha anterior (sozinho ou sem qtd), Qtd está aqui
+                    # Procura Qtd+Valor nesta linha
                     qty_match_next = re.search(r'([\d\.]+)\s+[\d\.]+,\d+', line)
                     if qty_match_next:
-                        quantity_str = qty_match_next.group(1).replace('.', '')
+                        qty_str = qty_match_next.group(1).replace('.', '')
                         if current_code in product_code_to_vasilhame_map:
-                            parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(quantity_str)})
+                            parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(qty_str)})
                         current_code = None 
+            
             if not parsed_data: return None, effective_date_str, effective_date_full
             df_estoque = pd.DataFrame(parsed_data)
             df_estoque['Vasilhame'] = df_estoque['PRODUTO_CODE'].map(product_code_to_vasilhame_map)
@@ -412,9 +434,8 @@ def logistics_page():
 
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
-                        # MAPA PDF (CÓDIGOS ORIGINAIS + GARRAFAS)
                         pdf_map = {
-                            # CAIXAS
+                            # CAIXAS PADRÃO
                             '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
                             '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
                             '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
@@ -431,6 +452,7 @@ def logistics_page():
                             '000000000000152592': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                             '000000000000215443': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'],
                             '000000000000381408': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML'],
+                            
                             '000000000000152597': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'], 
                             '000000000000000471': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],     
                             '000000000000107522': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],        
@@ -484,7 +506,6 @@ def logistics_page():
                             if target_bottle:
                                 garrafa_cheia = (qtd_cheias + qtd_transito) * FACTORS.get(target_crate, 1)
                                 caixa_vazia = qtd_vazias
-                                # CORREÇÃO: CAIXA CHEIA CONTA COMO CAIXA NO FÍSICO TAMBÉM
                                 caixa_cheia = qtd_cheias + qtd_transito
                             else:
                                 caixa_cheia = qtd_cheias + qtd_transito
