@@ -170,7 +170,7 @@ def logistics_page():
             start_line = separator_indices[1] + 1
             col_names = ['COD.RED.', 'DESCRIÇÃO', 'SLD INICIAL CX', 'SLD INICIAL UN', 'ENTRADAS CX', 'ENTRADAS UN', 'SAÍDAS CX', 'SAÍDAS UN', 'SALDO FÍSICO CX', 'SALDO FÍSICO UN', 'CONT. FÍSICA CX', 'CONT. FÍSICA UN', 'DIFERENÇA CX', 'DIFERENÇA UN']
             data = []
-            pattern = re.compile(r'^\s*(\d+)\s+(.+?)\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I')
+            pattern = re.compile(r'^\s*(\d+)\s+(.+?)\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I')
             for line in lines[start_line:]:
                 line = line.strip()
                 if not line or 'TOTAL GERAL' in line: continue
@@ -269,7 +269,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES FINAL (CORRIGIDO DUPLICIDADE E PDF MAP) ---
+    # --- SCRIPT VASILHAMES CORRIGIDO (DUPLICIDADE COLUNAS E PDF MAP) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -284,7 +284,7 @@ def logistics_page():
                         conn.execute(text("DROP TABLE IF EXISTS txt_data"))
                         conn.execute(text("DROP TABLE IF EXISTS pdf_data"))
                         conn.commit()
-                    st.success("Histórico apagado com sucesso! RECARREGUE OS ARQUIVOS.")
+                    st.success("Histórico apagado com sucesso!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao limpar o banco: {e}")
@@ -310,15 +310,12 @@ def logistics_page():
                 '563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
                 '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', 
                 '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', 
-                
-                # Garrafas (Mapeia para nome da Garrafa)
                 '063-005': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                 '546-001': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                 '540-001': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],
                 '541-002': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],
                 '586-001': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'],
                 '593-001': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML'],
-                
                 '550-012': '550-001 - CAIXA PLASTICA 600ML', '803-025': '550-001 - CAIXA PLASTICA 600ML',
                 '803-036': '550-001 - CAIXA PLASTICA 600ML', '803-037': '550-001 - CAIXA PLASTICA 600ML',
                 '803-039': '550-001 - CAIXA PLASTICA 600ML' 
@@ -415,9 +412,9 @@ def logistics_page():
 
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
-                        # MAPA PDF CORRIGIDO E ATUALIZADO (GARRAFAS APONTAM PARA GARRAFAS)
+                        # MAPA PDF ATUALIZADO CONFORME SOLICITADO (GARRAFAS SEPARADAS)
                         pdf_map = {
-                            # CAIXAS/BARRIL
+                            # CAIXAS
                             '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
                             '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
                             '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
@@ -427,20 +424,20 @@ def logistics_page():
                             '000000000000048261': '563-008 - BARRIL INOX 30L', 
                             '000000000000048272': '564-009 - BARRIL INOX 50L',
                             
-                            # GARRAFAS (APONTAM PARA LINHAS DE GARRAFA)
-                            '000000000000185039': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'], # 063-005 -> 546-001
-                            '000000000000002496': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],      # 540-001 -> 540-001
-                            '000000000000107523': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],         # 541-002 -> 541-002
-                            '000000000000152592': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'], # 546-001 -> 546-001
-                            '000000000000215443': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'], # 586-001 -> 586-001
-                            '000000000000381408': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML'], # 593-001 -> 593-001
+                            # GARRAFAS (Mapeia para Linha de Garrafa)
+                            '000000000000185039': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'], # Garrafa 300ml
+                            '000000000000002496': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],      # Garrafa 600ml
+                            '000000000000107523': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],         # Garrafa 1L
+                            '000000000000152592': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'], # Garrafa 300ml (variante)
+                            '000000000000215443': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'], # Garrafa HNK
+                            '000000000000381408': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML'], # Garrafa HNK
                             
-                            # NOVOS CÓDIGOS ADICIONADOS (GARRAFAS / OUTROS)
-                            '000000000000152597': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'], # Ref 063-005 -> Garrafa
-                            '000000000000000471': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],      # Ref 540-001 -> Garrafa
-                            '000000000000107522': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],         # Ref 541-002 -> Garrafa
-                            '000000000000215209': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'], # Ref 586-001 -> Garrafa
-                            '000000000000381409': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML']  # Ref 593-001 -> Garrafa
+                            # NOVOS CÓDIGOS DE GARRAFAS (Mapeia para Linha de Garrafa)
+                            '000000000000152597': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'], # Garrafa 300ml (Crédito)
+                            '000000000000000471': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],      # Garrafa 600ml (Crédito)
+                            '000000000000107522': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],         # Garrafa 1L (Crédito)
+                            '000000000000215209': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'], # Garrafa HNK (Crédito)
+                            '000000000000381409': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML']  # Garrafa HNK (Crédito)
                         }
                         for pdf_file in uploaded_pdf_files:
                             df_pdf_current = process_pdf_content(pdf_file, pdf_map)
@@ -480,12 +477,10 @@ def logistics_page():
                     def calculate_assets(row):
                         target_crate, target_bottle = map_excel_names_and_get_target(row['Qual vasilhame ?'])
                         garrafa_cheia = 0.0; caixa_vazia = 0.0; caixa_cheia = 0.0
-                        
                         if 'Quantidade estoque caixas cheias?' in row.index and pd.notnull(row['Quantidade estoque caixas cheias?']):
                             qtd_cheias = float(row.get('Quantidade estoque caixas cheias?', 0) or 0)
                             qtd_transito = float(row.get('Em transito (Entrega)?', 0) or 0)
                             qtd_vazias = float(row.get('Quantidade estoque caixas vazias?', 0) or 0)
-                            
                             if target_bottle:
                                 garrafa_cheia = (qtd_cheias + qtd_transito) * FACTORS.get(target_crate, 1)
                                 caixa_vazia = qtd_vazias
@@ -516,6 +511,7 @@ def logistics_page():
                     all_dates = set()
                     if not df_excel_agg.empty: all_dates.update(df_excel_agg['Dia'].unique())
                     if not df_all_processed_txt_data.empty: all_dates.update(df_all_processed_txt_data['Dia'].unique())
+                    if not df_all_processed_pdf_data.empty: all_dates.update(df_all_processed_pdf_data['Dia'].unique())
                     if not all_dates: all_dates.add(datetime.now().strftime('%d/%m'))
                     
                     skeleton_rows = []
@@ -652,6 +648,80 @@ def logistics_page():
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
     if st.button("Voltar para o Início", key="log_voltar"):
+        st.session_state['current_page'] = 'home'
+        st.rerun()
+
+# ====================================================================
+# SETOR COMERCIAL
+# ====================================================================
+def commercial_page():
+    st.title("Setor Comercial")
+    st.markdown("Bem-vindo(a) ao setor Comercial. Abaixo estão os scripts disponíveis para análise.")
+    script_selection = st.selectbox("Selecione o script:", ("Selecione...", "Troca de Canal", "Circuito Execução"), key="com_select")
+
+    if script_selection == "Troca de Canal":
+        st.subheader("Troca de Canal")
+        def transform_google_forms_data(df):
+            processed_records = []
+            if df.empty or len(df.columns) < 28: return pd.DataFrame()
+            for index, row in df.iterrows():
+                if not isinstance(row, pd.Series) or len(row) < 28: continue
+                try:
+                    data_value = row.iloc[0]; sv_value = row.iloc[1]
+                    vd_consolidated_parts = [str(row.iloc[col_idx]).strip() for col_idx in range(2, min(5, len(row))) if pd.notna(row.iloc[col_idx])]
+                    vd_final = ' | '.join(vd_consolidated_parts) if vd_consolidated_parts else None
+                    para_value = row.iloc[27]
+                    for col_idx in range(5, min(27, len(row))):
+                        cell_content = str(row.iloc[col_idx]).strip()
+                        if not cell_content or cell_content.lower() == 'nan': continue
+                        de_category_match = re.search(r'\((.*?)\)', cell_content)
+                        de_category_val = de_category_match.group(1).strip() if de_category_match else None
+                        pdv_info_raw = re.sub(r'\s*\([^)]*\)\s*$', '', cell_content).strip()
+                        pdv_info_val = re.sub(r'^\s*(?:\b\w+\s+)?\d+\s*[\|-]\s*', '', pdv_info_raw, 1).strip() if pdv_info_raw else None
+                        if pdv_info_val or de_category_val:
+                            processed_records.append({'DATA': data_value, 'SV': sv_value, 'VD': vd_final, 'PDV': pdv_info_val, 'DE': de_category_val, 'PARA': para_value, 'Status': ''})
+                except IndexError: continue
+            return pd.DataFrame(processed_records)
+        uploaded_file_1 = st.file_uploader("Envie o arquivo (.xlsx)", type=["xlsx"], key="troca_canal_uploader") 
+        if uploaded_file_1 is not None:
+            try:
+                df_forms = pd.read_excel(uploaded_file_1)
+                st.dataframe(df_forms.head())
+                final_df_forms = transform_google_forms_data(df_forms)
+                if not final_df_forms.empty:
+                    output = io.BytesIO(); final_df_forms.to_excel(output, index=False); output.seek(0)
+                    workbook = load_workbook(output); sheet = workbook.active
+                    dv = DataValidation(type="list", formula1='"Aprovado,Não Aprovado"', allow_blank=True)
+                    try:
+                        col_letter = get_column_letter(final_df_forms.columns.get_loc('Status') + 1)
+                        dv.add(f'{col_letter}2:{col_letter}{sheet.max_row}'); sheet.add_data_validation(dv)
+                    except KeyError: pass
+                    output_with_dropdown = io.BytesIO(); workbook.save(output_with_dropdown); output_with_dropdown.seek(0)
+                    st.dataframe(final_df_forms)
+                    st.download_button(label="📥 Baixar Arquivo", data=output_with_dropdown.getvalue(), file_name="troca_canal_processada.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            except Exception as e: st.error(f"Erro: {e}")
+
+    elif script_selection == "Circuito Execução":
+        st.subheader("Circuito Execução")
+        def extract_points(column_name): match = re.search(r"\(\s*(\d+)\s*Pontos\s*\)", column_name); return int(match.group(1)) if match else None
+        def transform_points_columns(df):
+            df_transformed = df.copy()
+            for col in df_transformed.columns:
+                if "Pontos" in col:
+                    points = extract_points(col)
+                    if points is not None: df_transformed[col] = df_transformed[col].apply(lambda x: points if x == "Presença" else 0)
+            return df_transformed
+        uploaded_file_2 = st.file_uploader("Envie o arquivo (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
+        if uploaded_file_2 is not None:
+            try:
+                df_points = pd.read_excel(uploaded_file_2); st.dataframe(df_points)
+                df_transformed = transform_points_columns(df_points); st.dataframe(df_transformed)
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine="xlsxwriter") as writer: df_transformed.to_excel(writer, index=False)
+                st.download_button(label="📥 Baixar Arquivo", data=output.getvalue(), file_name="circuito_execucao_transformado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            except Exception as e: st.error(f"Erro: {e}")
+                
+    if st.button("Voltar para o Início", key="com_voltar"):
         st.session_state['current_page'] = 'home'
         st.rerun()
 
