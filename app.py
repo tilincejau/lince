@@ -314,36 +314,41 @@ def logistics_page():
             lines = content.splitlines()
             current_code = None
             
-            # LÓGICA APRIMORADA PARA LER LINHAS QUEBRADAS
+            # LÓGICA NOVA PARA LER LINHAS QUEBRADAS E MISTURADAS
             for line in lines:
                 line = line.strip()
-                
-                # 1. Procura pelo código do produto no início da linha
-                code_match = re.match(r'^(\d{3}-\d{3})', line)
+                # Ignora linhas irrelevantes
+                if not line or '---' in line or 'DATA' in line or 'REFERENTE' in line: continue
+
+                # 1. Tenta achar o código no início da linha
+                code_match = re.search(r'(\d{3}-\d{3})', line)
                 
                 if code_match:
+                    # Achou um código, guarda ele
                     current_code = code_match.group(1)
                     
-                    # Tenta achar a quantidade na mesma linha (ex: "195.107    282.905,15")
-                    # Procura por um número (com ou sem ponto) seguido de espaço e outro número com vírgula
-                    qty_match = re.search(r'\s+(\d+(?:\.\d{3})*)\s+\d+,\d+', line)
+                    # Tenta achar a quantidade NA MESMA LINHA
+                    # Procura: espaço + digitos(com ponto) + espaço + valor(com virgula)
+                    # Ex: "   3.332    75.669,72"
+                    qty_match = re.search(r'\s+([\d\.]+)\s+[\d\.]+,\d+', line)
                     
                     if qty_match:
+                        # Achou tudo na mesma linha
                         quantity_str = qty_match.group(1).replace('.', '')
                         if current_code in product_code_to_vasilhame_map:
-                             parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(quantity_str)})
-                        current_code = None # Já achou, reseta
+                            parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(quantity_str)})
+                        current_code = None # Reseta pois já leu
                         
                 elif current_code:
-                    # Se temos um código pendente (não achou a qtd na linha anterior), procura nesta linha
-                    # A quantidade deve estar no início da linha ou após espaços, seguida de valor monetário
-                    qty_match_next_line = re.search(r'^(\d+(?:\.\d{3})*)\s+\d+,\d+', line)
+                    # Se tinha um código pendente (da linha anterior) e não achou quantidade lá
+                    # Tenta achar a quantidade NESTA linha
+                    qty_match_next = re.search(r'([\d\.]+)\s+[\d\.]+,\d+', line)
                     
-                    if qty_match_next_line:
-                        quantity_str = qty_match_next_line.group(1).replace('.', '')
+                    if qty_match_next:
+                        quantity_str = qty_match_next.group(1).replace('.', '')
                         if current_code in product_code_to_vasilhame_map:
                             parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(quantity_str)})
-                        current_code = None
+                        current_code = None # Reseta
 
             if not parsed_data:
                 return None, effective_date_str, effective_date_full
@@ -463,14 +468,21 @@ def logistics_page():
                     # --- MAPA DE RENOMEAÇÃO DO EXCEL PARA GARANTIR A CONTAGEM CERTA ---
                     def map_excel_names(name):
                         name_upper = str(name).upper()
+                        
+                        # Mapeamento da 550-001 e variações
                         if '550-012' in name_upper or 'EISENBAHN' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
                         if '803-025' in name_upper or 'MISTA' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
                         if '803-036' in name_upper or 'AMBEV' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
                         if '803-037' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
                         if '803-039' in name_upper or 'CINZA' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
-                        return name # Retorna o original se não encontrar
+                        if '550-001' in name_upper: return '550-001 - CAIXA PLASTICA 600ML' # Garante o nome padrão
+                        
+                        # Mapeamento da 587-002 (Heineken)
+                        if '587-002' in name_upper or ('HEINEKEN' in name_upper and '600' in name_upper):
+                            return '587-002 - CAIXA PLASTICA HEINEKEN 600ML'
 
-                    # Aplica o mapa apenas se o nome do produto estiver na lista de mapeamento
+                        return name 
+
                     df_contagem['Qual vasilhame ?'] = df_contagem['Qual vasilhame ?'].apply(map_excel_names)
                     # ------------------------------------------------------------------
 
