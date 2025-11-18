@@ -18,7 +18,6 @@ import xlsxwriter
 # ====================================================================
 
 def login_form():
-    """Exibe o formulário de login com um design aprimorado."""
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("<h2 style='text-align: center; color: #004d99; font-family: 'Arial Black', sans-serif;'>Lince Distribuidora</h2>", unsafe_allow_html=True)
@@ -82,7 +81,6 @@ def logistics_page():
     
     st.write("---")
 
-    # --- SCRIPT ACURÁCIA ---
     if script_choice == "Acurácia":
         st.subheader("Acurácia de Estoque")
         uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque' (.csv ou .xlsx)", type=["csv", "xlsx"], key="acuracia_uploader")
@@ -253,7 +251,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES ATUALIZADO (COM MAPA PDF COMPLETO E CORRETO) ---
+    # --- SCRIPT VASILHAMES ATUALIZADO ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -431,9 +429,8 @@ def logistics_page():
 
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
-                        # MAPA PDF COMPLETO E ATUALIZADO
                         pdf_map = {
-                            # Códigos originais de Caixas
+                            # CAIXAS PADRÃO
                             '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
                             '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
                             '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
@@ -442,15 +439,14 @@ def logistics_page():
                             '000000000000000470': '550-001 - CAIXA PLASTICA 600ML',
                             '000000000000048261': '563-008 - BARRIL INOX 30L', 
                             '000000000000048272': '564-009 - BARRIL INOX 50L',
-                            
-                            # Códigos de Garrafas e Variações (Mapeados para a Caixa Principal)
+                            # GARRAFAS (Somadas na Caixa)
                             '000000000000185039': '546-004 - CAIXA PLASTICA 24UN 300ML',
                             '000000000000002496': '550-001 - CAIXA PLASTICA 600ML',
                             '000000000000107523': '555-001 - CAIXA PLASTICA 1L',
                             '000000000000152592': '546-004 - CAIXA PLASTICA 24UN 300ML',
                             '000000000000215443': '587-002 - CAIXA PLASTICA HEINEKEN 600ML',
                             '000000000000381408': '591-002 - CAIXA PLASTICA HEINEKEN 330ML',
-                            
+                            # NOVOS CÓDIGOS ADICIONADOS
                             '000000000000152597': '546-004 - CAIXA PLASTICA 24UN 300ML',
                             '000000000000000471': '550-001 - CAIXA PLASTICA 600ML',
                             '000000000000107522': '555-001 - CAIXA PLASTICA 1L',
@@ -530,7 +526,7 @@ def logistics_page():
                     if 'DataCompleta' in df_all_processed_txt_data.columns: df_all_processed_txt_data.rename(columns={'DataCompleta': 'DataCompleta_txt'}, inplace=True)
                     if 'DataCompleta' in df_all_processed_pdf_data.columns: df_all_processed_pdf_data.rename(columns={'DataCompleta': 'DataCompleta_pdf'}, inplace=True)
 
-                    # --- LÓGICA NOVA: FORÇAR LINHAS DE PRODUTOS OBRIGATÓRIOS ---
+                    # --- GARANTIA DE LINHAS OBRIGATÓRIAS ---
                     required_vasilhames = [
                         '546-004 - CAIXA PLASTICA 24UN 300ML',
                         '550-001 - CAIXA PLASTICA 600ML',
