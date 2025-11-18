@@ -17,7 +17,7 @@ import xlsxwriter
 # CONFIGURAÇÃO INICIAL E LOGIN
 # ====================================================================
 
-# Dicionários de Mapeamento Global para Vasilhames
+# Dicionários de Mapeamento Global
 CRATE_TO_BOTTLE_MAP = {
     '546-004 - CAIXA PLASTICA 24UN 300ML': '546-001 - GARRAFA 300ML',
     '550-001 - CAIXA PLASTICA 600ML': '540-001 - GARRAFA 600ML',
@@ -35,7 +35,6 @@ FACTORS = {
 }
 
 def login_form():
-    """Exibe o formulário de login com um design aprimorado."""
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("<h2 style='text-align: center; color: #004d99; font-family: 'Arial Black', sans-serif;'>Lince Distribuidora</h2>", unsafe_allow_html=True)
@@ -166,7 +165,7 @@ def logistics_page():
             start_line = separator_indices[1] + 1
             col_names = ['COD.RED.', 'DESCRIÇÃO', 'SLD INICIAL CX', 'SLD INICIAL UN', 'ENTRADAS CX', 'ENTRADAS UN', 'SAÍDAS CX', 'SAÍDAS UN', 'SALDO FÍSICO CX', 'SALDO FÍSICO UN', 'CONT. FÍSICA CX', 'CONT. FÍSICA UN', 'DIFERENÇA CX', 'DIFERENÇA UN']
             data = []
-            pattern = re.compile(r'^\s*(\d+)\s+(.+?)\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I')
+            pattern = re.compile(r'^\s*(\d+)\s+(.+?)\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I')
             for line in lines[start_line:]:
                 line = line.strip()
                 if not line or 'TOTAL GERAL' in line: continue
@@ -265,7 +264,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES CORRIGIDO ---
+    # --- SCRIPT VASILHAMES ATUALIZADO (SEPARAÇÃO CONT. CHEIAS E VAZIAS) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -280,47 +279,38 @@ def logistics_page():
                         conn.execute(text("DROP TABLE IF EXISTS txt_data"))
                         conn.execute(text("DROP TABLE IF EXISTS pdf_data"))
                         conn.commit()
-                    st.success("Histórico apagado com sucesso! **RECARREGUE OS ARQUIVOS TXT/PDF NOVAMENTE.**")
+                    st.success("Histórico apagado com sucesso!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao limpar o banco: {e}")
         st.write("---")
-        st.warning("⚠️ **ATENÇÃO:** Após grandes mudanças estruturais, é essencial **CLICAR NO BOTÃO ACIMA** para limpar dados antigos, e só então, re-enviar todos os arquivos TXT e PDF.")
-
 
         def process_txt_file_st(file_content):
             content = file_content.getvalue().decode('latin1')
             filename_date_match = re.search(r'ESTOQUE(\d{4})\.TXT', file_content.name)
-            
             effective_date_str = None
             effective_date_full = None
-            
             if filename_date_match:
                 day = filename_date_match.group(1)[:2]
                 month = filename_date_match.group(1)[2:]
                 year = datetime.now().year
                 now = datetime.now()
-                if now.month == 1 and month == '12':
-                    year = year - 1
+                if now.month == 1 and month == '12': year = year - 1
                 effective_date_obj = datetime.strptime(f"{day}/{month}/{year}", '%d/%m/%Y')
                 effective_date_str = effective_date_obj.strftime('%d/%m')
                 effective_date_full = effective_date_obj.date()
-            else:
-                st.error(f"Nome do arquivo TXT inválido: {file_content.name}. O formato deve ser 'ESTOQUEDDMM.TXT'.")
-                return None, None, None 
+            else: st.error(f"Nome do arquivo TXT inválido: {file_content.name}"); return None, None, None 
 
             product_code_to_vasilhame_map = {
                 '563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
                 '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', 
                 '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', 
-                
                 '063-005': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                 '546-001': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                 '540-001': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],
                 '541-002': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],
                 '586-001': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'],
                 '593-001': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML'],
-                
                 '550-012': '550-001 - CAIXA PLASTICA 600ML', '803-025': '550-001 - CAIXA PLASTICA 600ML',
                 '803-036': '550-001 - CAIXA PLASTICA 600ML', '803-037': '550-001 - CAIXA PLASTICA 600ML',
                 '803-039': '550-001 - CAIXA PLASTICA 600ML' 
@@ -329,7 +319,6 @@ def logistics_page():
             parsed_data = []
             lines = content.splitlines()
             current_code = None
-            
             for line in lines:
                 line = line.strip()
                 if not line or '---' in line or 'DATA' in line or 'REFERENTE' in line: continue
@@ -349,9 +338,7 @@ def logistics_page():
                         if current_code in product_code_to_vasilhame_map:
                             parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(quantity_str)})
                         current_code = None 
-
             if not parsed_data: return None, effective_date_str, effective_date_full
-            
             df_estoque = pd.DataFrame(parsed_data)
             df_estoque['Vasilhame'] = df_estoque['PRODUTO_CODE'].map(product_code_to_vasilhame_map)
             df_txt_qty = df_estoque.groupby('Vasilhame')['QUANTIDADE'].sum().reset_index()
@@ -383,13 +370,7 @@ def logistics_page():
                     credito = abs(saldo) if saldo < 0 else 0.0
                     debito = saldo if saldo >= 0 else 0.0
                     parsed_data.append({'Vasilhame': vasilhame, 'Dia': effective_date_str, 'DataCompleta': effective_date_full, f'Credito {col_suffix}': credito, f'Debito {col_suffix}': debito})
-            
-            # --- DEBUGGING: EXIBE QUANTOS DADOS FORAM LIDOS ---
-            if not parsed_data: 
-                st.warning(f"AVISO CRÍTICO: Nenhum dado de crédito/débito foi extraído do PDF: {pdf_file.name}. (0 linhas lidas).")
-                return pd.DataFrame()
-            # ------------------------------------------------
-
+            if not parsed_data: st.warning(f"Nenhum dado encontrado no PDF: {pdf_file.name}"); return pd.DataFrame()
             df_parsed = pd.DataFrame(parsed_data)
             pdf_value_cols = [col for col in df_parsed.columns if 'Credito' in col or 'Debito' in col]
             agg_dict = {col: 'sum' for col in pdf_value_cols}; agg_dict['DataCompleta'] = 'max'
@@ -462,7 +443,6 @@ def logistics_page():
                     
                     df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                     df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
-                    
                     df_contagem['DataCompleta'] = df_contagem['Carimbo de data/hora'].dt.date
                     df_contagem['Dia'] = df_contagem['Carimbo de data/hora'].dt.strftime('%d/%m')
                     
@@ -470,80 +450,64 @@ def logistics_page():
                         name_upper = str(name).upper()
                         target_crate = name 
                         target_bottle = None
-                        
                         if '550-012' in name_upper or 'EISENBAHN' in name_upper or '550-001' in name_upper or 'MISTA' in name_upper or 'AMBEV' in name_upper or 'CINZA' in name_upper:
                              target_crate = '550-001 - CAIXA PLASTICA 600ML'
                         elif '587-002' in name_upper or ('HEINEKEN' in name_upper and '600' in name_upper): target_crate = '587-002 - CAIXA PLASTICA HEINEKEN 600ML'
                         elif '546-004' in name_upper: target_crate = '546-004 - CAIXA PLASTICA 24UN 300ML'
                         elif '591-002' in name_upper: target_crate = '591-002 - CAIXA PLASTICA HEINEKEN 330ML'
                         elif '555-001' in name_upper: target_crate = '555-001 - CAIXA PLASTICA 1L'
-
                         if target_crate in CRATE_TO_BOTTLE_MAP: target_bottle = CRATE_TO_BOTTLE_MAP[target_crate]
                         return target_crate, target_bottle
 
                     def calculate_assets(row):
                         target_crate, target_bottle = map_excel_names_and_get_target(row['Qual vasilhame ?'])
-                        
-                        garrafa_count = 0.0
-                        caixa_count = 0.0
+                        garrafa_cheia = 0.0; caixa_vazia = 0.0; caixa_cheia = 0.0
                         
                         if 'Quantidade estoque caixas cheias?' in row.index and pd.notnull(row['Quantidade estoque caixas cheias?']):
                             qtd_cheias = float(row.get('Quantidade estoque caixas cheias?', 0) or 0)
                             qtd_transito = float(row.get('Em transito (Entrega)?', 0) or 0)
-                            caixa_vazia = float(row.get('Quantidade estoque caixas vazias?', 0) or 0)
+                            qtd_vazias = float(row.get('Quantidade estoque caixas vazias?', 0) or 0)
                             
                             if target_bottle:
-                                garrafa_count = (qtd_cheias + qtd_transito) * FACTORS.get(target_crate, 1)
-                                caixa_count = caixa_vazia
+                                garrafa_cheia = (qtd_cheias + qtd_transito) * FACTORS.get(target_crate, 1)
+                                caixa_vazia = qtd_vazias
                             else:
-                                caixa_count = qtd_cheias + qtd_transito + caixa_vazia
+                                caixa_cheia = qtd_cheias + qtd_transito
+                                caixa_vazia = qtd_vazias
                         else:
-                            if 'Total' in row.index and pd.notnull(row['Total']): total_calculado = float(row['Total'])
-                            else: total_calculado = float(row.get('Quantidade estoque ?', 0) or 0) + float(row.get('Em transito (Entrega)?', 0) or 0) + float(row.get('Em transito (carreta)?', 0) or 0)
+                            if 'Total' in row.index and pd.notnull(row['Total']): total = float(row['Total'])
+                            else: total = float(row.get('Quantidade estoque ?', 0) or 0) + float(row.get('Em transito (Entrega)?', 0) or 0) + float(row.get('Em transito (carreta)?', 0) or 0)
                             
-                            if target_bottle:
-                                garrafa_count = total_calculado * FACTORS.get(target_crate, 1)
-                                caixa_count = 0.0
-                            else:
-                                caixa_count = total_calculado
-                                garrafa_count = 0.0
+                            if target_bottle: garrafa_cheia = total * FACTORS.get(target_crate, 1)
+                            else: caixa_cheia = total
                         
-                        return pd.Series([target_crate, target_bottle, garrafa_count, caixa_count], index=['TargetCrate', 'TargetBottle', 'GarrafaCount', 'CaixaCount'])
+                        return pd.Series([target_crate, target_bottle, garrafa_cheia, caixa_vazia, caixa_cheia], index=['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia'])
 
-                    df_contagem[['TargetCrate', 'TargetBottle', 'GarrafaCount', 'CaixaCount']] = df_contagem.apply(calculate_assets, axis=1)
+                    df_contagem[['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia']] = df_contagem.apply(calculate_assets, axis=1)
 
-                    df_agg_garrafa = df_contagem.dropna(subset=['TargetBottle']).groupby(['TargetBottle', 'Dia']).agg(Contagem=('GarrafaCount', 'sum'), DataCompleta=('Carimbo de data/hora', 'max')).reset_index()
-                    df_agg_garrafa.rename(columns={'TargetBottle': 'Vasilhame'}, inplace=True)
+                    # AGREGAÇÃO SEPARADA
+                    df_agg_garrafa = df_contagem.dropna(subset=['TargetBottle']).groupby(['TargetBottle', 'Dia']).agg(ContagemCheias=('GarrafaCheia', 'sum'), ContagemVazias=('CaixaVazia', 'min'), DataCompleta=('Carimbo de data/hora', 'max')).reset_index() # Vazia na garrafa é 0, usamos min pra zerar ou ignorar, mas a logica pede vazias na CAIXA.
+                    df_agg_garrafa['Contagem Vazias'] = 0 # Garrafas não tem "Vazias" na contagem do form (são caixas)
+                    df_agg_garrafa.rename(columns={'TargetBottle': 'Vasilhame', 'ContagemCheias': 'Contagem Cheias'}, inplace=True)
 
-                    df_agg_caixa = df_contagem.groupby(['TargetCrate', 'Dia']).agg(Contagem=('CaixaCount', 'sum'), DataCompleta=('Carimbo de data/hora', 'max')).reset_index()
-                    df_agg_caixa.rename(columns={'TargetCrate': 'Vasilhame'}, inplace=True)
+                    df_agg_caixa = df_contagem.groupby(['TargetCrate', 'Dia']).agg(ContagemCheias=('CaixaCheia', 'sum'), ContagemVazias=('CaixaVazia', 'sum'), DataCompleta=('Carimbo de data/hora', 'max')).reset_index()
+                    df_agg_caixa.rename(columns={'TargetCrate': 'Vasilhame', 'ContagemCheias': 'Contagem Cheias', 'ContagemVazias': 'Contagem Vazias'}, inplace=True)
                     
                     df_excel_agg = pd.concat([df_agg_garrafa, df_agg_caixa], ignore_index=True)
                     df_excel_agg.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
 
                     required_vasilhames = list(FACTORS.keys()) + list(CRATE_TO_BOTTLE_MAP.values())
-                    
                     all_dates = set()
                     if not df_excel_agg.empty: all_dates.update(df_excel_agg['Dia'].unique())
                     if not df_all_processed_txt_data.empty: all_dates.update(df_all_processed_txt_data['Dia'].unique())
-                    if not df_all_processed_pdf_data.empty: all_dates.update(df_all_processed_pdf_data['Dia'].unique())
-                    
                     if not all_dates: all_dates.add(datetime.now().strftime('%d/%m'))
                     
                     skeleton_rows = []
                     for prod in required_vasilhames:
-                        for day in all_dates:
-                            skeleton_rows.append({'Vasilhame': prod, 'Dia': day})
-                    
+                        for day in all_dates: skeleton_rows.append({'Vasilhame': prod, 'Dia': day})
                     df_skeleton = pd.DataFrame(skeleton_rows)
 
-                    df_master_combinations = pd.concat([
-                        df_excel_agg[['Vasilhame', 'Dia']],
-                        df_all_processed_txt_data[['Vasilhame', 'Dia']],
-                        df_all_processed_pdf_data[['Vasilhame', 'Dia']],
-                        df_skeleton 
-                    ]).drop_duplicates().reset_index(drop=True)
-
+                    df_master_combinations = pd.concat([df_excel_agg[['Vasilhame', 'Dia']], df_all_processed_txt_data[['Vasilhame', 'Dia']], df_all_processed_pdf_data[['Vasilhame', 'Dia']], df_skeleton]).drop_duplicates().reset_index(drop=True)
                     df_final = pd.merge(df_master_combinations, df_excel_agg, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_txt_data, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
@@ -554,21 +518,19 @@ def logistics_page():
                     
                     def infer_date(row):
                         if pd.isna(row['DataCompleta']):
-                            try: d = datetime.strptime(f"{row['Dia']}/{datetime.now().year}", "%d/%m/%Y")
+                            try: return datetime.strptime(f"{row['Dia']}/{datetime.now().year}", "%d/%m/%Y")
                             except: return pd.NaT
-                            return d
                         return row['DataCompleta']
-                    
                     df_final['DataCompleta'] = df_final.apply(infer_date, axis=1)
 
                     cols_to_drop = [col for col in df_final.columns if col.startswith('DataCompleta_')]
                     df_final.drop(cols_to_drop, axis=1, inplace=True)
 
-                    numeric_cols = ['Contagem', 'Qtd_emprestimo'] + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
+                    numeric_cols = ['Contagem Cheias', 'Contagem Vazias', 'Qtd_emprestimo'] + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
                     for col in numeric_cols:
                         if col in df_final.columns: df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0)
                     
-                    df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1)
+                    df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem Cheias'] + df_final['Contagem Vazias'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1)
                     df_final['DataCompleta'] = pd.to_datetime(df_final['DataCompleta'], errors='coerce')
                     df_final.sort_values(by=['Vasilhame', 'DataCompleta'], inplace=True, na_position='first')
                     
@@ -640,7 +602,7 @@ def logistics_page():
                     with pd.ExcelWriter(excel_data_diesel, engine='xlsxwriter') as writer:
                         placas_diesel = sorted(df_diesel['PLACA'].unique())
                         for placa in placas_diesel:
-                            df_placa = df_diesel[df_placa['PLACA'] == placa].copy()
+                            df_placa = df_diesel[df_diesel['PLACA'] == placa].copy()
                             df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
                             df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
                             df_placa['MEDIA_LITROS_KM'] = df_placa['LITROS'] / df_placa['DISTANCIA_PERCORRIDA']
@@ -658,7 +620,7 @@ def logistics_page():
                     with pd.ExcelWriter(excel_data_arla, engine='xlsxwriter') as writer:
                         placas_arla = sorted(df_arla['PLACA'].unique())
                         for placa in placas_arla:
-                            df_placa = df_arla[df_placa['PLACA'] == placa].copy()
+                            df_placa = df_arla[df_arla['PLACA'] == placa].copy()
                             df_placa.sort_values(by=['DATA ABASTECIMENTO', 'HORÁRIO'], ascending=True, inplace=True)
                             df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
                             df_placa['MEDIA_LITROS_KM'] = df_placa['LITROS'] / df_placa['DISTANCIA_PERCORRIDA']
