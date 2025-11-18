@@ -17,25 +17,18 @@ import xlsxwriter
 # CONFIGURAÇÃO INICIAL E LOGIN
 # ====================================================================
 
-# Funções que representam cada página
 def login_form():
     """Exibe o formulário de login com um design aprimorado."""
-    
     col1, col2, col3 = st.columns([1, 2, 1])
-    
     with col2:
         st.markdown("<h2 style='text-align: center; color: #004d99; font-family: 'Arial Black', sans-serif;'>Lince Distribuidora</h2>", unsafe_allow_html=True)
         st.markdown("---")
-        
         with st.form("login_form", clear_on_submit=False):
             st.markdown("Por favor, insira suas credenciais para continuar.")
-            
             username = st.text_input("Usuário", key="username_input", placeholder="Digite seu nome de usuário")
             password = st.text_input("Senha", type="password", key="password_input", placeholder="Digite sua senha")
-            
             st.markdown("<br>", unsafe_allow_html=True)
             submit_button = st.form_submit_button("Entrar", use_container_width=True)
-            
         if submit_button:
             if username in st.session_state.LOGIN_INFO and st.session_state.LOGIN_INFO[username] == password:
                 st.session_state['is_logged_in'] = True
@@ -49,8 +42,6 @@ def main_page():
     st.markdown(f"<h1 style='text-align: center;'>Página Inicial</h1>", unsafe_allow_html=True)
     st.markdown(f"<h3 style='text-align: center;'>Bem-vindo(a), **{st.session_state['username']}**!</h3>", unsafe_allow_html=True)
     st.markdown("---")
-
-    # Menu simplificado (Apenas Logística e Comercial)
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Logística", use_container_width=True):
@@ -60,23 +51,18 @@ def main_page():
         if st.button("Comercial", use_container_width=True):
             st.session_state['current_page'] = 'commercial'
             st.rerun()
-    
     st.markdown("---")
-
     if st.button("Sair", use_container_width=True):
         st.session_state['is_logged_in'] = False
         st.session_state.pop('username', None)
         st.session_state.pop('current_page', None)
         st.rerun()
 
-# --- Funções para o banco de dados ---
 def setup_database():
-    """Cria a conexão com o banco de dados SQLite."""
     engine = create_engine('sqlite:///vasilhames.db')
     return engine
 
 def load_from_db(table_name, engine):
-    """Carrega todos os dados de uma tabela do banco de dados."""
     if engine.dialect.has_table(engine.connect(), table_name):
         return pd.read_sql_table(table_name, con=engine)
     return pd.DataFrame()
@@ -96,13 +82,9 @@ def logistics_page():
     
     st.write("---")
 
-    # --- SCRIPT ACURÁCIA ---
     if script_choice == "Acurácia":
         st.subheader("Acurácia de Estoque")
-        st.markdown("Transforma e reorganiza os dados do arquivo de Acurácia.")
-        
         uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque' (.csv ou .xlsx)", type=["csv", "xlsx"], key="acuracia_uploader")
-        
         if uploaded_file is not None:
             try:
                 df = None
@@ -113,7 +95,6 @@ def logistics_page():
                 else:
                     st.error("Formato de arquivo não suportado.")
                     return 
-
                 products_to_remove = ['185039 - Garrafa 0,30l', '471 - Garrafa 0,60l (3 )']
                 try:
                     prod_cod_col = df.columns[0]
@@ -121,100 +102,57 @@ def logistics_page():
                 except IndexError:
                     st.error("Erro ao definir o índice do DataFrame.")
                     return
-                
                 df_data = df_data[~df_data.index.isin(products_to_remove)].copy()
                 df_data = df_data[~df_data.index.astype(str).str.contains('Totais', na=False)].copy()
-                
                 data_types_from_file = ['Contagem - $', 'Diferença - $', 'Saldo Final - $'] 
                 first_level_cols = [col[0] for col in df.columns]
-                unique_dates = sorted(list(set([
-                    col for col in first_level_cols
-                    if col not in ['Data', 'Prod Cód', 'Totais'] and 'Unnamed' not in str(col)
-                ])))
-                
+                unique_dates = sorted(list(set([col for col in first_level_cols if col not in ['Data', 'Prod Cód', 'Totais'] and 'Unnamed' not in str(col)])))
                 new_rows = []
                 for product in df_data.index:
                     for date in unique_dates:
-                        row_data = {
-                            'Prod Cód': product,
-                            'Dia': date,
-                        }
+                        row_data = {'Prod Cód': product, 'Dia': date}
                         for data_type in data_types_from_file: 
                             try:
                                 col_name = (date, data_type)
                                 value = df_data.loc[product, col_name]
-                                
                                 if isinstance(value, str):
-                                    if value.strip() == '-':
-                                        value = 0
-                                
+                                    if value.strip() == '-': value = 0
                                 row_data[data_type] = pd.to_numeric(value, errors='coerce')
                             except KeyError:
                                 row_data[data_type] = np.nan
                         new_rows.append(row_data)
-                
                 df_final = pd.DataFrame(new_rows)
-                
-                df_final.rename(columns={
-                    'Contagem - $': 'Contagem', 
-                    'Diferença - $': 'Diferença',
-                    'Saldo Final - $': 'Saldo Final'
-                }, inplace=True)
-
+                df_final.rename(columns={'Contagem - $': 'Contagem', 'Diferença - $': 'Diferença', 'Saldo Final - $': 'Saldo Final'}, inplace=True)
                 df_final['Saldo Final'] = df_final['Saldo Final'].fillna(0).apply(lambda x: max(0, x))
                 df_final['Diferença'] = df_final['Diferença'].fillna(0).abs()
                 df_final['Contagem'] = df_final['Contagem'].fillna(0)
-                
                 df_final = df_final.sort_values(by=['Dia', 'Prod Cód'])
                 df_final['Dia'] = pd.to_datetime(df_final['Dia']).dt.strftime('%Y-%m-%d')
-                
                 numeric_cols = ['Saldo Final', 'Contagem', 'Diferença'] 
                 existing_numeric_cols = [col for col in numeric_cols if col in df_final.columns]
                 df_final[existing_numeric_cols] = df_final[existing_numeric_cols].round(2)
-
                 desired_order = ['Prod Cód', 'Dia', 'Contagem', 'Diferença', 'Saldo Final']
                 df_final = df_final[desired_order]
-                
                 st.subheader("📊 Resultado da Acurácia")
                 st.dataframe(df_final)
-                
                 excel_data = io.BytesIO()
                 df_final.to_excel(excel_data, index=False, engine='xlsxwriter')
                 excel_data.seek(0)
-                
-                st.download_button(
-                    label="📥 Baixar Arquivo Processado",
-                    data=excel_data,
-                    file_name='Acuracia_estoque_processado.xlsx',
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                st.download_button(label="📥 Baixar Arquivo Processado", data=excel_data, file_name='Acuracia_estoque_processado.xlsx', mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
 
-    # --- SCRIPT VALIDADE ---
     elif script_choice == "Validade":
         st.subheader("Controle de Validade")
-        st.markdown("Consolida dados de validade de um arquivo Excel e um arquivo de texto.")
-        
         def parse_estoque_txt_st(file_content):
             lines = [line.decode('latin1') for line in file_content.getvalue().splitlines()]
             separator_string = '-' * 116
             separator_indices = [i for i, line in enumerate(lines) if separator_string in line]
-            if len(separator_indices) < 2:
-                st.warning("Não foi possível localizar os separadores de colunas no arquivo TXT.")
-                return pd.DataFrame()
-
+            if len(separator_indices) < 2: return pd.DataFrame()
             start_line = separator_indices[1] + 1
-            col_names = [
-                'COD.RED.', 'DESCRIÇÃO', 'SLD INICIAL CX', 'SLD INICIAL UN', 'ENTRADAS CX', 'ENTRADAS UN',
-                'SAÍDAS CX', 'SAÍDAS UN', 'SALDO FÍSICO CX', 'SALDO FÍSICO UN', 'CONT. FÍSICA CX', 'CONT. FÍSICA UN',
-                'DIFERENÇA CX', 'DIFERENÇA UN'
-            ]
+            col_names = ['COD.RED.', 'DESCRIÇÃO', 'SLD INICIAL CX', 'SLD INICIAL UN', 'ENTRADAS CX', 'ENTRADAS UN', 'SAÍDAS CX', 'SAÍDAS UN', 'SALDO FÍSICO CX', 'SALDO FÍSICO UN', 'CONT. FÍSICA CX', 'CONT. FÍSICA UN', 'DIFERENÇA CX', 'DIFERENÇA UN']
             data = []
-            pattern = re.compile(
-                r'^\s*(\d+)\s+(.+?)\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I'
-            )
-
+            pattern = re.compile(r'^\s*(\d+)\s+(.+?)\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I')
             for line in lines[start_line:]:
                 line = line.strip()
                 if not line or 'TOTAL GERAL' in line: continue
@@ -228,7 +166,6 @@ def logistics_page():
                         row_values.extend([int(cx), int(un)])
                     if len(row_values) == 14: data.append(row_values)
             return pd.DataFrame(data, columns=col_names)
-
         def extract_units_per_box(product_name):
             product_name = str(product_name).upper().replace(' ', '')
             match_multiplication = re.search(r'(\d+)X(\d+)(?:UN|U)', product_name)
@@ -236,24 +173,17 @@ def logistics_page():
             match_direct = re.search(r'(\d+)(?:UN|U)', product_name)
             if match_direct: return int(match_direct.group(1)) 
             return 1
-
         uploaded_excel_file = st.file_uploader("Envie o arquivo Excel 'Controle de Validade.xlsx'", type=["xlsx"], key="validade_excel_uploader") 
         uploaded_txt_file = st.file_uploader("Envie o arquivo de texto de estoque", type=["txt"], key="validade_txt_uploader")
-        
         if uploaded_excel_file is not None and uploaded_txt_file is not None:
             try:
                 df_validade = pd.read_excel(uploaded_excel_file)
                 df_validade.columns = df_validade.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
                 df_estoque = parse_estoque_txt_st(uploaded_txt_file)
-
-                if df_estoque.empty:
-                    st.warning("O arquivo TXT está vazio ou não pôde ser processado.")
-                    return
-
+                if df_estoque.empty: st.warning("O arquivo TXT está vazio ou não pôde ser processado."); return
                 validity_cols = ['Validade', 'Validade.1', 'Validade.2', 'Validade.3', 'Validade.4']
                 quantity_caixa_cols = ['Quantidade (CAIXA)', 'Quantidade 2 (CAIXA)', 'Quantidade 3 (CAIXA)', 'Quantidade 4 (CAIXA)', 'Quantidade 5 (CAIXA)']
                 quantity_unidade_cols = ['Quantidade (UNIDADE)', 'Quantidade 2 (UNIDADE)', 'Quantidade 3 (UNIDADE)', 'Quantidade 4 (UNIDADE)', 'Quantidade 5 (UNIDADE)']
-                
                 all_validity_entries = []
                 for i in range(len(validity_cols)):
                     cols_to_check = ['Qual Produto ?', validity_cols[i], quantity_caixa_cols[i], quantity_unidade_cols[i]]
@@ -261,44 +191,34 @@ def logistics_page():
                         temp_df = df_validade[cols_to_check].copy()
                         temp_df.rename(columns={validity_cols[i]: 'Validade', quantity_caixa_cols[i]: 'Quantidade (CAIXA)', quantity_unidade_cols[i]: 'Quantidade (UNIDADE)'}, inplace=True)
                         all_validity_entries.append(temp_df)
-                
                 all_validity_entries = [df for df in all_validity_entries if not df.dropna(subset=['Validade']).empty]
                 melted_df_validade_all = pd.concat(all_validity_entries, ignore_index=True) if all_validity_entries else pd.DataFrame(columns=['Qual Produto ?', 'Validade', 'Quantidade (CAIXA)', 'Quantidade (UNIDADE)'])
-
                 melted_df_validade_all.dropna(subset=['Validade'], inplace=True)
                 melted_df_validade_all['Validade'] = pd.to_datetime(melted_df_validade_all['Validade'], errors='coerce')
                 melted_df_validade_all.dropna(subset=['Validade'], inplace=True)
                 melted_df_validade_all['Quantidade (CAIXA)'] = pd.to_numeric(melted_df_validade_all['Quantidade (CAIXA)'], errors='coerce').fillna(0)
                 melted_df_validade_all['Quantidade (UNIDADE)'] = pd.to_numeric(melted_df_validade_all['Quantidade (UNIDADE)'], errors='coerce').fillna(0)
-                
                 split_data_validade = melted_df_validade_all['Qual Produto ?'].astype(str).str.split(' - ', n=1, expand=True)
                 melted_df_validade_all['Codigo Produto'] = split_data_validade[0].str.strip()
                 melted_df_validade_all['Nome Produto'] = split_data_validade[1].str.strip()
                 melted_df_validade_all['Units_Per_Box_Temp'] = melted_df_validade_all['Nome Produto'].apply(extract_units_per_box)
-                
                 grouped = melted_df_validade_all.groupby(['Codigo Produto', 'Nome Produto', 'Validade']).agg({'Quantidade (CAIXA)': 'sum', 'Quantidade (UNIDADE)': 'sum', 'Units_Per_Box_Temp': 'first'}).reset_index()
-                
                 def convert_total_units_to_boxes_and_units(row):
                     units_per_box = row['Units_Per_Box_Temp'] or 1
                     total_units = (row['Quantidade (CAIXA)'] * units_per_box) + row['Quantidade (UNIDADE)']
                     row['Quantidade (CAIXA)'] = total_units // units_per_box
                     row['Quantidade (UNIDADE)'] = total_units % units_per_box
                     return row
-
                 grouped = grouped.apply(convert_total_units_to_boxes_and_units, axis=1)
                 grouped.drop('Units_Per_Box_Temp', axis=1, inplace=True)
-                
                 data_atual = datetime.now()
                 grouped['Dias para Vencer'] = (grouped['Validade'] - data_atual).dt.days
-                
                 conditions = [grouped['Dias para Vencer'] <= 45, (grouped['Dias para Vencer'] > 45) & (grouped['Dias para Vencer'] <= 60), grouped['Dias para Vencer'] > 60]
                 choices = ['VALIDADE CURTA', 'ATENÇÃO', 'OK']
                 grouped['Status Validade'] = np.select(conditions, choices, default='Indefinido')
                 grouped['Validade_DateOnly'] = grouped['Validade'].dt.date
-                
                 sorted_grouped = grouped.sort_values(by=['Codigo Produto', 'Validade']).reset_index(drop=True)
                 sorted_grouped['Validade_Rank'] = sorted_grouped.groupby('Codigo Produto')['Validade'].rank(method='first').astype(int)
-                
                 final_rows = []
                 for product_code, group in sorted_grouped.groupby('Codigo Produto'):
                     row = {'Codigo Produto': product_code, 'Nome Produto': group['Nome Produto'].iloc[0]}
@@ -310,9 +230,7 @@ def logistics_page():
                         row[f'Dias para Vencer {i}'] = r['Dias para Vencer']
                         row[f'Status Validade {i}'] = r['Status Validade']
                     final_rows.append(row)
-                
                 final_df = pd.DataFrame(final_rows)
-                
                 if not df_estoque.empty:
                     df_estoque['COD.RED.'] = df_estoque['COD.RED.'].astype(str)
                     final_df['Codigo Produto'] = final_df['Codigo Produto'].astype(str)
@@ -320,37 +238,23 @@ def logistics_page():
                     df_saldo.rename(columns={'SALDO FÍSICO CX': 'Saldo Físico TXT Caixa', 'SALDO FÍSICO UN': 'Saldo Físico TXT Unidade'}, inplace=True)
                     final_df = pd.merge(final_df, df_saldo, how='left', left_on='Codigo Produto', right_on='COD.RED.')
                     final_df.drop('COD.RED.', axis=1, inplace=True)
-                
                 quantidade_caixa_cols = [col for col in final_df.columns if re.match(r'Quantidade \(CAIXA\) \d+', col)]
                 quantidade_unidade_cols = [col for col in final_df.columns if re.match(r'Quantidade \(UNIDADE\) \d+', col)]
                 final_df['Contagem Fisica CX'] = final_df[quantidade_caixa_cols].sum(axis=1)
                 final_df['Contagem Fisica UN'] = final_df[quantidade_unidade_cols].sum(axis=1)
-
                 st.subheader("✅ Relatório de Validade Gerado")
                 st.dataframe(final_df)
-                
                 excel_data = io.BytesIO()
                 final_df.to_excel(excel_data, sheet_name='Controle de Estoque', index=False)
                 excel_data.seek(0)
-                
-                st.download_button(
-                    label="📥 Baixar Relatório de Validade",
-                    data=excel_data,
-                    file_name="Controle_Estoque_Completo.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            
+                st.download_button(label="📥 Baixar Relatório de Validade", data=excel_data, file_name="Controle_Estoque_Completo.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES (COM LÓGICA NOVA, BOTÃO DE LIMPEZA E MAPA ATUALIZADO) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
-        st.markdown("Este script consolida dados de vasilhames de diferentes fontes (Excel, TXT, PDF) e gera um relatório unificado.")
-        
         engine = setup_database()
 
-        # --- BOTÃO PARA LIMPAR O BANCO DE DADOS ---
         st.write("---")
         st.subheader("⚙️ Gerenciamento")
         col_reset, col_info = st.columns([1, 3])
@@ -358,16 +262,14 @@ def logistics_page():
             if st.button("🗑️ Limpar Banco de Dados (Reiniciar)", type="primary", help="Cuidado: Isso apaga todo o histórico salvo no banco!"):
                 try:
                     with engine.connect() as conn:
-                        # Apaga as tabelas existentes para começar do zero
                         conn.execute(text("DROP TABLE IF EXISTS txt_data"))
                         conn.execute(text("DROP TABLE IF EXISTS pdf_data"))
                         conn.commit()
-                    st.success("Histórico apagado com sucesso! O sistema está pronto para o novo ciclo.")
+                    st.success("Histórico apagado com sucesso!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao limpar o banco: {e}")
         st.write("---")
-        # ------------------------------------------
 
         def process_txt_file_st(file_content):
             content = file_content.getvalue().decode('latin1')
@@ -383,7 +285,6 @@ def logistics_page():
                 now = datetime.now()
                 if now.month == 1 and month == '12':
                     year = year - 1
-                    
                 effective_date_obj = datetime.strptime(f"{day}/{month}/{year}", '%d/%m/%Y')
                 effective_date_str = effective_date_obj.strftime('%d/%m')
                 effective_date_full = effective_date_obj.date()
@@ -391,7 +292,7 @@ def logistics_page():
                 st.error(f"Nome do arquivo TXT inválido: {file_content.name}. O formato deve ser 'ESTOQUEDDMM.TXT'.")
                 return None, None, None 
 
-            # MAPA ATUALIZADO COM AS NOVAS CAIXAS SENDO SOMADAS NA 550-001
+            # MAPA COMPLETO DE UNIFICAÇÃO
             product_code_to_vasilhame_map = {
                 '563-008': '563-008 - BARRIL INOX 30L', 
                 '564-009': '564-009 - BARRIL INOX 50L', 
@@ -401,31 +302,54 @@ def logistics_page():
                 '555-001': '555-001 - CAIXA PLASTICA 1L', 
                 '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', 
                 '565-002': '565-002 - CILINDRO CO2', 
-                
-                # Itens que devem somar na 550-001
-                '550-012': '550-001 - CAIXA PLASTICA 600ML', # EISENBAHN 0,6L 24U
-                '803-025': '550-001 - CAIXA PLASTICA 600ML', # CAIXA PLAS MISTA 24X1
-                '803-036': '550-001 - CAIXA PLASTICA 600ML', # CAIXA PLASTICA AMBEV
-                '803-037': '550-001 - CAIXA PLASTICA 600ML', # CAIXA PLASTICA MISTA 24X1
-                '803-039': '550-001 - CAIXA PLASTICA 600ML'  # CAIXA PLASTICA HNK CINZA 600ML
+                # Unificações na 550-001
+                '550-012': '550-001 - CAIXA PLASTICA 600ML',
+                '803-025': '550-001 - CAIXA PLASTICA 600ML',
+                '803-036': '550-001 - CAIXA PLASTICA 600ML',
+                '803-037': '550-001 - CAIXA PLASTICA 600ML',
+                '803-039': '550-001 - CAIXA PLASTICA 600ML' 
             }
 
             parsed_data = []
-            pattern = re.compile(r'^\s*"?(\d{3}-\d{3})[^"\n]*?"?.*?"?([\d.]+)"?\s*$', re.MULTILINE)
-            for line in content.splitlines():
-                match = pattern.match(line)
-                if match:
-                    product_code = match.group(1).strip()
-                    quantity = match.group(2).replace('.', '').strip()
-                    if product_code in product_code_to_vasilhame_map:
-                        parsed_data.append({'PRODUTO_CODE': product_code, 'QUANTIDADE': int(quantity) if quantity.isdigit() else 0})
+            lines = content.splitlines()
+            current_code = None
+            
+            # LÓGICA APRIMORADA PARA LER LINHAS QUEBRADAS
+            for line in lines:
+                line = line.strip()
+                
+                # 1. Procura pelo código do produto no início da linha
+                code_match = re.match(r'^(\d{3}-\d{3})', line)
+                
+                if code_match:
+                    current_code = code_match.group(1)
+                    
+                    # Tenta achar a quantidade na mesma linha (ex: "195.107    282.905,15")
+                    # Procura por um número (com ou sem ponto) seguido de espaço e outro número com vírgula
+                    qty_match = re.search(r'\s+(\d+(?:\.\d{3})*)\s+\d+,\d+', line)
+                    
+                    if qty_match:
+                        quantity_str = qty_match.group(1).replace('.', '')
+                        if current_code in product_code_to_vasilhame_map:
+                             parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(quantity_str)})
+                        current_code = None # Já achou, reseta
+                        
+                elif current_code:
+                    # Se temos um código pendente (não achou a qtd na linha anterior), procura nesta linha
+                    # A quantidade deve estar no início da linha ou após espaços, seguida de valor monetário
+                    qty_match_next_line = re.search(r'^(\d+(?:\.\d{3})*)\s+\d+,\d+', line)
+                    
+                    if qty_match_next_line:
+                        quantity_str = qty_match_next_line.group(1).replace('.', '')
+                        if current_code in product_code_to_vasilhame_map:
+                            parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(quantity_str)})
+                        current_code = None
+
             if not parsed_data:
                 return None, effective_date_str, effective_date_full
             
             df_estoque = pd.DataFrame(parsed_data)
-            # Mapeia todos os códigos para o nome do vasilhame (aqui acontece a unificação)
             df_estoque['Vasilhame'] = df_estoque['PRODUTO_CODE'].map(product_code_to_vasilhame_map)
-            # Agrupa pelo nome do vasilhame e soma as quantidades
             df_txt_qty = df_estoque.groupby('Vasilhame')['QUANTIDADE'].sum().reset_index()
             df_txt_qty.rename(columns={'QUANTIDADE': 'Qtd_emprestimo'}, inplace=True)
             return df_txt_qty, effective_date_str, effective_date_full
@@ -434,7 +358,7 @@ def logistics_page():
             parsed_data = []
             filename_match = re.search(r'([a-zA-Z\s]+)\s+(\d{2}-\d{2}-\d{4})\.pdf', pdf_file.name)
             if not filename_match:
-                st.error(f"Erro: Nome de arquivo PDF inválido: {pdf_file.name}. Formato esperado: 'NOME DD-MM-YYYY.pdf' (ex: 'PONTA GROSSA 07-11-2025.pdf')")
+                st.error(f"Erro no nome do arquivo PDF: {pdf_file.name}")
                 return pd.DataFrame()
             
             source_name = filename_match.group(1).strip()
@@ -464,16 +388,10 @@ def logistics_page():
                     vasilhame = product_map[material_code]
                     credito = abs(saldo) if saldo < 0 else 0.0
                     debito = saldo if saldo >= 0 else 0.0
-                    parsed_data.append({
-                        'Vasilhame': vasilhame, 
-                        'Dia': effective_date_str, 
-                        'DataCompleta': effective_date_full, 
-                        f'Credito {col_suffix}': credito, 
-                        f'Debito {col_suffix}': debito
-                    })
-                    
+                    parsed_data.append({'Vasilhame': vasilhame, 'Dia': effective_date_str, 'DataCompleta': effective_date_full, f'Credito {col_suffix}': credito, f'Debito {col_suffix}': debito})
+            
             if not parsed_data:
-                st.warning(f"Nenhum dado de PDV encontrado no arquivo: {pdf_file.name}. Verifique se os códigos de material no mapa estão corretos.")
+                st.warning(f"Nenhum dado encontrado no PDF: {pdf_file.name}")
                 return pd.DataFrame()
             
             df_parsed = pd.DataFrame(parsed_data)
@@ -489,7 +407,7 @@ def logistics_page():
         if st.button("Processar e Consolidar Dados"):
             if uploaded_txt_files and uploaded_excel_contagem is not None:
                 try:
-                    st.info("Processando e salvando novos dados. Por favor, aguarde...")
+                    st.info("Processando...")
                     
                     df_old_txt_data = load_from_db('txt_data', engine)
                     df_old_pdf_data = load_from_db('pdf_data', engine)
@@ -505,186 +423,130 @@ def logistics_page():
                     if new_txt_data_list:
                         df_new_txt = pd.concat(new_txt_data_list, ignore_index=True)
                         df_all_txt_combined = pd.concat([df_old_txt_data, df_new_txt], ignore_index=True)
-                        
                         if 'DataCompleta' in df_all_txt_combined.columns:
                             df_all_txt_combined['DataCompleta'] = pd.to_datetime(df_all_txt_combined['DataCompleta'], errors='coerce')
-                        
-                        df_all_processed_txt_data = df_all_txt_combined.groupby(['Vasilhame', 'Dia']).agg(
-                            Qtd_emprestimo=('Qtd_emprestimo', 'sum'),
-                            DataCompleta=('DataCompleta', 'max') 
-                        ).reset_index()
-
+                        df_all_processed_txt_data = df_all_txt_combined.groupby(['Vasilhame', 'Dia']).agg(Qtd_emprestimo=('Qtd_emprestimo', 'sum'), DataCompleta=('DataCompleta', 'max')).reset_index()
                         df_all_processed_txt_data.to_sql('txt_data', con=engine, if_exists='replace', index=False)
-                        st.success("Dados TXT atualizados no banco de dados!")
+                        st.success("Dados TXT atualizados!")
                     else:
-                        st.warning("Nenhum dado TXT novo para processar.")
                         df_all_processed_txt_data = df_old_txt_data 
 
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
-                        pdf_material_code_to_vasilhame_map = {
-                            '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
-                            '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
-                            '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
-                            '000000000000107380': '555-001 - CAIXA PLASTICA 1L', 
-                            '000000000000152598': '546-004 - CAIXA PLASTICA 24UN 300ML', 
-                            '000000000000000470': '550-001 - CAIXA PLASTICA 600ML',
-                            '000000000000048261': '563-008 - BARRIL INOX 30L',
-                            '000000000000048272': '564-009 - BARRIL INOX 50L'
+                        pdf_map = {
+                            '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
+                            '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', '000000000000107380': '555-001 - CAIXA PLASTICA 1L', 
+                            '000000000000152598': '546-004 - CAIXA PLASTICA 24UN 300ML', '000000000000000470': '550-001 - CAIXA PLASTICA 600ML',
+                            '000000000000048261': '563-008 - BARRIL INOX 30L', '000000000000048272': '564-009 - BARRIL INOX 50L'
                         }
-
                         for pdf_file in uploaded_pdf_files:
-                            df_pdf_current = process_pdf_content(pdf_file, pdf_material_code_to_vasilhame_map)
-                            if not df_pdf_current.empty:
-                                new_pdf_data_list.append(df_pdf_current)
+                            df_pdf_current = process_pdf_content(pdf_file, pdf_map)
+                            if not df_pdf_current.empty: new_pdf_data_list.append(df_pdf_current)
                     
                     if new_pdf_data_list:
                         df_new_pdf = pd.concat(new_pdf_data_list, ignore_index=True)
                         df_all_pdf_combined = pd.concat([df_old_pdf_data, df_new_pdf], ignore_index=True)
-                        
                         pdf_value_cols = [col for col in df_all_pdf_combined.columns if 'Credito' in col or 'Debito' in col]
                         df_all_pdf_combined[pdf_value_cols] = df_all_pdf_combined[pdf_value_cols].fillna(0)
-                        
-                        if 'DataCompleta' in df_all_pdf_combined.columns:
-                            df_all_pdf_combined['DataCompleta'] = pd.to_datetime(df_all_pdf_combined['DataCompleta'], errors='coerce')
-
-                        agg_dict = {col: 'sum' for col in pdf_value_cols}
-                        agg_dict['DataCompleta'] = 'max' 
-
-                        if pdf_value_cols:
-                            df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
-                        else:
-                            df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(DataCompleta=('DataCompleta', 'max')).reset_index()
-                            
+                        if 'DataCompleta' in df_all_pdf_combined.columns: df_all_pdf_combined['DataCompleta'] = pd.to_datetime(df_all_pdf_combined['DataCompleta'], errors='coerce')
+                        agg_dict = {col: 'sum' for col in pdf_value_cols}; agg_dict['DataCompleta'] = 'max' 
+                        if pdf_value_cols: df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
+                        else: df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(DataCompleta=('DataCompleta', 'max')).reset_index()
                         df_all_processed_pdf_data.to_sql('pdf_data', con=engine, if_exists='replace', index=False)
-                        st.success("Dados PDF atualizados no banco de dados!")
+                        st.success("Dados PDF atualizados!")
                     else:
-                        st.warning("Nenhum dado PDF novo para processar.")
                         df_all_processed_pdf_data = df_old_pdf_data
                     
                     df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                     df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
+                    
+                    # --- MAPA DE RENOMEAÇÃO DO EXCEL PARA GARANTIR A CONTAGEM CERTA ---
+                    def map_excel_names(name):
+                        name_upper = str(name).upper()
+                        if '550-012' in name_upper or 'EISENBAHN' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
+                        if '803-025' in name_upper or 'MISTA' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
+                        if '803-036' in name_upper or 'AMBEV' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
+                        if '803-037' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
+                        if '803-039' in name_upper or 'CINZA' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
+                        return name # Retorna o original se não encontrar
+
+                    # Aplica o mapa apenas se o nome do produto estiver na lista de mapeamento
+                    df_contagem['Qual vasilhame ?'] = df_contagem['Qual vasilhame ?'].apply(map_excel_names)
+                    # ------------------------------------------------------------------
+
                     df_historical_excel = df_contagem.copy()
                     df_historical_excel['DataCompleta'] = df_historical_excel['Carimbo de data/hora'].dt.date
                     df_historical_excel['Dia'] = df_historical_excel['Carimbo de data/hora'].dt.strftime('%d/%m')
+                    if 'DataCompleta' in df_historical_excel.columns: df_historical_excel['DataCompleta'] = pd.to_datetime(df_historical_excel['DataCompleta'], errors='coerce')
                     
-                    if 'DataCompleta' in df_historical_excel.columns:
-                         df_historical_excel['DataCompleta'] = pd.to_datetime(df_historical_excel['DataCompleta'], errors='coerce')
-                    
-                    df_excel_agg = df_historical_excel.groupby(['Qual vasilhame ?', 'Dia']).agg(
-                        Contagem=('Total', 'sum'),
-                        DataCompleta=('DataCompleta', 'max')
-                    ).reset_index()
+                    df_excel_agg = df_historical_excel.groupby(['Qual vasilhame ?', 'Dia']).agg(Contagem=('Total', 'sum'), DataCompleta=('DataCompleta', 'max')).reset_index()
                     df_excel_agg.rename(columns={'Qual vasilhame ?': 'Vasilhame'}, inplace=True)
-                    
                     df_excel_agg.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
-                    if 'DataCompleta' in df_all_processed_txt_data.columns:
-                        df_all_processed_txt_data.rename(columns={'DataCompleta': 'DataCompleta_txt'}, inplace=True)
-                    if 'DataCompleta' in df_all_processed_pdf_data.columns:
-                        df_all_processed_pdf_data.rename(columns={'DataCompleta': 'DataCompleta_pdf'}, inplace=True)
 
-                    df_master_combinations = pd.concat([
-                        df_excel_agg[['Vasilhame', 'Dia']],
-                        df_all_processed_txt_data[['Vasilhame', 'Dia']],
-                        df_all_processed_pdf_data[['Vasilhame', 'Dia']]
-                    ]).drop_duplicates().reset_index(drop=True)
+                    if 'DataCompleta' in df_all_processed_txt_data.columns: df_all_processed_txt_data.rename(columns={'DataCompleta': 'DataCompleta_txt'}, inplace=True)
+                    if 'DataCompleta' in df_all_processed_pdf_data.columns: df_all_processed_pdf_data.rename(columns={'DataCompleta': 'DataCompleta_pdf'}, inplace=True)
 
+                    df_master_combinations = pd.concat([df_excel_agg[['Vasilhame', 'Dia']], df_all_processed_txt_data[['Vasilhame', 'Dia']], df_all_processed_pdf_data[['Vasilhame', 'Dia']]]).drop_duplicates().reset_index(drop=True)
                     df_final = pd.merge(df_master_combinations, df_excel_agg, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_txt_data, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
                     
                     df_final['DataCompleta'] = df_final['DataCompleta_excel'].fillna(np.nan)
-                    if 'DataCompleta_txt' in df_final.columns:
-                        df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_txt'])
-                    if 'DataCompleta_pdf' in df_final.columns:
-                        df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_pdf'])
+                    if 'DataCompleta_txt' in df_final.columns: df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_txt'])
+                    if 'DataCompleta_pdf' in df_final.columns: df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_pdf'])
                     
                     cols_to_drop = [col for col in df_final.columns if col.startswith('DataCompleta_')]
                     df_final.drop(cols_to_drop, axis=1, inplace=True)
 
                     numeric_cols = ['Contagem', 'Qtd_emprestimo'] + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
                     for col in numeric_cols:
-                        if col in df_final.columns:
-                            df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0)
+                        if col in df_final.columns: df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0)
                     
                     df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1)
-                    
                     df_final['DataCompleta'] = pd.to_datetime(df_final['DataCompleta'], errors='coerce')
                     df_final.sort_values(by=['Vasilhame', 'DataCompleta'], inplace=True, na_position='first')
                     
-                    # ==============================================================================
-                    # NOVA LÓGICA DE ESTOQUE TRAVADO (Base 05/11, Cálculo a partir de 10/11)
-                    # ==============================================================================
                     def calcular_diferenca_regra_negocio(grupo):
                         data_base_travamento = pd.to_datetime('2025-11-05')
                         data_inicio_calculo = pd.to_datetime('2025-11-10')
-                        
-                        # 1. Encontrar o valor base (Estoque Travado)
                         mask_base = grupo['DataCompleta'] >= data_base_travamento
                         dados_base = grupo.loc[mask_base]
-                        
-                        if not dados_base.empty:
-                            estoque_travado = dados_base.iloc[0]['Total Revenda']
-                        else:
-                            estoque_travado = 0
-                        
-                        # 2. Calcular a diferença apenas a partir de 10/11
+                        if not dados_base.empty: estoque_travado = dados_base.iloc[0]['Total Revenda']
+                        else: estoque_travado = 0
                         diferencas = pd.Series(0.0, index=grupo.index)
                         mask_calculo = grupo['DataCompleta'] >= data_inicio_calculo
-                        
-                        if estoque_travado != 0:
-                            diferencas[mask_calculo] = grupo.loc[mask_calculo, 'Total Revenda'] - estoque_travado
-                        
+                        if estoque_travado != 0: diferencas[mask_calculo] = grupo.loc[mask_calculo, 'Total Revenda'] - estoque_travado
                         grupo['Diferença'] = diferencas
                         return grupo
 
                     df_final = df_final.groupby('Vasilhame', group_keys=False).apply(calcular_diferenca_regra_negocio)
-                    # ==============================================================================
-                    
                     df_final_output = df_final.drop('DataCompleta', axis=1)
                     
                     st.subheader("✅ Tabela Consolidada de Vasilhames")
                     st.dataframe(df_final_output)
-
                     output = io.BytesIO()
                     df_final_output.to_excel(output, index=False)
                     output.seek(0)
-                    st.download_button(
-                        label="📥 Baixar Tabela Consolidada",
-                        data=output,
-                        file_name="Vasilhames_Consolidado.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                    st.download_button(label="📥 Baixar Tabela Consolidada", data=output, file_name="Vasilhames_Consolidado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
                 except Exception as e:
                     st.error(f"Ocorreu um erro durante o processamento: {e}")
                     import traceback
                     st.error(traceback.format_exc())
 
-    # --- SCRIPT ABASTECIMENTO ---
     elif script_choice == "Abastecimento":
         st.subheader("Análise de Abastecimento")
-        st.markdown("Este script processa dados de abastecimento e gera relatórios separados para Diesel e Arla, com médias de consumo por KM.")
-        
         uploaded_file = st.file_uploader("Envie o arquivo de abastecimento (.xlsx ou .csv)", type=["xlsx", "csv"], key="abastec_uploader") 
-        
         if uploaded_file is not None:
             try:
-                st.info("Processando arquivo de abastecimento. Isso pode levar alguns segundos...")
+                st.info("Processando...")
                 try:
-                    if uploaded_file.name.endswith('.csv'):
-                        df = pd.read_csv(uploaded_file)
-                    elif uploaded_file.name.endswith('.xlsx'):
-                        df = pd.read_excel(uploaded_file)
-                    else:
-                        st.error("Formato de arquivo não suportado. Por favor, use um arquivo .csv ou .xlsx.")
-                        return
-                except Exception as e:
-                    st.error(f"Erro ao ler o arquivo: {e}")
-                    return
+                    if uploaded_file.name.endswith('.csv'): df = pd.read_csv(uploaded_file)
+                    elif uploaded_file.name.endswith('.xlsx'): df = pd.read_excel(uploaded_file)
+                    else: st.error("Formato não suportado."); return
+                except Exception as e: st.error(f"Erro ao ler arquivo: {e}"); return
 
                 df.columns = [col.upper().strip().replace('HORA', 'HORÁRIO') for col in df.columns]
-
                 column_mapping = {
                     'DATA ABASTECIMENTO': ['DATA', 'DATA ABASTECIMENTO', 'DATE', 'DATA_ABASTECIMENTO'],
                     'HORÁRIO': ['HORÁRIO', 'HORA', 'HORA DO ABASTECIMENTO'],
@@ -694,18 +556,12 @@ def logistics_page():
                     'LITROS': ['LITROS', 'VOLUME'],
                     'MOTORISTA': ['MOTORISTA', 'RESPONSÁVEL'],
                 }
-
                 df_unified = pd.DataFrame()
                 for new_name, possible_names in column_mapping.items():
                     for old_name in possible_names:
-                        if old_name.upper() in df.columns:
-                            df_unified[new_name] = df[old_name.upper()]
-                            break
-                    else:
-                        st.warning(f"Aviso: Coluna essencial '{new_name}' não foi encontrada. O processamento pode estar incompleto.")
-                        df_unified[new_name] = np.nan
+                        if old_name.upper() in df.columns: df_unified[new_name] = df[old_name.upper()]; break
+                    else: st.warning(f"Coluna '{new_name}' não encontrada."); df_unified[new_name] = np.nan
                 df = df_unified
-
                 df['DATA ABASTECIMENTO'] = pd.to_datetime(df['DATA ABASTECIMENTO'], errors='coerce').dt.date
                 df['HORÁRIO'] = pd.to_datetime(df['HORÁRIO'], format='%H:%M:%S', errors='coerce').dt.time
                 df['KM'] = pd.to_numeric(df['KM'], errors='coerce')
@@ -723,15 +579,12 @@ def logistics_page():
                             df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
                             df_placa['MEDIA_LITROS_KM'] = df_placa['LITROS'] / df_placa['DISTANCIA_PERCORRIDA']
                             df_placa['ALERTA KM'] = ''
-                            df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor que o registro anterior!'
+                            df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor'
                             df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'MEDIA_LITROS_KM': 'Média de litros por KM'})
                             df_placa_output.to_excel(writer, sheet_name=placa, index=False)
-                    
                     excel_data_diesel.seek(0)
-                    st.success("Planilha de Diesel processada com sucesso!")
-                    st.download_button(label="📥 Baixar Planilha de Diesel", data=excel_data_diesel, file_name="planilha_diesel.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                else:
-                    st.warning("Não foram encontrados dados de 'DIESEL' no arquivo.")
+                    st.success("Planilha de Diesel OK!")
+                    st.download_button(label="📥 Baixar Diesel", data=excel_data_diesel, file_name="planilha_diesel.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 
                 df_arla = df[df['TIPO DE ABASTECIMENTO'].str.upper() == 'ARLA'].copy()
                 if not df_arla.empty:
@@ -744,14 +597,12 @@ def logistics_page():
                             df_placa['DISTANCIA_PERCORRIDA'] = df_placa['KM'].diff()
                             df_placa['MEDIA_LITROS_KM'] = df_placa['LITROS'] / df_placa['DISTANCIA_PERCORRIDA']
                             df_placa['ALERTA KM'] = ''
-                            df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor que o registro anterior!'
+                            df_placa.loc[df_placa['DISTANCIA_PERCORRIDA'] < 0, 'ALERTA KM'] = 'ALERTA: KM menor'
                             df_placa_output = df_placa.rename(columns={'DATA ABASTECIMENTO': 'Data Abastecimento', 'MEDIA_LITROS_KM': 'Média de litros por KM'})
                             df_placa_output.to_excel(writer, sheet_name=placa, index=False)
                     excel_data_arla.seek(0)
-                    st.success("Planilha de Arla processada com sucesso!")
-                    st.download_button(label="📥 Baixar Planilha de Arla", data=excel_data_arla, file_name="planilha_arla.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                else:
-                    st.warning("Não foram encontrados dados de 'ARLA' no arquivo.")
+                    st.success("Planilha de Arla OK!")
+                    st.download_button(label="📥 Baixar Arla", data=excel_data_arla, file_name="planilha_arla.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
@@ -766,178 +617,81 @@ def logistics_page():
 def commercial_page():
     st.title("Setor Comercial")
     st.markdown("Bem-vindo(a) ao setor Comercial. Abaixo estão os scripts disponíveis para análise.")
-
-    script_selection = st.selectbox(
-        "Selecione o script que deseja executar:",
-        ("Selecione...", "Troca de Canal", "Circuito Execução"),
-        key="com_select" 
-    )
+    script_selection = st.selectbox("Selecione o script:", ("Selecione...", "Troca de Canal", "Circuito Execução"), key="com_select")
 
     if script_selection == "Troca de Canal":
-        st.write("---")
         st.subheader("Troca de Canal")
-        st.markdown("Este script transforma e consolida dados de planilhas de Google Forms, adicionando uma coluna de status com lista suspensa.")
-
         def transform_google_forms_data(df):
             processed_records = []
-            if df.empty or len(df.columns) < 28:
-                st.error("A planilha não contém o número mínimo de colunas esperado para este script.")
-                return pd.DataFrame()
-
+            if df.empty or len(df.columns) < 28: return pd.DataFrame()
             for index, row in df.iterrows():
-                if not isinstance(row, pd.Series): continue
-                if len(row) < 28: continue
-
+                if not isinstance(row, pd.Series) or len(row) < 28: continue
                 try:
-                    data_value = row.iloc[0]
-                    sv_value = row.iloc[1]
+                    data_value = row.iloc[0]; sv_value = row.iloc[1]
                     vd_consolidated_parts = [str(row.iloc[col_idx]).strip() for col_idx in range(2, min(5, len(row))) if pd.notna(row.iloc[col_idx])]
                     vd_final = ' | '.join(vd_consolidated_parts) if vd_consolidated_parts else None
                     para_value = row.iloc[27]
-
                     for col_idx in range(5, min(27, len(row))):
                         cell_content = str(row.iloc[col_idx]).strip()
                         if not cell_content or cell_content.lower() == 'nan': continue
-                        
                         de_category_match = re.search(r'\((.*?)\)', cell_content)
                         de_category_val = de_category_match.group(1).strip() if de_category_match else None
                         pdv_info_raw = re.sub(r'\s*\([^)]*\)\s*$', '', cell_content).strip()
                         pdv_info_val = re.sub(r'^\s*(?:\b\w+\s+)?\d+\s*[\|-]\s*', '', pdv_info_raw, 1).strip() if pdv_info_raw else None
-                        
                         if pdv_info_val or de_category_val:
-                            processed_records.append({
-                                'DATA': data_value, 'SV': sv_value, 'VD': vd_final, 'PDV': pdv_info_val,
-                                'DE': de_category_val, 'PARA': para_value, 'Status': '' 
-                            })
+                            processed_records.append({'DATA': data_value, 'SV': sv_value, 'VD': vd_final, 'PDV': pdv_info_val, 'DE': de_category_val, 'PARA': para_value, 'Status': ''})
                 except IndexError: continue
-
-            final_df = pd.DataFrame(processed_records)
-            return final_df
-
-        uploaded_file_1 = st.file_uploader("Envie o arquivo para 'Troca de Canal' (.xlsx)", type=["xlsx"], key="troca_canal_uploader") 
-
+            return pd.DataFrame(processed_records)
+        uploaded_file_1 = st.file_uploader("Envie o arquivo (.xlsx)", type=["xlsx"], key="troca_canal_uploader") 
         if uploaded_file_1 is not None:
             try:
                 df_forms = pd.read_excel(uploaded_file_1)
-                st.subheader("📄 Dados Originais (Troca de Canal)")
                 st.dataframe(df_forms.head())
-                
                 final_df_forms = transform_google_forms_data(df_forms)
-                
                 if not final_df_forms.empty:
-                    output = io.BytesIO()
-                    final_df_forms.to_excel(output, index=False)
-                    output.seek(0)
-                    
-                    workbook = load_workbook(output)
-                    sheet = workbook.active
-                    
-                    dropdown_options_excel = '"Aprovado,Não Aprovado"'
-                    dv = DataValidation(type="list", formula1=dropdown_options_excel, allow_blank=True)
-                    dv.error = 'O valor inserido não está na lista.'
-                    dv.errorTitle = 'Valor Inválido'
-                    
+                    output = io.BytesIO(); final_df_forms.to_excel(output, index=False); output.seek(0)
+                    workbook = load_workbook(output); sheet = workbook.active
+                    dv = DataValidation(type="list", formula1='"Aprovado,Não Aprovado"', allow_blank=True)
                     try:
-                        col_for_dropdown_letter = get_column_letter(final_df_forms.columns.get_loc('Status') + 1)
-                        dv.add(f'{col_for_dropdown_letter}2:{col_for_dropdown_letter}{sheet.max_row}')
-                        sheet.add_data_validation(dv)
-                    except KeyError:
-                        st.warning("A coluna 'Status' não foi encontrada no DataFrame final.")
-                    
-                    output_with_dropdown = io.BytesIO()
-                    workbook.save(output_with_dropdown)
-                    output_with_dropdown.seek(0)
-                    
-                    st.subheader("✅ Dados Transformados (Troca de Canal)")
+                        col_letter = get_column_letter(final_df_forms.columns.get_loc('Status') + 1)
+                        dv.add(f'{col_letter}2:{col_letter}{sheet.max_row}'); sheet.add_data_validation(dv)
+                    except KeyError: pass
+                    output_with_dropdown = io.BytesIO(); workbook.save(output_with_dropdown); output_with_dropdown.seek(0)
                     st.dataframe(final_df_forms)
-                    
-                    st.download_button(label="📥 Baixar Arquivo de Troca de Canal", data=output_with_dropdown.getvalue(), file_name="troca_canal_processada.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                else:
-                    st.warning("O arquivo processado está vazio ou a estrutura está incorreta.")
-            except Exception as e:
-                st.error(f"Ocorreu um erro durante o processamento de 'Troca de Canal': {e}")
+                    st.download_button(label="📥 Baixar Arquivo", data=output_with_dropdown.getvalue(), file_name="troca_canal_processada.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            except Exception as e: st.error(f"Erro: {e}")
 
     elif script_selection == "Circuito Execução":
-        st.write("---")
         st.subheader("Circuito Execução")
-        st.markdown("Este script converte os valores 'Presença' em pontuação, com base no nome das colunas.")
-
-        def extract_points(column_name):
-            match = re.search(r"\(\s*(\d+)\s*Pontos\s*\)", column_name)
-            return int(match.group(1)) if match else None
-
+        def extract_points(column_name): match = re.search(r"\(\s*(\d+)\s*Pontos\s*\)", column_name); return int(match.group(1)) if match else None
         def transform_points_columns(df):
             df_transformed = df.copy()
             for col in df_transformed.columns:
                 if "Pontos" in col:
                     points = extract_points(col)
-                    if points is not None:
-                        df_transformed[col] = df_transformed[col].apply(lambda x: points if x == "Presença" else 0)
+                    if points is not None: df_transformed[col] = df_transformed[col].apply(lambda x: points if x == "Presença" else 0)
             return df_transformed
-
-        @st.cache_data
-        def convert_df_to_excel(df):
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                df.to_excel(writer, index=False)
-            processed_data = output.getvalue()
-            return processed_data
-
-        uploaded_file_2 = st.file_uploader("Envie o arquivo para 'Circuito Execução' (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
-
+        uploaded_file_2 = st.file_uploader("Envie o arquivo (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
         if uploaded_file_2 is not None:
             try:
-                df_points = pd.read_excel(uploaded_file_2)
-                st.subheader("📄 Dados Originais (Circuito Execução)")
-                st.dataframe(df_points)
-                
-                df_transformed_points = transform_points_columns(df_points)
-                st.subheader("✅ Dados Transformados (Circuito Execução)")
-                st.dataframe(df_transformed_points)
-                excel_data = convert_df_to_excel(df_transformed_points)
-                st.download_button(label="📥 Baixar Arquivo de Circuito Execução Transformado", data=excel_data, file_name="circuito_execucao_transformado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            except Exception as e:
-                st.error(f"Ocorreu um erro durante o processamento de 'Circuito Execução': {e}")
+                df_points = pd.read_excel(uploaded_file_2); st.dataframe(df_points)
+                df_transformed = transform_points_columns(df_points); st.dataframe(df_transformed)
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine="xlsxwriter") as writer: df_transformed.to_excel(writer, index=False)
+                st.download_button(label="📥 Baixar Arquivo", data=output.getvalue(), file_name="circuito_execucao_transformado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            except Exception as e: st.error(f"Erro: {e}")
                 
     if st.button("Voltar para o Início", key="com_voltar"):
         st.session_state['current_page'] = 'home'
         st.rerun()
 
-# ====================================================================
-# EXECUÇÃO PRINCIPAL
-# ====================================================================
-if 'is_logged_in' not in st.session_state:
-    st.session_state['is_logged_in'] = False
-if 'current_page' not in st.session_state:
-    st.session_state['current_page'] = 'login'
-if 'LOGIN_INFO' not in st.session_state:
-    st.session_state['LOGIN_INFO'] = {
-        "admin": "Joao789",
-        "amanda": "12345",
-        "marcia": "54321"
-    }
-
-st.set_page_config(page_title="Lince Distribuidora de Bebidas - Login", page_icon="🏠", layout="centered")
-
-st.markdown("""
-<style>
-    .stApp { background-color: #f0f2f6; }
-    div.stButton > button:first-child {
-        background-color: #007bff; color: white; border-radius: 5px; padding: 10px 20px; border: none; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    div.stButton > button:first-child:hover { background-color: #0056b3; transform: translateY(-2px); box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15); }
-    .stTextInput label, .stForm > div > div > label { font-weight: bold; color: #333; }
-    .stTitle { text-align: center; color: #004d99; font-family: 'Arial Black', sans-serif; }
-</style>
-""", unsafe_allow_html=True)
+if 'is_logged_in' not in st.session_state: st.session_state['is_logged_in'] = False
+if 'current_page' not in st.session_state: st.session_state['current_page'] = 'login'
+if 'LOGIN_INFO' not in st.session_state: st.session_state['LOGIN_INFO'] = {"admin": "Joao789", "amanda": "12345", "marcia": "54321"}
+st.set_page_config(page_title="Lince Distribuidora - Login", page_icon="🏠", layout="centered")
+st.markdown("""<style>.stApp { background-color: #f0f2f6; } div.stButton > button:first-child { background-color: #007bff; color: white; border-radius: 5px; } .stTitle { text-align: center; color: #004d99; }</style>""", unsafe_allow_html=True)
 
 if st.session_state.get('is_logged_in', False):
-    page_functions = {
-        'home': main_page,
-        'logistics': logistics_page,
-        'commercial': commercial_page,
-        # RH e Sitio removidos
-    }
+    page_functions = {'home': main_page, 'logistics': logistics_page, 'commercial': commercial_page}
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
-else:
-    login_form()
+else: login_form()
