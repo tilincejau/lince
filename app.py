@@ -18,7 +18,6 @@ import xlsxwriter
 # ====================================================================
 
 def login_form():
-    """Exibe o formulário de login com um design aprimorado."""
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("<h2 style='text-align: center; color: #004d99; font-family: 'Arial Black', sans-serif;'>Lince Distribuidora</h2>", unsafe_allow_html=True)
@@ -82,6 +81,7 @@ def logistics_page():
     
     st.write("---")
 
+    # --- SCRIPT ACURÁCIA ---
     if script_choice == "Acurácia":
         st.subheader("Acurácia de Estoque")
         uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque' (.csv ou .xlsx)", type=["csv", "xlsx"], key="acuracia_uploader")
@@ -142,6 +142,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
 
+    # --- SCRIPT VALIDADE ---
     elif script_choice == "Validade":
         st.subheader("Controle de Validade")
         def parse_estoque_txt_st(file_content):
@@ -251,6 +252,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
+    # --- SCRIPT VASILHAMES ATUALIZADO (LOGICA DE GARRAFAS) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -292,8 +294,9 @@ def logistics_page():
                 st.error(f"Nome do arquivo TXT inválido: {file_content.name}. O formato deve ser 'ESTOQUEDDMM.TXT'.")
                 return None, None, None 
 
-            # MAPA COMPLETO DE UNIFICAÇÃO
+            # MAPA ATUALIZADO: INCLUI CÓDIGOS DE GARRAFAS APONTANDO PARA A CAIXA
             product_code_to_vasilhame_map = {
+                # Códigos Originais de Caixas/Barris
                 '563-008': '563-008 - BARRIL INOX 30L', 
                 '564-009': '564-009 - BARRIL INOX 50L', 
                 '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
@@ -302,7 +305,16 @@ def logistics_page():
                 '555-001': '555-001 - CAIXA PLASTICA 1L', 
                 '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', 
                 '565-002': '565-002 - CILINDRO CO2', 
-                # Unificações na 550-001
+                
+                # Códigos de GARRAFAS (Somar na linha da caixa respectiva)
+                '063-005': '546-004 - CAIXA PLASTICA 24UN 300ML', # Garrafa 300ml
+                '546-001': '546-004 - CAIXA PLASTICA 24UN 300ML', # Garrafa 300ml
+                '540-001': '550-001 - CAIXA PLASTICA 600ML',      # Garrafa 600ml
+                '541-002': '555-001 - CAIXA PLASTICA 1L',         # Garrafa 1L
+                '586-001': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', # Garrafa HNK 600
+                '593-001': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', # Garrafa HNK 330
+
+                # Variações de Caixas (Somar na linha padrão)
                 '550-012': '550-001 - CAIXA PLASTICA 600ML',
                 '803-025': '550-001 - CAIXA PLASTICA 600ML',
                 '803-036': '550-001 - CAIXA PLASTICA 600ML',
@@ -314,41 +326,30 @@ def logistics_page():
             lines = content.splitlines()
             current_code = None
             
-            # LÓGICA NOVA PARA LER LINHAS QUEBRADAS E MISTURADAS
+            # LÓGICA ROBUSTA PARA LER LINHAS QUEBRADAS
             for line in lines:
                 line = line.strip()
-                # Ignora linhas irrelevantes
                 if not line or '---' in line or 'DATA' in line or 'REFERENTE' in line: continue
 
-                # 1. Tenta achar o código no início da linha
                 code_match = re.search(r'(\d{3}-\d{3})', line)
                 
                 if code_match:
-                    # Achou um código, guarda ele
                     current_code = code_match.group(1)
-                    
-                    # Tenta achar a quantidade NA MESMA LINHA
-                    # Procura: espaço + digitos(com ponto) + espaço + valor(com virgula)
-                    # Ex: "   3.332    75.669,72"
                     qty_match = re.search(r'\s+([\d\.]+)\s+[\d\.]+,\d+', line)
                     
                     if qty_match:
-                        # Achou tudo na mesma linha
                         quantity_str = qty_match.group(1).replace('.', '')
                         if current_code in product_code_to_vasilhame_map:
                             parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(quantity_str)})
-                        current_code = None # Reseta pois já leu
+                        current_code = None 
                         
                 elif current_code:
-                    # Se tinha um código pendente (da linha anterior) e não achou quantidade lá
-                    # Tenta achar a quantidade NESTA linha
                     qty_match_next = re.search(r'([\d\.]+)\s+[\d\.]+,\d+', line)
-                    
                     if qty_match_next:
                         quantity_str = qty_match_next.group(1).replace('.', '')
                         if current_code in product_code_to_vasilhame_map:
                             parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(quantity_str)})
-                        current_code = None # Reseta
+                        current_code = None 
 
             if not parsed_data:
                 return None, effective_date_str, effective_date_full
@@ -438,11 +439,23 @@ def logistics_page():
 
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
+                        # MAPA PDF ATUALIZADO (Códigos de Garrafas mapeados para Caixas)
                         pdf_map = {
-                            '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
-                            '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', '000000000000107380': '555-001 - CAIXA PLASTICA 1L', 
-                            '000000000000152598': '546-004 - CAIXA PLASTICA 24UN 300ML', '000000000000000470': '550-001 - CAIXA PLASTICA 600ML',
-                            '000000000000048261': '563-008 - BARRIL INOX 30L', '000000000000048272': '564-009 - BARRIL INOX 50L'
+                            '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
+                            '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
+                            '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
+                            '000000000000107380': '555-001 - CAIXA PLASTICA 1L', 
+                            '000000000000152598': '546-004 - CAIXA PLASTICA 24UN 300ML', 
+                            '000000000000000470': '550-001 - CAIXA PLASTICA 600ML',
+                            '000000000000048261': '563-008 - BARRIL INOX 30L', 
+                            '000000000000048272': '564-009 - BARRIL INOX 50L',
+                            # Códigos de GARRAFAS PDF
+                            '000000000000185039': '546-004 - CAIXA PLASTICA 24UN 300ML', # Garrafa 300ml
+                            '000000000000002496': '550-001 - CAIXA PLASTICA 600ML',      # Garrafa 600ml
+                            '000000000000107523': '555-001 - CAIXA PLASTICA 1L',         # Garrafa 1L
+                            '000000000000152592': '546-004 - CAIXA PLASTICA 24UN 300ML', # Garrafa 300ml
+                            '000000000000215443': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', # Garrafa HNK
+                            '000000000000381408': '591-002 - CAIXA PLASTICA HEINEKEN 330ML'  # Garrafa HNK
                         }
                         for pdf_file in uploaded_pdf_files:
                             df_pdf_current = process_pdf_content(pdf_file, pdf_map)
@@ -465,33 +478,73 @@ def logistics_page():
                     df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                     df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
                     
-                    # --- MAPA DE RENOMEAÇÃO DO EXCEL PARA GARANTIR A CONTAGEM CERTA ---
+                    # 1. MAPA DE RENOMEAÇÃO (Uniformiza nomes antes do cálculo)
                     def map_excel_names(name):
                         name_upper = str(name).upper()
-                        
-                        # Mapeamento da 550-001 e variações
                         if '550-012' in name_upper or 'EISENBAHN' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
                         if '803-025' in name_upper or 'MISTA' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
                         if '803-036' in name_upper or 'AMBEV' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
                         if '803-037' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
                         if '803-039' in name_upper or 'CINZA' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
-                        if '550-001' in name_upper: return '550-001 - CAIXA PLASTICA 600ML' # Garante o nome padrão
-                        
-                        # Mapeamento da 587-002 (Heineken)
-                        if '587-002' in name_upper or ('HEINEKEN' in name_upper and '600' in name_upper):
-                            return '587-002 - CAIXA PLASTICA HEINEKEN 600ML'
-
+                        if '550-001' in name_upper: return '550-001 - CAIXA PLASTICA 600ML'
+                        if '587-002' in name_upper or ('HEINEKEN' in name_upper and '600' in name_upper): return '587-002 - CAIXA PLASTICA HEINEKEN 600ML'
                         return name 
 
                     df_contagem['Qual vasilhame ?'] = df_contagem['Qual vasilhame ?'].apply(map_excel_names)
-                    # ------------------------------------------------------------------
 
+                    # 2. LÓGICA DE CÁLCULO DE GARRAFAS (NOVO FORMULÁRIO VS ANTIGO)
+                    
+                    # Fatores de Conversão (Caixa -> Garrafas)
+                    factors = {
+                        '546-004 - CAIXA PLASTICA 24UN 300ML': 24,
+                        '550-001 - CAIXA PLASTICA 600ML': 24,
+                        '587-002 - CAIXA PLASTICA HEINEKEN 600ML': 24,
+                        '591-002 - CAIXA PLASTICA HEINEKEN 330ML': 24,
+                        '555-001 - CAIXA PLASTICA 1L': 12
+                    }
+
+                    def calculate_bottles(row):
+                        product = row['Qual vasilhame ?']
+                        factor = factors.get(product, 1) # Se não estiver na lista, fator é 1 (ex: Barril)
+                        
+                        # Verifica se é Formulário Novo (tem a coluna 'Quantidade estoque caixas cheias?')
+                        if 'Quantidade estoque caixas cheias?' in row.index and pd.notnull(row['Quantidade estoque caixas cheias?']):
+                            qtd_cheias = float(row['Quantidade estoque caixas cheias?'])
+                            
+                            # Soma transito se existir e for numérico
+                            qtd_transito = 0
+                            if 'Em transito (Entrega)?' in row.index:
+                                try: qtd_transito = float(row['Em transito (Entrega)?'])
+                                except: qtd_transito = 0
+                            
+                            # Contagem = (Cheias + Transito) * Fator
+                            return (qtd_cheias + qtd_transito) * factor
+                        
+                        else:
+                            # Formulário Antigo (Lógica Anterior: usa 'Total' ou 'Quantidade estoque ?')
+                            # Se 'Total' já existir na planilha (calculado pelo Forms/Sheets), usa ele.
+                            if 'Total' in row.index and pd.notnull(row['Total']):
+                                return float(row['Total'])
+                            # Se não, tenta somar os campos antigos manualmente
+                            qtd_estoque = float(row.get('Quantidade estoque ?', 0) or 0)
+                            qtd_transito_old = float(row.get('Em transito (Entrega)?', 0) or 0)
+                            qtd_carreta = float(row.get('Em transito (carreta)?', 0) or 0)
+                            
+                            # No antigo, assumimos que o usuário já digitava o total ou a unidade correta?
+                            # O prompt diz para manter a lógica dos demais. Vamos assumir soma simples.
+                            return qtd_estoque + qtd_transito_old + qtd_carreta
+
+                    # Aplica o cálculo linha a linha
+                    df_contagem['Total_Calculado'] = df_contagem.apply(calculate_bottles, axis=1)
+
+                    # Agrega usando a nova coluna calculada
                     df_historical_excel = df_contagem.copy()
                     df_historical_excel['DataCompleta'] = df_historical_excel['Carimbo de data/hora'].dt.date
                     df_historical_excel['Dia'] = df_historical_excel['Carimbo de data/hora'].dt.strftime('%d/%m')
                     if 'DataCompleta' in df_historical_excel.columns: df_historical_excel['DataCompleta'] = pd.to_datetime(df_historical_excel['DataCompleta'], errors='coerce')
                     
-                    df_excel_agg = df_historical_excel.groupby(['Qual vasilhame ?', 'Dia']).agg(Contagem=('Total', 'sum'), DataCompleta=('DataCompleta', 'max')).reset_index()
+                    # Usa 'Total_Calculado' em vez de 'Total' original
+                    df_excel_agg = df_historical_excel.groupby(['Qual vasilhame ?', 'Dia']).agg(Contagem=('Total_Calculado', 'sum'), DataCompleta=('DataCompleta', 'max')).reset_index()
                     df_excel_agg.rename(columns={'Qual vasilhame ?': 'Vasilhame'}, inplace=True)
                     df_excel_agg.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
 
