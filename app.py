@@ -269,7 +269,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES FINAL (063-005 REMOVIDO) ---
+    # --- SCRIPT VASILHAMES FINAL (COM ABAS SEPARADAS) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -310,16 +310,11 @@ def logistics_page():
                 '563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
                 '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', 
                 '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', 
-                
-                # 063-005 REMOVIDO DA LEITURA DO TXT
-                # '063-005': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'], 
-
                 '546-001': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                 '540-001': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],
                 '541-002': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],
                 '586-001': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'],
                 '593-001': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML'],
-                
                 '550-012': '550-001 - CAIXA PLASTICA 600ML', '803-025': '550-001 - CAIXA PLASTICA 600ML',
                 '803-036': '550-001 - CAIXA PLASTICA 600ML', '803-037': '550-001 - CAIXA PLASTICA 600ML',
                 '803-039': '550-001 - CAIXA PLASTICA 600ML' 
@@ -331,9 +326,7 @@ def logistics_page():
             for line in lines:
                 line = line.strip()
                 if not line or '---' in line or 'DATA' in line or 'REFERENTE' in line: continue
-                
                 code_match = re.search(r'^(\d{3}-\d{3})', line)
-                
                 if code_match:
                     current_code = code_match.group(1)
                     qty_match_full = re.search(r'\s+([\d\.]+)\s+[\d\.]+,\d+', line)
@@ -356,7 +349,6 @@ def logistics_page():
                         if current_code in product_code_to_vasilhame_map:
                             parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(qty_str)})
                         current_code = None 
-            
             if not parsed_data: return None, effective_date_str, effective_date_full
             df_estoque = pd.DataFrame(parsed_data)
             df_estoque['Vasilhame'] = df_estoque['PRODUTO_CODE'].map(product_code_to_vasilhame_map)
@@ -427,22 +419,16 @@ def logistics_page():
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
                         pdf_map = {
-                            '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
-                            '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
-                            '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
-                            '000000000000107380': '555-001 - CAIXA PLASTICA 1L', 
-                            '000000000000152598': '546-004 - CAIXA PLASTICA 24UN 300ML', 
-                            '000000000000000470': '550-001 - CAIXA PLASTICA 600ML',
-                            '000000000000048261': '563-008 - BARRIL INOX 30L', 
-                            '000000000000048272': '564-009 - BARRIL INOX 50L',
-                            
+                            '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
+                            '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', '000000000000107380': '555-001 - CAIXA PLASTICA 1L', 
+                            '000000000000152598': '546-004 - CAIXA PLASTICA 24UN 300ML', '000000000000000470': '550-001 - CAIXA PLASTICA 600ML',
+                            '000000000000048261': '563-008 - BARRIL INOX 30L', '000000000000048272': '564-009 - BARRIL INOX 50L',
                             '000000000000185039': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                             '000000000000002496': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],
                             '000000000000107523': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],
                             '000000000000152592': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                             '000000000000215443': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'],
                             '000000000000381408': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML'],
-                            
                             '000000000000152597': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'], 
                             '000000000000000471': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],     
                             '000000000000107522': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],        
@@ -487,12 +473,10 @@ def logistics_page():
                     def calculate_assets(row):
                         target_crate, target_bottle = map_excel_names_and_get_target(row['Qual vasilhame ?'])
                         garrafa_cheia = 0.0; caixa_vazia = 0.0; caixa_cheia = 0.0
-                        
                         if 'Quantidade estoque caixas cheias?' in row.index and pd.notnull(row['Quantidade estoque caixas cheias?']):
                             qtd_cheias = float(row.get('Quantidade estoque caixas cheias?', 0) or 0)
                             qtd_transito = float(row.get('Em transito (Entrega)?', 0) or 0)
                             qtd_vazias = float(row.get('Quantidade estoque caixas vazias?', 0) or 0)
-                            
                             if target_bottle:
                                 garrafa_cheia = (qtd_cheias + qtd_transito) * FACTORS.get(target_crate, 1)
                                 caixa_vazia = qtd_vazias
@@ -577,7 +561,15 @@ def logistics_page():
                     st.subheader("✅ Tabela Consolidada de Vasilhames")
                     st.dataframe(df_final_output)
                     output = io.BytesIO()
-                    df_final_output.to_excel(output, index=False)
+                    # NOVA LOGICA DE EXPORTAÇÃO: CADA PRODUTO EM UMA ABA
+                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        unique_products = df_final_output['Vasilhame'].unique()
+                        for product in unique_products:
+                            df_product = df_final_output[df_final_output['Vasilhame'] == product]
+                            # Limita nome da aba a 31 caracteres e remove caracteres proibidos
+                            safe_sheet_name = str(product).replace('/', '-').replace('\\', '-').replace('?', '').replace('*', '').replace('[', '').replace(']', '').replace(':', '')[:31]
+                            df_product.to_excel(writer, sheet_name=safe_sheet_name, index=False)
+                            
                     output.seek(0)
                     st.download_button(label="📥 Baixar Tabela Consolidada", data=output, file_name="Vasilhames_Consolidado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
