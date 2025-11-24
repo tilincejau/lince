@@ -170,7 +170,7 @@ def logistics_page():
             start_line = separator_indices[1] + 1
             col_names = ['COD.RED.', 'DESCRIÇÃO', 'SLD INICIAL CX', 'SLD INICIAL UN', 'ENTRADAS CX', 'ENTRADAS UN', 'SAÍDAS CX', 'SAÍDAS UN', 'SALDO FÍSICO CX', 'SALDO FÍSICO UN', 'CONT. FÍSICA CX', 'CONT. FÍSICA UN', 'DIFERENÇA CX', 'DIFERENÇA UN']
             data = []
-            pattern = re.compile(r'^\s*(\d+)\s+(.+?)\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I')
+            pattern = re.compile(r'^\s*(\d+)\s+(.+?)\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I\s*([-+]?\d*)\s*([-+]?\d*)\s*I')
             for line in lines[start_line:]:
                 line = line.strip()
                 if not line or 'TOTAL GERAL' in line: continue
@@ -269,7 +269,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES FINAL (COM VENDAS OPCIONAL) ---
+    # --- SCRIPT VASILHAMES FINAL (BLINDADO CONTRA ERROS DE VENDAS) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -283,7 +283,7 @@ def logistics_page():
                     with engine.connect() as conn:
                         conn.execute(text("DROP TABLE IF EXISTS txt_data"))
                         conn.execute(text("DROP TABLE IF EXISTS pdf_data"))
-                        conn.execute(text("DROP TABLE IF EXISTS vendas_data")) # Drop tabela vendas
+                        conn.execute(text("DROP TABLE IF EXISTS vendas_data"))
                         conn.commit()
                     st.success("Histórico apagado com sucesso!")
                     st.rerun()
@@ -291,7 +291,6 @@ def logistics_page():
                     st.error(f"Erro ao limpar o banco: {e}")
         st.write("---")
 
-        # --- PROCESSAMENTO DO NOVO ARQUIVO DE VENDAS (OPCIONAL) ---
         def process_vendas_file(file_content):
             content = file_content.getvalue().decode('latin1')
             filename_date_match = re.search(r'VENDA(\d{4})\.TXT', file_content.name)
@@ -308,23 +307,18 @@ def logistics_page():
                 effective_date_str = effective_date_obj.strftime('%d/%m')
                 effective_date_full = effective_date_obj.date()
             else:
-                 # Data fallback
                  effective_date_obj = datetime.now()
                  effective_date_str = effective_date_obj.strftime('%d/%m')
                  effective_date_full = effective_date_obj.date()
 
-            # MAPA DE VENDAS (Códigos do TXT -> Nome Final)
             sales_map = {
-                # Garrafas
                 '540-001': '540-001 - GARRAFA 600ML',
                 '541-002': '541-002 - GARRAFA 1L',
                 '586-001': '586-001 - GARRAFA HEINEKEN 600ML',
                 '593-001': '593-001 - GARRAFA HEINEKEN 330ML',
-                # Caixas
                 '555-001': '555-001 - CAIXA PLASTICA 1L',
                 '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML',
                 '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML',
-                # Especial
                 '803-039': '550-001 - CAIXA PLASTICA 600ML' 
             }
 
@@ -333,29 +327,18 @@ def logistics_page():
             
             for line in lines:
                 line = line.strip()
-                # Regex para pegar código 6 digitos no começo e quantidade antes da barra
-                # Ex: 540001 ... 138/ 0
                 match = re.search(r'^(\d{6}).*?(\d+)\s*\/', line)
                 
                 if match:
                     raw_code = match.group(1)
                     qty = int(match.group(2))
-                    
-                    # Formata 540001 -> 540-001
                     formatted_code = f"{raw_code[:3]}-{raw_code[3:]}"
-                    
                     if formatted_code in sales_map:
                         vasilhame = sales_map[formatted_code]
-                        parsed_data.append({
-                            'Vasilhame': vasilhame,
-                            'Vendas': qty,
-                            'Dia': effective_date_str,
-                            'DataCompleta': effective_date_full
-                        })
+                        parsed_data.append({'Vasilhame': vasilhame, 'Vendas': qty, 'Dia': effective_date_str, 'DataCompleta': effective_date_full})
 
             if not parsed_data: return None
             return pd.DataFrame(parsed_data)
-        # --------------------------------------------------------
 
         def process_txt_file_st(file_content):
             content = file_content.getvalue().decode('latin1')
@@ -455,9 +438,7 @@ def logistics_page():
             return df_parsed.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
         
         uploaded_txt_files = st.file_uploader("Envie os arquivos TXT de empréstimos (Ex: ESTOQUE0102.TXT)", type=["txt"], accept_multiple_files=True, key="vasil_txt_uploader") 
-        # UPLOADER DE VENDAS (NOVO)
         uploaded_vendas_files = st.file_uploader("Envie os arquivos TXT de Vendas (Ex: VENDA2411.TXT) [Opcional]", type=["txt"], accept_multiple_files=True, key="vasil_vendas_uploader")
-        
         uploaded_excel_contagem = st.file_uploader("Envie o arquivo Excel de contagem (Ex: Contagem Vasilhames.xlsx)", type=["xlsx"], key="vasil_excel_uploader")
         uploaded_pdf_files = st.file_uploader("Envie os arquivos PDF de fábrica (Ex: PONTA GROSSA 07-11-2025.pdf)", type=["pdf"], accept_multiple_files=True, key="vasil_pdf_uploader")
         
@@ -486,14 +467,13 @@ def logistics_page():
                         df_all_processed_txt_data.to_sql('txt_data', con=engine, if_exists='replace', index=False)
                         st.success("Dados TXT atualizados!")
                     else: df_all_processed_txt_data = df_old_txt_data 
-
-                    # PROCESSAMENTO DE VENDAS (NOVO)
+                    
+                    # --- VENDAS (BLINDAGEM: SE VAZIO, CRIA DF COM COLUNAS CERTAS) ---
                     new_vendas_data_list = []
                     if uploaded_vendas_files:
                         for v_file in uploaded_vendas_files:
                             df_v = process_vendas_file(v_file)
-                            if df_v is not None:
-                                new_vendas_data_list.append(df_v)
+                            if df_v is not None: new_vendas_data_list.append(df_v)
                     
                     if new_vendas_data_list:
                         df_new_vendas = pd.concat(new_vendas_data_list, ignore_index=True)
@@ -504,7 +484,11 @@ def logistics_page():
                         st.success("Dados de Vendas atualizados!")
                     else:
                         df_all_processed_vendas_data = df_old_vendas_data
-
+                    
+                    # BLINDAGEM: Se df_all_processed_vendas_data estiver vazio (sem colunas), cria estrutura
+                    if df_all_processed_vendas_data.empty:
+                         df_all_processed_vendas_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Vendas', 'DataCompleta'])
+                    # ------------------------------------------------------------------
 
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
@@ -546,6 +530,11 @@ def logistics_page():
                         st.success("Dados PDF atualizados!")
                     else: df_all_processed_pdf_data = df_old_pdf_data
                     
+                    # BLINDAGEM PDF/TXT
+                    if df_all_processed_txt_data.empty: df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Qtd_emprestimo', 'DataCompleta'])
+                    if df_all_processed_pdf_data.empty: df_all_processed_pdf_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'DataCompleta'])
+
+
                     df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                     df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
                     df_contagem['DataCompleta'] = df_contagem['Carimbo de data/hora'].dt.date
@@ -625,14 +614,14 @@ def logistics_page():
                         df_excel_agg[['Vasilhame', 'Dia']], 
                         df_all_processed_txt_data[['Vasilhame', 'Dia']], 
                         df_all_processed_pdf_data[['Vasilhame', 'Dia']],
-                        df_all_processed_vendas_data[['Vasilhame', 'Dia']], # CONCATENANDO VENDAS
+                        df_all_processed_vendas_data[['Vasilhame', 'Dia']],
                         df_skeleton
                     ]).drop_duplicates().reset_index(drop=True)
                     
                     df_final = pd.merge(df_master_combinations, df_excel_agg, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_txt_data, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
-                    df_final = pd.merge(df_final, df_all_processed_vendas_data, on=['Vasilhame', 'Dia'], how='left') # MERGE FINAL VENDAS
+                    df_final = pd.merge(df_final, df_all_processed_vendas_data, on=['Vasilhame', 'Dia'], how='left')
                     
                     df_final['DataCompleta'] = df_final['DataCompleta_excel'].fillna(np.nan)
                     if 'DataCompleta_txt' in df_final.columns: df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_txt'])
@@ -651,15 +640,11 @@ def logistics_page():
                     numeric_cols = ['Contagem Cheias', 'Contagem Vazias', 'Qtd_emprestimo', 'Vendas'] + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
                     for col in numeric_cols:
                         if col in df_final.columns: df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0)
-                    else:
-                        # Se a coluna Vendas não existir após o merge (nenhum arquivo enviado), cria com 0
-                        if 'Vendas' not in df_final.columns:
-                            df_final['Vendas'] = 0
+                    
+                    # Garante que 'Vendas' existe mesmo se não foi mergeada (caso vazia)
+                    if 'Vendas' not in df_final.columns: df_final['Vendas'] = 0
 
-                    
-                    # TOTAL REVENDA COM VENDAS
                     df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem Cheias'] + df_final['Contagem Vazias'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1) + df_final['Vendas']
-                    
                     df_final['DataCompleta'] = pd.to_datetime(df_final['DataCompleta'], errors='coerce')
                     df_final.sort_values(by=['Vasilhame', 'DataCompleta'], inplace=True, na_position='first')
                     
