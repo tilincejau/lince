@@ -269,7 +269,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES FINAL (COM ABAS SEPARADAS) ---
+    # --- SCRIPT VASILHAMES FINAL (GARRAFAS AVULSAS SOMAM TUDO) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -310,6 +310,7 @@ def logistics_page():
                 '563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
                 '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', 
                 '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', 
+                # 063-005 REMOVIDO
                 '546-001': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                 '540-001': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],
                 '541-002': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],
@@ -461,6 +462,16 @@ def logistics_page():
                         name_upper = str(name).upper()
                         target_crate = name 
                         target_bottle = None
+                        factor = 1
+                        
+                        # GARRAFAS
+                        if '063-005' in name_upper: target_bottle = '546-001 - GARRAFA 300ML'; return None, target_bottle, 1
+                        if '540-001' in name_upper: target_bottle = '540-001 - GARRAFA 600ML'; return None, target_bottle, 1
+                        if '541-002' in name_upper: target_bottle = '541-002 - GARRAFA 1L'; return None, target_bottle, 1
+                        if '586-001' in name_upper: target_bottle = '586-001 - GARRAFA HEINEKEN 600ML'; return None, target_bottle, 1
+                        if '593-001' in name_upper: target_bottle = '593-001 - GARRAFA HEINEKEN 330ML'; return None, target_bottle, 1
+
+                        # CAIXAS
                         if '550-012' in name_upper or 'EISENBAHN' in name_upper or '550-001' in name_upper or 'MISTA' in name_upper or 'AMBEV' in name_upper or 'CINZA' in name_upper:
                              target_crate = '550-001 - CAIXA PLASTICA 600ML'
                         elif '587-002' in name_upper or ('HEINEKEN' in name_upper and '600' in name_upper): target_crate = '587-002 - CAIXA PLASTICA HEINEKEN 600ML'
@@ -471,24 +482,42 @@ def logistics_page():
                         return target_crate, target_bottle
 
                     def calculate_assets(row):
-                        target_crate, target_bottle = map_excel_names_and_get_target(row['Qual vasilhame ?'])
+                        target_crate, target_bottle, factor = map_excel_names_and_get_target(row['Qual vasilhame ?'])
                         garrafa_cheia = 0.0; caixa_vazia = 0.0; caixa_cheia = 0.0
-                        if 'Quantidade estoque caixas cheias?' in row.index and pd.notnull(row['Quantidade estoque caixas cheias?']):
-                            qtd_cheias = float(row.get('Quantidade estoque caixas cheias?', 0) or 0)
-                            qtd_transito = float(row.get('Em transito (Entrega)?', 0) or 0)
-                            qtd_vazias = float(row.get('Quantidade estoque caixas vazias?', 0) or 0)
-                            if target_bottle:
-                                garrafa_cheia = (qtd_cheias + qtd_transito) * FACTORS.get(target_crate, 1)
+                        
+                        if 'Quantidade estoque cheias?' in row.index and pd.notnull(row['Quantidade estoque cheias?']):
+                            qtd_cheias = float(row.get('Quantidade estoque cheias?', 0) or 0)
+                            qtd_vazias = float(row.get('Quantidade estoque vazias?', 0) or 0)
+                            qtd_entrega = float(row.get('Em transito (Entrega)?', 0) or 0)
+                            qtd_carreta = float(row.get('Em transito (carreta)?', 0) or 0)
+
+                            total_cheias_fisico = qtd_cheias + qtd_entrega + qtd_carreta
+                            
+                            # SOMATÓRIO TOTAL PARA GARRAFAS AVULSAS
+                            total_geral_garrafa = qtd_cheias + qtd_vazias + qtd_entrega + qtd_carreta
+
+                            if target_crate is None and target_bottle is not None:
+                                # GARRAFA AVULSA: SOMA TUDO NA GARRAFA
+                                garrafa_cheia = total_geral_garrafa
+                                caixa_cheia = 0
+                                caixa_vazia = 0
+                            elif target_bottle:
+                                # CAIXA COM GARRAFA: CONVERTE CHEIAS
+                                garrafa_cheia = total_cheias_fisico * factor
                                 caixa_vazia = qtd_vazias
-                                caixa_cheia = qtd_cheias + qtd_transito
+                                caixa_cheia = total_cheias_fisico
                             else:
-                                caixa_cheia = qtd_cheias + qtd_transito
+                                # CAIXA SEM GARRAFA
+                                caixa_cheia = total_cheias_fisico
                                 caixa_vazia = qtd_vazias
                         else:
+                            # LEGADO
                             if 'Total' in row.index and pd.notnull(row['Total']): total = float(row['Total'])
                             else: total = float(row.get('Quantidade estoque ?', 0) or 0) + float(row.get('Em transito (Entrega)?', 0) or 0) + float(row.get('Em transito (carreta)?', 0) or 0)
-                            if target_bottle: garrafa_cheia = total * FACTORS.get(target_crate, 1)
+                            if target_crate is None and target_bottle is not None: garrafa_cheia = total
+                            elif target_bottle: garrafa_cheia = total * factor; caixa_cheia = total
                             else: caixa_cheia = total
+
                         return pd.Series([target_crate, target_bottle, garrafa_cheia, caixa_vazia, caixa_cheia], index=['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia'])
 
                     df_contagem[['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia']] = df_contagem.apply(calculate_assets, axis=1)
@@ -497,7 +526,7 @@ def logistics_page():
                     df_agg_garrafa['Contagem Vazias'] = 0 
                     df_agg_garrafa.rename(columns={'TargetBottle': 'Vasilhame', 'ContagemCheias': 'Contagem Cheias'}, inplace=True)
 
-                    df_agg_caixa = df_contagem.groupby(['TargetCrate', 'Dia']).agg(ContagemCheias=('CaixaCheia', 'sum'), ContagemVazias=('CaixaVazia', 'sum'), DataCompleta=('Carimbo de data/hora', 'max')).reset_index()
+                    df_agg_caixa = df_contagem.dropna(subset=['TargetCrate']).groupby(['TargetCrate', 'Dia']).agg(ContagemCheias=('CaixaCheia', 'sum'), ContagemVazias=('CaixaVazia', 'sum'), DataCompleta=('Carimbo de data/hora', 'max')).reset_index()
                     df_agg_caixa.rename(columns={'TargetCrate': 'Vasilhame', 'ContagemCheias': 'Contagem Cheias', 'ContagemVazias': 'Contagem Vazias'}, inplace=True)
                     
                     df_excel_agg = pd.concat([df_agg_garrafa, df_agg_caixa], ignore_index=True)
@@ -561,15 +590,12 @@ def logistics_page():
                     st.subheader("✅ Tabela Consolidada de Vasilhames")
                     st.dataframe(df_final_output)
                     output = io.BytesIO()
-                    # NOVA LOGICA DE EXPORTAÇÃO: CADA PRODUTO EM UMA ABA
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                         unique_products = df_final_output['Vasilhame'].unique()
                         for product in unique_products:
                             df_product = df_final_output[df_final_output['Vasilhame'] == product]
-                            # Limita nome da aba a 31 caracteres e remove caracteres proibidos
                             safe_sheet_name = str(product).replace('/', '-').replace('\\', '-').replace('?', '').replace('*', '').replace('[', '').replace(']', '').replace(':', '')[:31]
                             df_product.to_excel(writer, sheet_name=safe_sheet_name, index=False)
-                            
                     output.seek(0)
                     st.download_button(label="📥 Baixar Tabela Consolidada", data=output, file_name="Vasilhames_Consolidado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
