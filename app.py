@@ -269,7 +269,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES FINAL (GARRAFAS AVULSAS SOMAM TUDO) ---
+    # --- SCRIPT VASILHAMES FINAL (COM VENDAS OPCIONAL) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -283,12 +283,79 @@ def logistics_page():
                     with engine.connect() as conn:
                         conn.execute(text("DROP TABLE IF EXISTS txt_data"))
                         conn.execute(text("DROP TABLE IF EXISTS pdf_data"))
+                        conn.execute(text("DROP TABLE IF EXISTS vendas_data")) # Drop tabela vendas
                         conn.commit()
                     st.success("Histórico apagado com sucesso!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao limpar o banco: {e}")
         st.write("---")
+
+        # --- PROCESSAMENTO DO NOVO ARQUIVO DE VENDAS (OPCIONAL) ---
+        def process_vendas_file(file_content):
+            content = file_content.getvalue().decode('latin1')
+            filename_date_match = re.search(r'VENDA(\d{4})\.TXT', file_content.name)
+            effective_date_str = None
+            effective_date_full = None
+            
+            if filename_date_match:
+                day = filename_date_match.group(1)[:2]
+                month = filename_date_match.group(1)[2:]
+                year = datetime.now().year
+                now = datetime.now()
+                if now.month == 1 and month == '12': year = year - 1
+                effective_date_obj = datetime.strptime(f"{day}/{month}/{year}", '%d/%m/%Y')
+                effective_date_str = effective_date_obj.strftime('%d/%m')
+                effective_date_full = effective_date_obj.date()
+            else:
+                 # Data fallback
+                 effective_date_obj = datetime.now()
+                 effective_date_str = effective_date_obj.strftime('%d/%m')
+                 effective_date_full = effective_date_obj.date()
+
+            # MAPA DE VENDAS (Códigos do TXT -> Nome Final)
+            sales_map = {
+                # Garrafas
+                '540-001': '540-001 - GARRAFA 600ML',
+                '541-002': '541-002 - GARRAFA 1L',
+                '586-001': '586-001 - GARRAFA HEINEKEN 600ML',
+                '593-001': '593-001 - GARRAFA HEINEKEN 330ML',
+                # Caixas
+                '555-001': '555-001 - CAIXA PLASTICA 1L',
+                '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML',
+                '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML',
+                # Especial
+                '803-039': '550-001 - CAIXA PLASTICA 600ML' 
+            }
+
+            parsed_data = []
+            lines = content.splitlines()
+            
+            for line in lines:
+                line = line.strip()
+                # Regex para pegar código 6 digitos no começo e quantidade antes da barra
+                # Ex: 540001 ... 138/ 0
+                match = re.search(r'^(\d{6}).*?(\d+)\s*\/', line)
+                
+                if match:
+                    raw_code = match.group(1)
+                    qty = int(match.group(2))
+                    
+                    # Formata 540001 -> 540-001
+                    formatted_code = f"{raw_code[:3]}-{raw_code[3:]}"
+                    
+                    if formatted_code in sales_map:
+                        vasilhame = sales_map[formatted_code]
+                        parsed_data.append({
+                            'Vasilhame': vasilhame,
+                            'Vendas': qty,
+                            'Dia': effective_date_str,
+                            'DataCompleta': effective_date_full
+                        })
+
+            if not parsed_data: return None
+            return pd.DataFrame(parsed_data)
+        # --------------------------------------------------------
 
         def process_txt_file_st(file_content):
             content = file_content.getvalue().decode('latin1')
@@ -310,7 +377,6 @@ def logistics_page():
                 '563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
                 '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '550-001': '550-001 - CAIXA PLASTICA 600ML', '555-001': '555-001 - CAIXA PLASTICA 1L', 
                 '546-004': '546-004 - CAIXA PLASTICA 24UN 300ML', '565-002': '565-002 - CILINDRO CO2', 
-                # 063-005 REMOVIDO
                 '546-001': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                 '540-001': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],
                 '541-002': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],
@@ -389,6 +455,9 @@ def logistics_page():
             return df_parsed.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
         
         uploaded_txt_files = st.file_uploader("Envie os arquivos TXT de empréstimos (Ex: ESTOQUE0102.TXT)", type=["txt"], accept_multiple_files=True, key="vasil_txt_uploader") 
+        # UPLOADER DE VENDAS (NOVO)
+        uploaded_vendas_files = st.file_uploader("Envie os arquivos TXT de Vendas (Ex: VENDA2411.TXT) [Opcional]", type=["txt"], accept_multiple_files=True, key="vasil_vendas_uploader")
+        
         uploaded_excel_contagem = st.file_uploader("Envie o arquivo Excel de contagem (Ex: Contagem Vasilhames.xlsx)", type=["xlsx"], key="vasil_excel_uploader")
         uploaded_pdf_files = st.file_uploader("Envie os arquivos PDF de fábrica (Ex: PONTA GROSSA 07-11-2025.pdf)", type=["pdf"], accept_multiple_files=True, key="vasil_pdf_uploader")
         
@@ -399,6 +468,7 @@ def logistics_page():
                     
                     df_old_txt_data = load_from_db('txt_data', engine)
                     df_old_pdf_data = load_from_db('pdf_data', engine)
+                    df_old_vendas_data = load_from_db('vendas_data', engine)
 
                     new_txt_data_list = []
                     for uploaded_txt_file in uploaded_txt_files:
@@ -417,13 +487,36 @@ def logistics_page():
                         st.success("Dados TXT atualizados!")
                     else: df_all_processed_txt_data = df_old_txt_data 
 
+                    # PROCESSAMENTO DE VENDAS (NOVO)
+                    new_vendas_data_list = []
+                    if uploaded_vendas_files:
+                        for v_file in uploaded_vendas_files:
+                            df_v = process_vendas_file(v_file)
+                            if df_v is not None:
+                                new_vendas_data_list.append(df_v)
+                    
+                    if new_vendas_data_list:
+                        df_new_vendas = pd.concat(new_vendas_data_list, ignore_index=True)
+                        df_all_vendas_combined = pd.concat([df_old_vendas_data, df_new_vendas], ignore_index=True)
+                        if 'DataCompleta' in df_all_vendas_combined.columns: df_all_vendas_combined['DataCompleta'] = pd.to_datetime(df_all_vendas_combined['DataCompleta'], errors='coerce')
+                        df_all_processed_vendas_data = df_all_vendas_combined.groupby(['Vasilhame', 'Dia']).agg(Vendas=('Vendas', 'sum'), DataCompleta=('DataCompleta', 'max')).reset_index()
+                        df_all_processed_vendas_data.to_sql('vendas_data', con=engine, if_exists='replace', index=False)
+                        st.success("Dados de Vendas atualizados!")
+                    else:
+                        df_all_processed_vendas_data = df_old_vendas_data
+
+
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
                         pdf_map = {
-                            '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
-                            '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', '000000000000107380': '555-001 - CAIXA PLASTICA 1L', 
-                            '000000000000152598': '546-004 - CAIXA PLASTICA 24UN 300ML', '000000000000000470': '550-001 - CAIXA PLASTICA 600ML',
-                            '000000000000048261': '563-008 - BARRIL INOX 30L', '000000000000048272': '564-009 - BARRIL INOX 50L',
+                            '000000000000215442': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
+                            '000000000000215208': '587-002 - CAIXA PLASTICA HEINEKEN 600ML', 
+                            '000000000000381411': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
+                            '000000000000107380': '555-001 - CAIXA PLASTICA 1L', 
+                            '000000000000152598': '546-004 - CAIXA PLASTICA 24UN 300ML', 
+                            '000000000000000470': '550-001 - CAIXA PLASTICA 600ML',
+                            '000000000000048261': '563-008 - BARRIL INOX 30L', 
+                            '000000000000048272': '564-009 - BARRIL INOX 50L',
                             '000000000000185039': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'],
                             '000000000000002496': CRATE_TO_BOTTLE_MAP['550-001 - CAIXA PLASTICA 600ML'],
                             '000000000000107523': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],
@@ -463,15 +556,6 @@ def logistics_page():
                         target_crate = name 
                         target_bottle = None
                         factor = 1
-                        
-                        # GARRAFAS
-                        if '063-005' in name_upper: target_bottle = '546-001 - GARRAFA 300ML'; return None, target_bottle, 1
-                        if '540-001' in name_upper: target_bottle = '540-001 - GARRAFA 600ML'; return None, target_bottle, 1
-                        if '541-002' in name_upper: target_bottle = '541-002 - GARRAFA 1L'; return None, target_bottle, 1
-                        if '586-001' in name_upper: target_bottle = '586-001 - GARRAFA HEINEKEN 600ML'; return None, target_bottle, 1
-                        if '593-001' in name_upper: target_bottle = '593-001 - GARRAFA HEINEKEN 330ML'; return None, target_bottle, 1
-
-                        # CAIXAS
                         if '550-012' in name_upper or 'EISENBAHN' in name_upper or '550-001' in name_upper or 'MISTA' in name_upper or 'AMBEV' in name_upper or 'CINZA' in name_upper:
                              target_crate = '550-001 - CAIXA PLASTICA 600ML'
                         elif '587-002' in name_upper or ('HEINEKEN' in name_upper and '600' in name_upper): target_crate = '587-002 - CAIXA PLASTICA HEINEKEN 600ML'
@@ -482,7 +566,7 @@ def logistics_page():
                         return target_crate, target_bottle
 
                     def calculate_assets(row):
-                        target_crate, target_bottle, factor = map_excel_names_and_get_target(row['Qual vasilhame ?'])
+                        target_crate, target_bottle = map_excel_names_and_get_target(row['Qual vasilhame ?'])
                         garrafa_cheia = 0.0; caixa_vazia = 0.0; caixa_cheia = 0.0
                         
                         if 'Quantidade estoque cheias?' in row.index and pd.notnull(row['Quantidade estoque cheias?']):
@@ -490,32 +574,25 @@ def logistics_page():
                             qtd_vazias = float(row.get('Quantidade estoque vazias?', 0) or 0)
                             qtd_entrega = float(row.get('Em transito (Entrega)?', 0) or 0)
                             qtd_carreta = float(row.get('Em transito (carreta)?', 0) or 0)
-
                             total_cheias_fisico = qtd_cheias + qtd_entrega + qtd_carreta
-                            
-                            # SOMATÓRIO TOTAL PARA GARRAFAS AVULSAS
                             total_geral_garrafa = qtd_cheias + qtd_vazias + qtd_entrega + qtd_carreta
 
                             if target_crate is None and target_bottle is not None:
-                                # GARRAFA AVULSA: SOMA TUDO NA GARRAFA
                                 garrafa_cheia = total_geral_garrafa
                                 caixa_cheia = 0
                                 caixa_vazia = 0
                             elif target_bottle:
-                                # CAIXA COM GARRAFA: CONVERTE CHEIAS
-                                garrafa_cheia = total_cheias_fisico * factor
+                                garrafa_cheia = total_cheias_fisico * FACTORS.get(target_crate, 1)
                                 caixa_vazia = qtd_vazias
                                 caixa_cheia = total_cheias_fisico
                             else:
-                                # CAIXA SEM GARRAFA
                                 caixa_cheia = total_cheias_fisico
                                 caixa_vazia = qtd_vazias
                         else:
-                            # LEGADO
                             if 'Total' in row.index and pd.notnull(row['Total']): total = float(row['Total'])
                             else: total = float(row.get('Quantidade estoque ?', 0) or 0) + float(row.get('Em transito (Entrega)?', 0) or 0) + float(row.get('Em transito (carreta)?', 0) or 0)
                             if target_crate is None and target_bottle is not None: garrafa_cheia = total
-                            elif target_bottle: garrafa_cheia = total * factor; caixa_cheia = total
+                            elif target_bottle: garrafa_cheia = total * FACTORS.get(target_crate, 1); caixa_cheia = total
                             else: caixa_cheia = total
 
                         return pd.Series([target_crate, target_bottle, garrafa_cheia, caixa_vazia, caixa_cheia], index=['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia'])
@@ -544,10 +621,18 @@ def logistics_page():
                         for day in all_dates: skeleton_rows.append({'Vasilhame': prod, 'Dia': day})
                     df_skeleton = pd.DataFrame(skeleton_rows)
 
-                    df_master_combinations = pd.concat([df_excel_agg[['Vasilhame', 'Dia']], df_all_processed_txt_data[['Vasilhame', 'Dia']], df_all_processed_pdf_data[['Vasilhame', 'Dia']], df_skeleton]).drop_duplicates().reset_index(drop=True)
+                    df_master_combinations = pd.concat([
+                        df_excel_agg[['Vasilhame', 'Dia']], 
+                        df_all_processed_txt_data[['Vasilhame', 'Dia']], 
+                        df_all_processed_pdf_data[['Vasilhame', 'Dia']],
+                        df_all_processed_vendas_data[['Vasilhame', 'Dia']], # CONCATENANDO VENDAS
+                        df_skeleton
+                    ]).drop_duplicates().reset_index(drop=True)
+                    
                     df_final = pd.merge(df_master_combinations, df_excel_agg, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_txt_data, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
+                    df_final = pd.merge(df_final, df_all_processed_vendas_data, on=['Vasilhame', 'Dia'], how='left') # MERGE FINAL VENDAS
                     
                     df_final['DataCompleta'] = df_final['DataCompleta_excel'].fillna(np.nan)
                     if 'DataCompleta_txt' in df_final.columns: df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_txt'])
@@ -563,11 +648,18 @@ def logistics_page():
                     cols_to_drop = [col for col in df_final.columns if col.startswith('DataCompleta_')]
                     df_final.drop(cols_to_drop, axis=1, inplace=True)
 
-                    numeric_cols = ['Contagem Cheias', 'Contagem Vazias', 'Qtd_emprestimo'] + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
+                    numeric_cols = ['Contagem Cheias', 'Contagem Vazias', 'Qtd_emprestimo', 'Vendas'] + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
                     for col in numeric_cols:
                         if col in df_final.columns: df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0)
+                    else:
+                        # Se a coluna Vendas não existir após o merge (nenhum arquivo enviado), cria com 0
+                        if 'Vendas' not in df_final.columns:
+                            df_final['Vendas'] = 0
+
                     
-                    df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem Cheias'] + df_final['Contagem Vazias'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1)
+                    # TOTAL REVENDA COM VENDAS
+                    df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem Cheias'] + df_final['Contagem Vazias'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1) + df_final['Vendas']
+                    
                     df_final['DataCompleta'] = pd.to_datetime(df_final['DataCompleta'], errors='coerce')
                     df_final.sort_values(by=['Vasilhame', 'DataCompleta'], inplace=True, na_position='first')
                     
