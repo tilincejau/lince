@@ -18,6 +18,7 @@ import xlsxwriter
 # ====================================================================
 
 NAME_540_001 = '540-001 - GARRAFA 600ML' 
+NAME_550_001 = '550-001 - CAIXA PLASTICA 600ML' # Constante para facilitar agrupamento
 
 CRATE_TO_BOTTLE_MAP = {
     '546-004 - CAIXA PLASTICA 24UN 300ML': '546-001 - GARRAFA 300ML',
@@ -103,6 +104,7 @@ def logistics_page():
     
     st.write("---")
 
+    # --- SCRIPT ACURÁCIA ---
     if script_choice == "Acurácia":
         st.subheader("Acurácia de Estoque")
         uploaded_file = st.file_uploader("Envie o arquivo 'Acuracia estoque' (.csv ou .xlsx)", type=["csv", "xlsx"], key="acuracia_uploader")
@@ -268,7 +270,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES FINAL (COM CORREÇÃO DE REGEX PARA PONTOS) ---
+    # --- SCRIPT VASILHAMES FINAL ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -311,15 +313,24 @@ def logistics_page():
                  effective_date_str = effective_date_obj.strftime('%d/%m')
                  effective_date_full = effective_date_obj.date()
 
+            # MAPA DE VENDAS EXPANDIDO (COM TODOS OS CÓDIGOS RELEVANTES)
             sales_map = {
+                # Garrafas (apontam para garrafas)
                 '540-001': NAME_540_001,
                 '541-002': '541-002 - GARRAFA 1L',
                 '586-001': '586-001 - GARRAFA HEINEKEN 600ML',
                 '593-001': '593-001 - GARRAFA HEINEKEN 330ML',
+                # Caixas (apontam para caixas)
                 '555-001': '555-001 - CAIXA PLASTICA 1L',
                 '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML',
                 '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML',
-                '803-039': '550-001 - CAIXA PLASTICA 600ML' 
+                # Variantes de Caixa 600ml (TODAS devem apontar para 550-001)
+                '550-001': NAME_550_001,
+                '550-012': NAME_550_001, 
+                '803-025': NAME_550_001,
+                '803-036': NAME_550_001,
+                '803-037': NAME_550_001,
+                '803-039': NAME_550_001  # Caixa Cinza
             }
 
             parsed_data = []
@@ -327,17 +338,12 @@ def logistics_page():
             
             for line in lines:
                 line = line.strip()
-                
-                # --- REGEX CORRIGIDO PARA ACEITAR PONTOS ([\d\.]+) ---
                 match = re.search(r'^(\d{6}).*?([\d\.]+)\s*\/', line)
                 
                 if match:
                     raw_code = match.group(1)
                     raw_qty = match.group(2)
-                    
-                    # Remove o ponto de milhar antes de converter
                     qty = int(raw_qty.replace('.', ''))
-                    
                     formatted_code = f"{raw_code[:3]}-{raw_code[3:]}"
                     
                     if formatted_code in sales_map:
@@ -548,19 +554,26 @@ def logistics_page():
                         target_crate = name 
                         target_bottle = None
                         factor = 1
+                        
+                        # GARRAFAS
                         if '063-005' in name_upper: target_bottle = '546-001 - GARRAFA 300ML'; return None, target_bottle, 1
                         if '540-001' in name_upper: target_bottle = NAME_540_001; return None, target_bottle, 1
                         if '541-002' in name_upper: target_bottle = '541-002 - GARRAFA 1L'; return None, target_bottle, 1
                         if '586-001' in name_upper: target_bottle = '586-001 - GARRAFA HEINEKEN 600ML'; return None, target_bottle, 1
                         if '593-001' in name_upper: target_bottle = '593-001 - GARRAFA HEINEKEN 330ML'; return None, target_bottle, 1
 
+                        # CAIXAS
                         if '550-012' in name_upper or 'EISENBAHN' in name_upper or '550-001' in name_upper or 'MISTA' in name_upper or 'AMBEV' in name_upper or 'CINZA' in name_upper:
-                             target_crate = '550-001 - CAIXA PLASTICA 600ML'
+                             target_crate = NAME_550_001
                         elif '587-002' in name_upper or ('HEINEKEN' in name_upper and '600' in name_upper): target_crate = '587-002 - CAIXA PLASTICA HEINEKEN 600ML'
                         elif '546-004' in name_upper: target_crate = '546-004 - CAIXA PLASTICA 24UN 300ML'
                         elif '591-002' in name_upper: target_crate = '591-002 - CAIXA PLASTICA HEINEKEN 330ML'
                         elif '555-001' in name_upper: target_crate = '555-001 - CAIXA PLASTICA 1L'
-                        if target_crate in CRATE_TO_BOTTLE_MAP: target_bottle = CRATE_TO_BOTTLE_MAP[target_crate]
+
+                        if target_crate in CRATE_TO_BOTTLE_MAP:
+                            target_bottle = CRATE_TO_BOTTLE_MAP[target_crate]
+                            factor = FACTORS.get(target_crate, 1)
+                            
                         return target_crate, target_bottle, factor
 
                     def calculate_assets(row):
@@ -572,6 +585,7 @@ def logistics_page():
                             qtd_vazias = float(row.get('Quantidade estoque vazias?', 0) or 0)
                             qtd_entrega = float(row.get('Em transito (Entrega)?', 0) or 0)
                             qtd_carreta = float(row.get('Em transito (carreta)?', 0) or 0)
+
                             total_cheias_fisico = qtd_cheias + qtd_entrega + qtd_carreta
                             total_geral_garrafa = qtd_cheias + qtd_vazias + qtd_entrega + qtd_carreta
 
@@ -658,6 +672,7 @@ def logistics_page():
                     
                     if 'Vendas' not in df_final.columns: df_final['Vendas'] = 0
 
+                    # SOMA FINAL (AGRUPAMENTO)
                     groupby_cols = ['Vasilhame', 'Dia', 'DataCompleta']
                     cols_to_sum = [c for c in numeric_cols if c in df_final.columns]
                     df_final = df_final.groupby(groupby_cols)[cols_to_sum].sum().reset_index()
@@ -683,6 +698,7 @@ def logistics_page():
                     df_final = df_final.groupby('Vasilhame', group_keys=False).apply(calcular_diferenca_regra_negocio)
                     df_final_output = df_final.drop('DataCompleta', axis=1)
 
+                    # REORDENAÇÃO
                     output_cols = [c for c in df_final_output.columns if c not in ['Diferença', 'Vendas']]
                     df_final_output = df_final_output[output_cols + ['Diferença', 'Vendas']]
                     
@@ -692,9 +708,11 @@ def logistics_page():
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                         df_final_output.to_excel(writer, sheet_name='GERAL', index=False)
                         unique_products = df_final_output['Vasilhame'].unique()
+                        
                         caixas_list = sorted([p for p in unique_products if 'CAIXA' in str(p).upper() or 'BARRIL' in str(p).upper() or 'CILINDRO' in str(p).upper()])
                         garrafas_list = sorted([p for p in unique_products if 'GARRAFA' in str(p).upper()])
                         outros_list = sorted([p for p in unique_products if p not in caixas_list and p not in garrafas_list])
+                        
                         sorted_products = caixas_list + garrafas_list + outros_list
 
                         for product in sorted_products:
