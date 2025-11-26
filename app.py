@@ -519,7 +519,7 @@ def logistics_page():
                             '000000000000215443': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'],
                             '000000000000381408': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML'],
                             '000000000000152597': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'], 
-                            '000000000000000471': NAME_540_001,      
+                            '000000000000000471': NAME_540_001,       
                             '000000000000107522': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],        
                             '000000000000215209': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'], 
                             '000000000000381409': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML']  
@@ -830,8 +830,13 @@ def commercial_page():
                         if not cell_content or cell_content.lower() == 'nan': continue
                         de_category_match = re.search(r'\((.*?)\)', cell_content)
                         de_category_val = de_category_match.group(1).strip() if de_category_match else None
+                        
+                        # --- CORREÇÃO AQUI ---
+                        # Antes: Removia tudo que fosse número no começo.
+                        # Agora: Remove apenas o sufixo entre parenteses (ex: (MINI C/D)) e mantem o inicio (ex: 0020-0024)
                         pdv_info_raw = re.sub(r'\s*\([^)]*\)\s*$', '', cell_content).strip()
-                        pdv_info_val = re.sub(r'^\s*(?:\b\w+\s+)?\d+\s*[\|-]\s*', '', pdv_info_raw, 1).strip() if pdv_info_raw else None
+                        pdv_info_val = pdv_info_raw if pdv_info_raw else None
+                        
                         if pdv_info_val or de_category_val:
                             processed_records.append({'DATA': data_value, 'SV': sv_value, 'VD': vd_final, 'PDV': pdv_info_val, 'DE': de_category_val, 'PARA': para_value, 'Status': ''})
                 except IndexError: continue
