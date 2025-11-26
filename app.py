@@ -886,7 +886,7 @@ def commercial_page():
 
 if 'is_logged_in' not in st.session_state: st.session_state['is_logged_in'] = False
 if 'current_page' not in st.session_state: st.session_state['current_page'] = 'login'
-if 'LOGIN_INFO' not in st.session_state: st.session_state['LOGIN_INFO'] = {"admin": "Joao789", "amanda": "12345", "marcia": "54321"}
+if 'LOGIN_INFO' not in st.session_state: st.session_state['LOGIN_INFO'] = {"admin": "Joao789", "amanda": "12345", "marcia": "54321", "gabi": "G12bi"}
 st.set_page_config(page_title="Lince Distribuidora - Login", page_icon="🏠", layout="centered")
 st.markdown("""<style>.stApp { background-color: #f0f2f6; } div.stButton > button:first-child { background-color: #007bff; color: white; border-radius: 5px; } .stTitle { text-align: center; color: #004d99; }</style>""", unsafe_allow_html=True)
 
@@ -894,3 +894,4 @@ if st.session_state.get('is_logged_in', False):
     page_functions = {'home': main_page, 'logistics': logistics_page, 'commercial': commercial_page}
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else: login_form()
+
