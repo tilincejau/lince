@@ -18,6 +18,7 @@ import xlsxwriter
 # ====================================================================
 
 NAME_540_001 = '540-001 - GARRAFA 600ML' 
+NAME_550_001 = '550-001 - CAIXA PLASTICA 600ML'
 
 CRATE_TO_BOTTLE_MAP = {
     '546-004 - CAIXA PLASTICA 24UN 300ML': '546-001 - GARRAFA 300ML',
@@ -269,7 +270,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES FINAL (COM SOMA TOTAL NO FINAL) ---
+    # --- SCRIPT VASILHAMES FINAL ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -320,7 +321,8 @@ def logistics_page():
                 '555-001': '555-001 - CAIXA PLASTICA 1L',
                 '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML',
                 '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML',
-                '803-039': '550-001 - CAIXA PLASTICA 600ML' 
+                '803-039': '550-001 - CAIXA PLASTICA 600ML',
+                '550-001': NAME_550_001 # Adicionado
             }
 
             parsed_data = []
@@ -567,43 +569,124 @@ def logistics_page():
                         target_crate, target_bottle, factor = map_excel_names_and_get_target(row['Qual vasilhame ?'])
                         garrafa_cheia = 0.0; caixa_vazia = 0.0; caixa_cheia = 0.0
                         
-                        if 'Quantidade estoque cheias?' in row.index and pd.notnull(row['Quantidade estoque cheias?']):
-                            qtd_cheias = float(row.get('Quantidade estoque cheias?', 0) or 0)
-                            qtd_vazias = float(row.get('Quantidade estoque vazias?', 0) or 0)
-                            qtd_entrega = float(row.get('Em transito (Entrega)?', 0) or 0)
-                            qtd_carreta = float(row.get('Em transito (carreta)?', 0) or 0)
-                            total_cheias_fisico = qtd_cheias + qtd_entrega + qtd_carreta
-                            total_geral_garrafa = qtd_cheias + qtd_vazias + qtd_entrega + qtd_carreta
-
-                            if target_crate is None and target_bottle is not None:
-                                garrafa_cheia = total_geral_garrafa
-                                caixa_cheia = 0
-                                caixa_vazia = 0
-                            elif target_bottle:
-                                garrafa_cheia = total_cheias_fisico * factor
-                                caixa_vazia = qtd_vazias
-                                caixa_cheia = total_cheias_fisico
-                            else:
-                                caixa_cheia = total_cheias_fisico
-                                caixa_vazia = qtd_vazias
+                        # NOVAS COLUNAS SEPARADAS
+                        qtd_cheias = 0.0
+                        qtd_vazias = 0.0
+                        transito_cheias = 0.0
+                        transito_vazias = 0.0
+                        carreta = 0.0
+                        
+                        if 'Quantidade estoque cheias?' in row.index:
+                             def get_val(col):
+                                 try: return float(row.get(col, 0) or 0)
+                                 except: return 0.0
+                             
+                             qtd_cheias = get_val('Quantidade estoque cheias?')
+                             qtd_vazias = get_val('Quantidade estoque vazias?')
+                             transito_cheias = get_val('Em transito cheias (Entrega)?')
+                             transito_vazias = get_val('Em transito vazias (Entrega)?')
+                             carreta = get_val('Em transito (carreta)?')
+                             
+                             total_cheias = qtd_cheias + transito_cheias + carreta
+                             total_vazias = qtd_vazias + transito_vazias
+                             
+                             if target_crate is None and target_bottle is not None:
+                                 # Garrafa Avulsa
+                                 garrafa_cheia = total_cheias + total_vazias
+                                 caixa_cheia = 0
+                                 caixa_vazia = 0
+                             elif target_bottle:
+                                 # Caixa com Garrafa
+                                 garrafa_cheia = total_cheias * factor
+                                 caixa_cheia = total_cheias
+                                 caixa_vazia = total_vazias
+                             else:
+                                 # Só Caixa
+                                 caixa_cheia = total_cheias
+                                 caixa_vazia = total_vazias
                         else:
+                            # Legado
                             if 'Total' in row.index and pd.notnull(row['Total']): total = float(row['Total'])
                             else: total = float(row.get('Quantidade estoque ?', 0) or 0) + float(row.get('Em transito (Entrega)?', 0) or 0) + float(row.get('Em transito (carreta)?', 0) or 0)
+                            
                             if target_crate is None and target_bottle is not None: garrafa_cheia = total
                             elif target_bottle: garrafa_cheia = total * factor; caixa_cheia = total
                             else: caixa_cheia = total
 
-                        return pd.Series([target_crate, target_bottle, garrafa_cheia, caixa_vazia, caixa_cheia], index=['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia'])
+                        return pd.Series([target_crate, target_bottle, garrafa_cheia, caixa_vazia, caixa_cheia, qtd_cheias, qtd_vazias, transito_cheias, transito_vazias, carreta], 
+                                         index=['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia', 'QtdCheias', 'QtdVazias', 'TransitoCheias', 'TransitoVazias', 'Carreta'])
 
-                    df_contagem[['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia']] = df_contagem.apply(calculate_assets, axis=1)
+                    df_contagem[['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia', 'QtdCheias', 'QtdVazias', 'TransitoCheias', 'TransitoVazias', 'Carreta']] = df_contagem.apply(calculate_assets, axis=1)
 
-                    df_agg_garrafa = df_contagem.dropna(subset=['TargetBottle']).groupby(['TargetBottle', 'Dia']).agg(ContagemCheias=('GarrafaCheia', 'sum'), DataCompleta=('Carimbo de data/hora', 'max')).reset_index()
-                    df_agg_garrafa['Contagem Vazias'] = 0 
-                    df_agg_garrafa.rename(columns={'TargetBottle': 'Vasilhame', 'ContagemCheias': 'Contagem Cheias'}, inplace=True)
-
-                    df_agg_caixa = df_contagem.dropna(subset=['TargetCrate']).groupby(['TargetCrate', 'Dia']).agg(ContagemCheias=('CaixaCheia', 'sum'), ContagemVazias=('CaixaVazia', 'sum'), DataCompleta=('Carimbo de data/hora', 'max')).reset_index()
-                    df_agg_caixa.rename(columns={'TargetCrate': 'Vasilhame', 'ContagemCheias': 'Contagem Cheias', 'ContagemVazias': 'Contagem Vazias'}, inplace=True)
+                    # AGREGAÇÃO COM COLUNAS SEPARADAS
+                    agg_dict_garrafa = {
+                        'GarrafaCheia': 'sum',
+                        'QtdCheias': 'sum',
+                        'QtdVazias': 'sum',
+                        'TransitoCheias': 'sum',
+                        'TransitoVazias': 'sum',
+                        'Carreta': 'sum',
+                        'Carimbo de data/hora': 'max'
+                    }
+                    df_agg_garrafa = df_contagem.dropna(subset=['TargetBottle']).groupby(['TargetBottle', 'Dia']).agg(agg_dict_garrafa).reset_index()
                     
+                    # Para garrafas, converte as colunas brutas SE for caixa com garrafa (multiplica pelo fator)
+                    # Mas como o group by mistura garrafas avulsas e de caixa, o melhor é usar o total calculado 'GarrafaCheia' como o principal
+                    # E exibir os parciais convertidos ou brutos? O usuário pediu "com seus valores".
+                    # Vamos exibir os valores BRUTOS digitados no forms, mas para garrafas eles precisam ser convertidos se vierem de caixa.
+                    # Simplificação: Exibir 'Quantidade estoque cheias' etc. como a soma total em GARRAFAS ou CAIXAS dependendo da linha.
+                    
+                    # Recalcula colunas parciais para garrafas (multiplicando por fator se necessário)
+                    # Isso é complexo pós-agrupamento. Vamos assumir que 'GarrafaCheia' é a soma correta.
+                    # Para exibir as colunas parciais corretamente, teríamos que multiplicar antes de somar.
+                    # Vou ajustar o calculate_assets para retornar as parciais JÁ CONVERTIDAS para a unidade da linha.
+                    
+                    # --- REAJUSTE NO CALCULATE PARA PARCIAIS CONVERTIDAS ---
+                    def calculate_assets_converted(row):
+                        target_crate, target_bottle, factor = map_excel_names_and_get_target(row['Qual vasilhame ?'])
+                        
+                        # Leitura raw
+                        qc = float(row.get('Quantidade estoque cheias?', 0) or 0)
+                        qv = float(row.get('Quantidade estoque vazias?', 0) or 0)
+                        tc = float(row.get('Em transito cheias (Entrega)?', 0) or 0)
+                        tv = float(row.get('Em transito vazias (Entrega)?', 0) or 0)
+                        car = float(row.get('Em transito (carreta)?', 0) or 0)
+                        
+                        # Alocação Garrafa
+                        g_qc, g_qv, g_tc, g_tv, g_car = 0,0,0,0,0
+                        # Alocação Caixa
+                        c_qc, c_qv, c_tc, c_tv, c_car = 0,0,0,0,0
+                        
+                        if target_crate is None and target_bottle is not None:
+                            # Garrafa Avulsa (Fator 1, tudo vai pra garrafa)
+                            g_qc = qc; g_qv = qv; g_tc = tc; g_tv = tv; g_car = car
+                        elif target_bottle:
+                            # Caixa com Garrafa
+                            # Garrafa recebe Cheias e Transito * Fator
+                            g_qc = qc * factor
+                            g_tc = tc * factor
+                            g_car = car * factor
+                            # Caixa recebe Vazias e Cheias(Fisico) e Transito Vazio
+                            c_qc = qc; c_qv = qv; c_tc = tc; c_tv = tv; c_car = car
+                        else:
+                            # Só Caixa
+                            c_qc = qc; c_qv = qv; c_tc = tc; c_tv = tv; c_car = car
+                        
+                        return pd.Series([target_crate, target_bottle, g_qc, g_qv, g_tc, g_tv, g_car, c_qc, c_qv, c_tc, c_tv, c_car], 
+                                         index=['TargetCrate', 'TargetBottle', 'G_QC', 'G_QV', 'G_TC', 'G_TV', 'G_CAR', 'C_QC', 'C_QV', 'C_TC', 'C_TV', 'C_CAR'])
+
+                    df_contagem[['TargetCrate', 'TargetBottle', 'G_QC', 'G_QV', 'G_TC', 'G_TV', 'G_CAR', 'C_QC', 'C_QV', 'C_TC', 'C_TV', 'C_CAR']] = df_contagem.apply(calculate_assets_converted, axis=1)
+
+                    # Agrega Garrafas
+                    agg_cols_g = {'G_QC':'sum', 'G_QV':'sum', 'G_TC':'sum', 'G_TV':'sum', 'G_CAR':'sum', 'Carimbo de data/hora':'max'}
+                    df_agg_garrafa = df_contagem.dropna(subset=['TargetBottle']).groupby(['TargetBottle', 'Dia']).agg(agg_cols_g).reset_index()
+                    df_agg_garrafa.rename(columns={'TargetBottle': 'Vasilhame', 'G_QC':'Quantidade estoque cheias', 'G_QV':'Quantidade estoque vazias', 'G_TC':'Em transito cheias (Entrega)', 'G_TV':'Em transito vazias (Entrega)', 'G_CAR':'Em transito (carreta)'}, inplace=True)
+
+                    # Agrega Caixas
+                    agg_cols_c = {'C_QC':'sum', 'C_QV':'sum', 'C_TC':'sum', 'C_TV':'sum', 'C_CAR':'sum', 'Carimbo de data/hora':'max'}
+                    df_agg_caixa = df_contagem.dropna(subset=['TargetCrate']).groupby(['TargetCrate', 'Dia']).agg(agg_cols_c).reset_index()
+                    df_agg_caixa.rename(columns={'TargetCrate': 'Vasilhame', 'C_QC':'Quantidade estoque cheias', 'C_QV':'Quantidade estoque vazias', 'C_TC':'Em transito cheias (Entrega)', 'C_TV':'Em transito vazias (Entrega)', 'C_CAR':'Em transito (carreta)'}, inplace=True)
+
                     df_excel_agg = pd.concat([df_agg_garrafa, df_agg_caixa], ignore_index=True)
                     df_excel_agg.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
 
@@ -652,7 +735,10 @@ def logistics_page():
                     cols_to_drop = [col for col in df_final.columns if col.startswith('DataCompleta_')]
                     df_final.drop(cols_to_drop, axis=1, inplace=True)
 
-                    numeric_cols = ['Contagem Cheias', 'Contagem Vazias', 'Qtd_emprestimo', 'Vendas'] + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
+                    # LISTA ATUALIZADA DE COLUNAS NUMÉRICAS
+                    new_form_cols = ['Quantidade estoque cheias', 'Quantidade estoque vazias', 'Em transito cheias (Entrega)', 'Em transito vazias (Entrega)', 'Em transito (carreta)']
+                    numeric_cols = new_form_cols + ['Qtd_emprestimo', 'Vendas'] + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
+                    
                     for col in numeric_cols:
                         if col in df_final.columns: df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0)
                     
@@ -662,7 +748,9 @@ def logistics_page():
                     cols_to_sum = [c for c in numeric_cols if c in df_final.columns]
                     df_final = df_final.groupby(groupby_cols)[cols_to_sum].sum().reset_index()
 
-                    df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem Cheias'] + df_final['Contagem Vazias'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1) + df_final['Vendas']
+                    # CALCULO TOTAL COM NOVAS COLUNAS
+                    # Total = Soma das 5 do forms + Emprestimo + Vendas + Credito - Debito
+                    df_final['Total Revenda'] = df_final[new_form_cols].sum(axis=1) + df_final['Qtd_emprestimo'] + df_final['Vendas'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1)
                     
                     df_final['DataCompleta'] = pd.to_datetime(df_final['DataCompleta'], errors='coerce')
                     df_final.sort_values(by=['Vasilhame', 'DataCompleta'], inplace=True, na_position='first')
@@ -686,7 +774,6 @@ def logistics_page():
                     output_cols = [c for c in df_final_output.columns if c not in ['Diferença', 'Vendas']]
                     df_final_output = df_final_output[output_cols + ['Diferença', 'Vendas']]
                     
-                    # FUNÇÃO PARA ADICIONAR LINHA DE TOTAL
                     def add_total_row(df):
                          if df.empty: return df
                          sum_cols = [c for c in df.columns if c not in ['Vasilhame', 'Dia', 'DataCompleta']]
@@ -706,9 +793,11 @@ def logistics_page():
                         df_general_with_total.to_excel(writer, sheet_name='GERAL', index=False)
                         
                         unique_products = df_final_output['Vasilhame'].unique()
+                        
                         caixas_list = sorted([p for p in unique_products if 'CAIXA' in str(p).upper() or 'BARRIL' in str(p).upper() or 'CILINDRO' in str(p).upper()])
                         garrafas_list = sorted([p for p in unique_products if 'GARRAFA' in str(p).upper()])
                         outros_list = sorted([p for p in unique_products if p not in caixas_list and p not in garrafas_list])
+                        
                         sorted_products = caixas_list + garrafas_list + outros_list
 
                         for product in sorted_products:
