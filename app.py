@@ -270,7 +270,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES FINAL ---
+    # --- SCRIPT VASILHAMES FINAL (CORRIGIDO KEYERROR DATACOMPLETA) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -457,6 +457,10 @@ def logistics_page():
                     df_old_pdf_data = load_from_db('pdf_data', engine)
                     df_old_vendas_data = load_from_db('vendas_data', engine)
                     df_old_excel_data = load_from_db('excel_data', engine)
+                    
+                    # CORREÇÃO DE COMPATIBILIDADE (RENOMEAR COLUNA ANTIGA NO BANCO)
+                    if 'DataCompleta' in df_old_excel_data.columns and 'DataCompleta_excel' not in df_old_excel_data.columns:
+                         df_old_excel_data.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
 
                     new_txt_data_list = []
                     for uploaded_txt_file in uploaded_txt_files:
@@ -570,13 +574,6 @@ def logistics_page():
                         target_crate, target_bottle, factor = map_excel_names_and_get_target(row['Qual vasilhame ?'])
                         garrafa_cheia = 0.0; caixa_vazia = 0.0; caixa_cheia = 0.0
                         
-                        # Leitura raw para colunas do forms
-                        qtd_cheias = 0.0
-                        qtd_vazias = 0.0
-                        transito_cheias = 0.0
-                        transito_vazias = 0.0
-                        carreta = 0.0
-                        
                         if 'Quantidade estoque cheias?' in row.index:
                              def get_val(col):
                                  try: return float(row.get(col, 0) or 0)
@@ -614,10 +611,9 @@ def logistics_page():
                             elif target_bottle: garrafa_cheia = total * factor; caixa_cheia = total
                             else: caixa_cheia = total
 
-                        return pd.Series([target_crate, target_bottle, garrafa_cheia, caixa_vazia, caixa_cheia, qtd_cheias, qtd_vazias, transito_cheias, transito_vazias, carreta], 
-                                         index=['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia', 'QtdCheias', 'QtdVazias', 'TransitoCheias', 'TransitoVazias', 'Carreta'])
+                        return pd.Series([target_crate, target_bottle, garrafa_cheia, caixa_vazia, caixa_cheia], index=['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia'])
 
-                    df_contagem[['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia', 'QtdCheias', 'QtdVazias', 'TransitoCheias', 'TransitoVazias', 'Carreta']] = df_contagem.apply(calculate_assets, axis=1)
+                    df_contagem[['TargetCrate', 'TargetBottle', 'GarrafaCheia', 'CaixaVazia', 'CaixaCheia']] = df_contagem.apply(calculate_assets, axis=1)
 
                     def calculate_assets_converted(row):
                         target_crate, target_bottle, factor = map_excel_names_and_get_target(row['Qual vasilhame ?'])
@@ -666,6 +662,7 @@ def logistics_page():
                              if col not in df_old_excel_data.columns: df_old_excel_data[col] = 0
                          if 'DataCompleta_excel' in df_old_excel_data.columns: df_old_excel_data['DataCompleta_excel'] = pd.to_datetime(df_old_excel_data['DataCompleta_excel'], errors='coerce')
                          df_excel_agg = pd.concat([df_old_excel_data, df_excel_agg]).drop_duplicates(subset=['Vasilhame', 'Dia'], keep='last').reset_index(drop=True)
+                    
                     df_excel_agg.to_sql('excel_data', con=engine, if_exists='replace', index=False)
 
                     required_vasilhames = list(FACTORS.keys()) + list(CRATE_TO_BOTTLE_MAP.values())
@@ -693,7 +690,11 @@ def logistics_page():
                     df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_vendas_data, on=['Vasilhame', 'Dia'], how='left')
                     
-                    df_final['DataCompleta'] = df_final['DataCompleta_excel'].fillna(np.nan)
+                    # FIX KEY ERROR DATACOMPLETA_EXCEL
+                    if 'DataCompleta_excel' not in df_final.columns:
+                        df_final['DataCompleta_excel'] = pd.NaT
+
+                    df_final['DataCompleta'] = df_final['DataCompleta_excel']
                     if 'DataCompleta_txt' in df_final.columns: df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_txt'])
                     if 'DataCompleta_pdf' in df_final.columns: df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_pdf'])
                     
@@ -748,6 +749,7 @@ def logistics_page():
                     
                     st.subheader("✅ Tabela Consolidada de Vasilhames")
                     st.dataframe(df_final_output)
+                    
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                         df_final_output.to_excel(writer, sheet_name='GERAL', index=False)
@@ -756,7 +758,6 @@ def logistics_page():
                         caixas_list = sorted([p for p in unique_products if 'CAIXA' in str(p).upper() or 'BARRIL' in str(p).upper() or 'CILINDRO' in str(p).upper()])
                         garrafas_list = sorted([p for p in unique_products if 'GARRAFA' in str(p).upper()])
                         outros_list = sorted([p for p in unique_products if p not in caixas_list and p not in garrafas_list])
-                        
                         sorted_products = caixas_list + garrafas_list + outros_list
 
                         for product in sorted_products:
