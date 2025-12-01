@@ -269,7 +269,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES FINAL ---
+    # --- SCRIPT VASILHAMES FINAL (COM SOMA TOTAL NO FINAL) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
         engine = setup_database()
@@ -531,6 +531,9 @@ def logistics_page():
                         st.success("Dados PDF atualizados!")
                     else: df_all_processed_pdf_data = df_old_pdf_data
                     
+                    if df_all_processed_txt_data.empty: df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Qtd_emprestimo', 'DataCompleta'])
+                    if df_all_processed_pdf_data.empty: df_all_processed_pdf_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'DataCompleta'])
+
                     df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                     df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
                     df_contagem['DataCompleta'] = df_contagem['Carimbo de data/hora'].dt.date
@@ -541,7 +544,6 @@ def logistics_page():
                         target_crate = name 
                         target_bottle = None
                         factor = 1
-                        
                         if '063-005' in name_upper: target_bottle = '546-001 - GARRAFA 300ML'; return None, target_bottle, 1
                         if '540-001' in name_upper: target_bottle = NAME_540_001; return None, target_bottle, 1
                         if '541-002' in name_upper: target_bottle = '541-002 - GARRAFA 1L'; return None, target_bottle, 1
@@ -565,31 +567,25 @@ def logistics_page():
                         target_crate, target_bottle, factor = map_excel_names_and_get_target(row['Qual vasilhame ?'])
                         garrafa_cheia = 0.0; caixa_vazia = 0.0; caixa_cheia = 0.0
                         
-                        if 'Quantidade estoque cheias?' in row.index:
-                             def get_val(col):
-                                 try: return float(row.get(col, 0) or 0)
-                                 except: return 0.0
-                             
-                             qtd_cheias = get_val('Quantidade estoque cheias?')
-                             qtd_vazias = get_val('Quantidade estoque vazias?')
-                             transito_cheias = get_val('Em transito cheias (Entrega)?')
-                             transito_vazias = get_val('Em transito vazias (Entrega)?')
-                             carreta = get_val('Em transito (carreta)?')
-                             
-                             total_cheias = qtd_cheias + transito_cheias + carreta
-                             total_vazias = qtd_vazias + transito_vazias
-                             
-                             if target_crate is None and target_bottle is not None:
-                                 garrafa_cheia = total_cheias + total_vazias
-                                 caixa_cheia = 0
-                                 caixa_vazia = 0
-                             elif target_bottle:
-                                 garrafa_cheia = total_cheias * factor
-                                 caixa_cheia = total_cheias
-                                 caixa_vazia = total_vazias
-                             else:
-                                 caixa_cheia = total_cheias
-                                 caixa_vazia = total_vazias
+                        if 'Quantidade estoque cheias?' in row.index and pd.notnull(row['Quantidade estoque cheias?']):
+                            qtd_cheias = float(row.get('Quantidade estoque cheias?', 0) or 0)
+                            qtd_vazias = float(row.get('Quantidade estoque vazias?', 0) or 0)
+                            qtd_entrega = float(row.get('Em transito (Entrega)?', 0) or 0)
+                            qtd_carreta = float(row.get('Em transito (carreta)?', 0) or 0)
+                            total_cheias_fisico = qtd_cheias + qtd_entrega + qtd_carreta
+                            total_geral_garrafa = qtd_cheias + qtd_vazias + qtd_entrega + qtd_carreta
+
+                            if target_crate is None and target_bottle is not None:
+                                garrafa_cheia = total_geral_garrafa
+                                caixa_cheia = 0
+                                caixa_vazia = 0
+                            elif target_bottle:
+                                garrafa_cheia = total_cheias_fisico * factor
+                                caixa_vazia = qtd_vazias
+                                caixa_cheia = total_cheias_fisico
+                            else:
+                                caixa_cheia = total_cheias_fisico
+                                caixa_vazia = qtd_vazias
                         else:
                             if 'Total' in row.index and pd.notnull(row['Total']): total = float(row['Total'])
                             else: total = float(row.get('Quantidade estoque ?', 0) or 0) + float(row.get('Em transito (Entrega)?', 0) or 0) + float(row.get('Em transito (carreta)?', 0) or 0)
@@ -611,6 +607,7 @@ def logistics_page():
                     df_excel_agg = pd.concat([df_agg_garrafa, df_agg_caixa], ignore_index=True)
                     df_excel_agg.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
 
+                    # PERSISTÊNCIA EXCEL
                     if not df_old_excel_data.empty:
                          if 'DataCompleta_excel' in df_old_excel_data.columns: df_old_excel_data['DataCompleta_excel'] = pd.to_datetime(df_old_excel_data['DataCompleta_excel'], errors='coerce')
                          df_excel_agg = pd.concat([df_old_excel_data, df_excel_agg]).drop_duplicates(subset=['Vasilhame', 'Dia'], keep='last').reset_index(drop=True)
@@ -689,23 +686,36 @@ def logistics_page():
                     output_cols = [c for c in df_final_output.columns if c not in ['Diferença', 'Vendas']]
                     df_final_output = df_final_output[output_cols + ['Diferença', 'Vendas']]
                     
+                    # FUNÇÃO PARA ADICIONAR LINHA DE TOTAL
+                    def add_total_row(df):
+                         if df.empty: return df
+                         sum_cols = [c for c in df.columns if c not in ['Vasilhame', 'Dia', 'DataCompleta']]
+                         total_series = df[sum_cols].sum()
+                         total_row = pd.DataFrame([total_series])
+                         total_row['Vasilhame'] = 'TOTAL GERAL'
+                         total_row['Dia'] = '-'
+                         return pd.concat([df, total_row], ignore_index=True)
+                    
                     st.subheader("✅ Tabela Consolidada de Vasilhames")
-                    st.dataframe(df_final_output)
+                    df_display = add_total_row(df_final_output)
+                    st.dataframe(df_display)
+                    
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                        df_final_output.to_excel(writer, sheet_name='GERAL', index=False)
-                        unique_products = df_final_output['Vasilhame'].unique()
+                        df_general_with_total = add_total_row(df_final_output)
+                        df_general_with_total.to_excel(writer, sheet_name='GERAL', index=False)
                         
+                        unique_products = df_final_output['Vasilhame'].unique()
                         caixas_list = sorted([p for p in unique_products if 'CAIXA' in str(p).upper() or 'BARRIL' in str(p).upper() or 'CILINDRO' in str(p).upper()])
                         garrafas_list = sorted([p for p in unique_products if 'GARRAFA' in str(p).upper()])
                         outros_list = sorted([p for p in unique_products if p not in caixas_list and p not in garrafas_list])
-                        
                         sorted_products = caixas_list + garrafas_list + outros_list
 
                         for product in sorted_products:
                             df_product = df_final_output[df_final_output['Vasilhame'] == product]
+                            df_product_with_total = add_total_row(df_product)
                             safe_sheet_name = str(product).replace('/', '-').replace('\\', '-').replace('?', '').replace('*', '').replace('[', '').replace(']', '').replace(':', '')[:31]
-                            df_product.to_excel(writer, sheet_name=safe_sheet_name, index=False)
+                            df_product_with_total.to_excel(writer, sheet_name=safe_sheet_name, index=False)
                             
                     output.seek(0)
                     st.download_button(label="📥 Baixar Tabela Consolidada", data=output, file_name="Vasilhames_Consolidado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
