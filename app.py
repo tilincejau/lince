@@ -18,7 +18,6 @@ import xlsxwriter
 # ====================================================================
 
 NAME_540_001 = '540-001 - GARRAFA 600ML' 
-NAME_550_001 = '550-001 - CAIXA PLASTICA 600ML' # Constante para facilitar agrupamento
 
 CRATE_TO_BOTTLE_MAP = {
     '546-004 - CAIXA PLASTICA 24UN 300ML': '546-001 - GARRAFA 300ML',
@@ -313,24 +312,15 @@ def logistics_page():
                  effective_date_str = effective_date_obj.strftime('%d/%m')
                  effective_date_full = effective_date_obj.date()
 
-            # MAPA DE VENDAS EXPANDIDO (COM TODOS OS CÓDIGOS RELEVANTES)
             sales_map = {
-                # Garrafas (apontam para garrafas)
                 '540-001': NAME_540_001,
                 '541-002': '541-002 - GARRAFA 1L',
                 '586-001': '586-001 - GARRAFA HEINEKEN 600ML',
                 '593-001': '593-001 - GARRAFA HEINEKEN 330ML',
-                # Caixas (apontam para caixas)
                 '555-001': '555-001 - CAIXA PLASTICA 1L',
                 '587-002': '587-002 - CAIXA PLASTICA HEINEKEN 600ML',
                 '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML',
-                # Variantes de Caixa 600ml (TODAS devem apontar para 550-001)
-                '550-001': NAME_550_001,
-                '550-012': NAME_550_001, 
-                '803-025': NAME_550_001,
-                '803-036': NAME_550_001,
-                '803-037': NAME_550_001,
-                '803-039': NAME_550_001  # Caixa Cinza
+                '803-039': '550-001 - CAIXA PLASTICA 600ML' 
             }
 
             parsed_data = []
@@ -519,7 +509,7 @@ def logistics_page():
                             '000000000000215443': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'],
                             '000000000000381408': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML'],
                             '000000000000152597': CRATE_TO_BOTTLE_MAP['546-004 - CAIXA PLASTICA 24UN 300ML'], 
-                            '000000000000000471': NAME_540_001,       
+                            '000000000000000471': NAME_540_001,      
                             '000000000000107522': CRATE_TO_BOTTLE_MAP['555-001 - CAIXA PLASTICA 1L'],        
                             '000000000000215209': CRATE_TO_BOTTLE_MAP['587-002 - CAIXA PLASTICA HEINEKEN 600ML'], 
                             '000000000000381409': CRATE_TO_BOTTLE_MAP['591-002 - CAIXA PLASTICA HEINEKEN 330ML']  
@@ -541,9 +531,6 @@ def logistics_page():
                         st.success("Dados PDF atualizados!")
                     else: df_all_processed_pdf_data = df_old_pdf_data
                     
-                    if df_all_processed_txt_data.empty: df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Qtd_emprestimo', 'DataCompleta'])
-                    if df_all_processed_pdf_data.empty: df_all_processed_pdf_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'DataCompleta'])
-
                     df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                     df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
                     df_contagem['DataCompleta'] = df_contagem['Carimbo de data/hora'].dt.date
@@ -555,16 +542,14 @@ def logistics_page():
                         target_bottle = None
                         factor = 1
                         
-                        # GARRAFAS
                         if '063-005' in name_upper: target_bottle = '546-001 - GARRAFA 300ML'; return None, target_bottle, 1
                         if '540-001' in name_upper: target_bottle = NAME_540_001; return None, target_bottle, 1
                         if '541-002' in name_upper: target_bottle = '541-002 - GARRAFA 1L'; return None, target_bottle, 1
                         if '586-001' in name_upper: target_bottle = '586-001 - GARRAFA HEINEKEN 600ML'; return None, target_bottle, 1
                         if '593-001' in name_upper: target_bottle = '593-001 - GARRAFA HEINEKEN 330ML'; return None, target_bottle, 1
 
-                        # CAIXAS
                         if '550-012' in name_upper or 'EISENBAHN' in name_upper or '550-001' in name_upper or 'MISTA' in name_upper or 'AMBEV' in name_upper or 'CINZA' in name_upper:
-                             target_crate = NAME_550_001
+                             target_crate = '550-001 - CAIXA PLASTICA 600ML'
                         elif '587-002' in name_upper or ('HEINEKEN' in name_upper and '600' in name_upper): target_crate = '587-002 - CAIXA PLASTICA HEINEKEN 600ML'
                         elif '546-004' in name_upper: target_crate = '546-004 - CAIXA PLASTICA 24UN 300ML'
                         elif '591-002' in name_upper: target_crate = '591-002 - CAIXA PLASTICA HEINEKEN 330ML'
@@ -580,26 +565,31 @@ def logistics_page():
                         target_crate, target_bottle, factor = map_excel_names_and_get_target(row['Qual vasilhame ?'])
                         garrafa_cheia = 0.0; caixa_vazia = 0.0; caixa_cheia = 0.0
                         
-                        if 'Quantidade estoque cheias?' in row.index and pd.notnull(row['Quantidade estoque cheias?']):
-                            qtd_cheias = float(row.get('Quantidade estoque cheias?', 0) or 0)
-                            qtd_vazias = float(row.get('Quantidade estoque vazias?', 0) or 0)
-                            qtd_entrega = float(row.get('Em transito (Entrega)?', 0) or 0)
-                            qtd_carreta = float(row.get('Em transito (carreta)?', 0) or 0)
-
-                            total_cheias_fisico = qtd_cheias + qtd_entrega + qtd_carreta
-                            total_geral_garrafa = qtd_cheias + qtd_vazias + qtd_entrega + qtd_carreta
-
-                            if target_crate is None and target_bottle is not None:
-                                garrafa_cheia = total_geral_garrafa
-                                caixa_cheia = 0
-                                caixa_vazia = 0
-                            elif target_bottle:
-                                garrafa_cheia = total_cheias_fisico * factor
-                                caixa_vazia = qtd_vazias
-                                caixa_cheia = total_cheias_fisico
-                            else:
-                                caixa_cheia = total_cheias_fisico
-                                caixa_vazia = qtd_vazias
+                        if 'Quantidade estoque cheias?' in row.index:
+                             def get_val(col):
+                                 try: return float(row.get(col, 0) or 0)
+                                 except: return 0.0
+                             
+                             qtd_cheias = get_val('Quantidade estoque cheias?')
+                             qtd_vazias = get_val('Quantidade estoque vazias?')
+                             transito_cheias = get_val('Em transito cheias (Entrega)?')
+                             transito_vazias = get_val('Em transito vazias (Entrega)?')
+                             carreta = get_val('Em transito (carreta)?')
+                             
+                             total_cheias = qtd_cheias + transito_cheias + carreta
+                             total_vazias = qtd_vazias + transito_vazias
+                             
+                             if target_crate is None and target_bottle is not None:
+                                 garrafa_cheia = total_cheias + total_vazias
+                                 caixa_cheia = 0
+                                 caixa_vazia = 0
+                             elif target_bottle:
+                                 garrafa_cheia = total_cheias * factor
+                                 caixa_cheia = total_cheias
+                                 caixa_vazia = total_vazias
+                             else:
+                                 caixa_cheia = total_cheias
+                                 caixa_vazia = total_vazias
                         else:
                             if 'Total' in row.index and pd.notnull(row['Total']): total = float(row['Total'])
                             else: total = float(row.get('Quantidade estoque ?', 0) or 0) + float(row.get('Em transito (Entrega)?', 0) or 0) + float(row.get('Em transito (carreta)?', 0) or 0)
@@ -621,7 +611,6 @@ def logistics_page():
                     df_excel_agg = pd.concat([df_agg_garrafa, df_agg_caixa], ignore_index=True)
                     df_excel_agg.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
 
-                    # PERSISTÊNCIA EXCEL
                     if not df_old_excel_data.empty:
                          if 'DataCompleta_excel' in df_old_excel_data.columns: df_old_excel_data['DataCompleta_excel'] = pd.to_datetime(df_old_excel_data['DataCompleta_excel'], errors='coerce')
                          df_excel_agg = pd.concat([df_old_excel_data, df_excel_agg]).drop_duplicates(subset=['Vasilhame', 'Dia'], keep='last').reset_index(drop=True)
@@ -672,7 +661,6 @@ def logistics_page():
                     
                     if 'Vendas' not in df_final.columns: df_final['Vendas'] = 0
 
-                    # SOMA FINAL (AGRUPAMENTO)
                     groupby_cols = ['Vasilhame', 'Dia', 'DataCompleta']
                     cols_to_sum = [c for c in numeric_cols if c in df_final.columns]
                     df_final = df_final.groupby(groupby_cols)[cols_to_sum].sum().reset_index()
@@ -698,7 +686,6 @@ def logistics_page():
                     df_final = df_final.groupby('Vasilhame', group_keys=False).apply(calcular_diferenca_regra_negocio)
                     df_final_output = df_final.drop('DataCompleta', axis=1)
 
-                    # REORDENAÇÃO
                     output_cols = [c for c in df_final_output.columns if c not in ['Diferença', 'Vendas']]
                     df_final_output = df_final_output[output_cols + ['Diferença', 'Vendas']]
                     
@@ -830,13 +817,8 @@ def commercial_page():
                         if not cell_content or cell_content.lower() == 'nan': continue
                         de_category_match = re.search(r'\((.*?)\)', cell_content)
                         de_category_val = de_category_match.group(1).strip() if de_category_match else None
-                        
-                        # --- CORREÇÃO AQUI ---
-                        # Antes: Removia tudo que fosse número no começo.
-                        # Agora: Remove apenas o sufixo entre parenteses (ex: (MINI C/D)) e mantem o inicio (ex: 0020-0024)
                         pdv_info_raw = re.sub(r'\s*\([^)]*\)\s*$', '', cell_content).strip()
-                        pdv_info_val = pdv_info_raw if pdv_info_raw else None
-                        
+                        pdv_info_val = re.sub(r'^\s*(?:\b\w+\s+)?\d+\s*[\|-]\s*', '', pdv_info_raw, 1).strip() if pdv_info_raw else None
                         if pdv_info_val or de_category_val:
                             processed_records.append({'DATA': data_value, 'SV': sv_value, 'VD': vd_final, 'PDV': pdv_info_val, 'DE': de_category_val, 'PARA': para_value, 'Status': ''})
                 except IndexError: continue
@@ -886,7 +868,7 @@ def commercial_page():
 
 if 'is_logged_in' not in st.session_state: st.session_state['is_logged_in'] = False
 if 'current_page' not in st.session_state: st.session_state['current_page'] = 'login'
-if 'LOGIN_INFO' not in st.session_state: st.session_state['LOGIN_INFO'] = {"admin": "Joao789", "amanda": "12345", "marcia": "54321", "gabi": "G12bi"}
+if 'LOGIN_INFO' not in st.session_state: st.session_state['LOGIN_INFO'] = {"admin": "Joao789", "amanda": "12345", "marcia": "54321"}
 st.set_page_config(page_title="Lince Distribuidora - Login", page_icon="🏠", layout="centered")
 st.markdown("""<style>.stApp { background-color: #f0f2f6; } div.stButton > button:first-child { background-color: #007bff; color: white; border-radius: 5px; } .stTitle { text-align: center; color: #004d99; }</style>""", unsafe_allow_html=True)
 
@@ -894,4 +876,3 @@ if st.session_state.get('is_logged_in', False):
     page_functions = {'home': main_page, 'logistics': logistics_page, 'commercial': commercial_page}
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else: login_form()
-
