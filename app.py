@@ -373,7 +373,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES (COM GOOGLE SHEETS) ---
+    # --- SCRIPT VASILHAMES (COM SALVAMENTO DO CONSOLIDADO) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames (Nuvem ☁️)")
         
@@ -390,7 +390,9 @@ def logistics_page():
         with col_reset:
             if st.button("🗑️ Limpar Nuvem (Reiniciar)", type="primary", help="Cuidado: Isso apaga todo o histórico salvo na Planilha Google!"):
                 try:
-                    for tab in ['txt_data', 'pdf_data', 'vendas_data', 'excel_data']:
+                    # Lista de abas para limpar
+                    abas_para_limpar = ['txt_data', 'pdf_data', 'vendas_data', 'excel_data', 'CONSOLIDADO_GERAL']
+                    for tab in abas_para_limpar:
                         try:
                             ws = sheet_client.worksheet(tab)
                             ws.clear()
@@ -886,6 +888,13 @@ def logistics_page():
                     st.subheader("✅ Tabela Consolidada de Vasilhames")
                     st.dataframe(df_final_output)
                     
+                    # -------------------------------------------------------------
+                    # NOVO: SALVAMENTO DO CONSOLIDADO NA NUVEM
+                    # -------------------------------------------------------------
+                    st.info("Salvando tabela consolidada na Nuvem...")
+                    save_to_gsheets(sheet_client, 'CONSOLIDADO_GERAL', df_final_output)
+                    st.success("Tabela Consolidada salva na aba 'CONSOLIDADO_GERAL'!")
+
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                         df_final_output.to_excel(writer, sheet_name='GERAL', index=False)
@@ -1072,4 +1081,5 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
 
