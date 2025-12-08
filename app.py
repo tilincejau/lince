@@ -373,7 +373,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES (COM SALVAMENTO DO CONSOLIDADO) ---
+    # --- SCRIPT VASILHAMES (CORRIGIDO PROBLEMA DE DUPLICIDADE DE LINHAS) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames (Nuvem ☁️)")
         
@@ -390,7 +390,6 @@ def logistics_page():
         with col_reset:
             if st.button("🗑️ Limpar Nuvem (Reiniciar)", type="primary", help="Cuidado: Isso apaga todo o histórico salvo na Planilha Google!"):
                 try:
-                    # Lista de abas para limpar
                     abas_para_limpar = ['txt_data', 'pdf_data', 'vendas_data', 'excel_data', 'CONSOLIDADO_GERAL']
                     for tab in abas_para_limpar:
                         try:
@@ -403,11 +402,22 @@ def logistics_page():
                     st.error(f"Erro ao limpar o banco: {e}")
         st.write("---")
 
+        # --- FUNÇÃO AUXILIAR PARA CORRIGIR DATAS DUPLICADAS ---
+        def padronizar_data_coluna(df, nome_coluna='Dia'):
+            """Força a coluna de data a ficar sempre como YYYY-MM-DD (string) para evitar quebras."""
+            if df.empty or nome_coluna not in df.columns:
+                return df
+            
+            # Converte para datetime primeiro (lidando com erros)
+            df[nome_coluna] = pd.to_datetime(df[nome_coluna], dayfirst=True, errors='coerce')
+            # Converte de volta para string formato ISO (2025-11-05)
+            df[nome_coluna] = df[nome_coluna].dt.strftime('%Y-%m-%d')
+            return df
+
         def process_vendas_file(file_content):
             content = file_content.getvalue().decode('latin1')
             filename_date_match = re.search(r'VENDA(\d{4})\.TXT', file_content.name)
             effective_date_str = None
-            effective_date_full = None
             
             if filename_date_match:
                 day = filename_date_match.group(1)[:2]
@@ -416,12 +426,11 @@ def logistics_page():
                 now = datetime.now()
                 if now.month == 1 and month == '12': year = year - 1
                 effective_date_obj = datetime.strptime(f"{day}/{month}/{year}", '%d/%m/%Y')
-                effective_date_str = effective_date_obj.strftime('%d/%m')
-                effective_date_full = effective_date_obj.date()
+                # PADRONIZAÇÃO: Usa formato completo YYYY-MM-DD
+                effective_date_str = effective_date_obj.strftime('%Y-%m-%d')
             else:
                  effective_date_obj = datetime.now()
-                 effective_date_str = effective_date_obj.strftime('%d/%m')
-                 effective_date_full = effective_date_obj.date()
+                 effective_date_str = effective_date_obj.strftime('%Y-%m-%d')
 
             sales_map = {
                 '540-001': NAME_540_001,
@@ -451,7 +460,7 @@ def logistics_page():
                     
                     if formatted_code in sales_map:
                         vasilhame = sales_map[formatted_code]
-                        parsed_data.append({'Vasilhame': vasilhame, 'Vendas': qty, 'Dia': effective_date_str, 'DataCompleta': effective_date_full})
+                        parsed_data.append({'Vasilhame': vasilhame, 'Vendas': qty, 'Dia': effective_date_str})
 
             if not parsed_data: return None
             return pd.DataFrame(parsed_data)
@@ -460,7 +469,7 @@ def logistics_page():
             content = file_content.getvalue().decode('latin1')
             filename_date_match = re.search(r'ESTOQUE(\d{4})\.TXT', file_content.name)
             effective_date_str = None
-            effective_date_full = None
+            
             if filename_date_match:
                 day = filename_date_match.group(1)[:2]
                 month = filename_date_match.group(1)[2:]
@@ -468,9 +477,9 @@ def logistics_page():
                 now = datetime.now()
                 if now.month == 1 and month == '12': year = year - 1
                 effective_date_obj = datetime.strptime(f"{day}/{month}/{year}", '%d/%m/%Y')
-                effective_date_str = effective_date_obj.strftime('%d/%m')
-                effective_date_full = effective_date_obj.date()
-            else: st.error(f"Nome do arquivo TXT inválido: {file_content.name}"); return None, None, None 
+                # PADRONIZAÇÃO: Usa formato completo YYYY-MM-DD
+                effective_date_str = effective_date_obj.strftime('%Y-%m-%d')
+            else: st.error(f"Nome do arquivo TXT inválido: {file_content.name}"); return None, None 
 
             product_code_to_vasilhame_map = {
                 '563-008': '563-008 - BARRIL INOX 30L', '564-009': '564-009 - BARRIL INOX 50L', '591-002': '591-002 - CAIXA PLASTICA HEINEKEN 330ML', 
@@ -515,12 +524,12 @@ def logistics_page():
                         if current_code in product_code_to_vasilhame_map:
                             parsed_data.append({'PRODUTO_CODE': current_code, 'QUANTIDADE': int(qty_str)})
                         current_code = None 
-            if not parsed_data: return None, effective_date_str, effective_date_full
+            if not parsed_data: return None, effective_date_str
             df_estoque = pd.DataFrame(parsed_data)
             df_estoque['Vasilhame'] = df_estoque['PRODUTO_CODE'].map(product_code_to_vasilhame_map)
             df_txt_qty = df_estoque.groupby('Vasilhame')['QUANTIDADE'].sum().reset_index()
             df_txt_qty.rename(columns={'QUANTIDADE': 'Qtd_emprestimo'}, inplace=True)
-            return df_txt_qty, effective_date_str, effective_date_full
+            return df_txt_qty, effective_date_str
 
         def process_pdf_content(pdf_file, product_map):
             parsed_data = []
@@ -529,8 +538,9 @@ def logistics_page():
             source_name = filename_match.group(1).strip()
             date_str = filename_match.group(2) 
             effective_date_obj = datetime.strptime(date_str, '%d-%m-%Y')
-            effective_date_str = effective_date_obj.strftime('%d/%m')
-            effective_date_full = effective_date_obj.date()
+            # PADRONIZAÇÃO: YYYY-MM-DD
+            effective_date_str = effective_date_obj.strftime('%Y-%m-%d')
+            
             source_to_col_map = {'PONTA GROSSA': 'Ponta Grossa (0328)', 'ARARAQUARA': 'Araraquara (0336)', 'ITU': 'Itu (0002)'}
             col_suffix = source_to_col_map.get(source_name.upper(), source_name)
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_file.getvalue()))
@@ -546,11 +556,11 @@ def logistics_page():
                     vasilhame = product_map[material_code]
                     credito = abs(saldo) if saldo < 0 else 0.0
                     debito = saldo if saldo >= 0 else 0.0
-                    parsed_data.append({'Vasilhame': vasilhame, 'Dia': effective_date_str, 'DataCompleta': effective_date_full, f'Credito {col_suffix}': credito, f'Debito {col_suffix}': debito})
+                    parsed_data.append({'Vasilhame': vasilhame, 'Dia': effective_date_str, f'Credito {col_suffix}': credito, f'Debito {col_suffix}': debito})
             if not parsed_data: st.warning(f"Nenhum dado encontrado no PDF: {pdf_file.name}"); return pd.DataFrame()
             df_parsed = pd.DataFrame(parsed_data)
             pdf_value_cols = [col for col in df_parsed.columns if 'Credito' in col or 'Debito' in col]
-            agg_dict = {col: 'sum' for col in pdf_value_cols}; agg_dict['DataCompleta'] = 'max'
+            agg_dict = {col: 'sum' for col in pdf_value_cols}
             return df_parsed.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
         
         uploaded_txt_files = st.file_uploader("Envie os arquivos TXT de empréstimos (Ex: ESTOQUE0102.TXT)", type=["txt"], accept_multiple_files=True, key="vasil_txt_uploader") 
@@ -569,29 +579,27 @@ def logistics_page():
                     df_old_vendas_data = load_from_gsheets(sheet_client, 'vendas_data')
                     df_old_excel_data = load_from_gsheets(sheet_client, 'excel_data')
                     
-                    # COMPATIBILIDADE
-                    if not df_old_excel_data.empty:
-                        if 'DataCompleta' in df_old_excel_data.columns and 'DataCompleta_excel' not in df_old_excel_data.columns:
-                             df_old_excel_data.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
+                    # === PADRONIZAR DATAS DO HISTÓRICO PARA YYYY-MM-DD ===
+                    df_old_txt_data = padronizar_data_coluna(df_old_txt_data)
+                    df_old_pdf_data = padronizar_data_coluna(df_old_pdf_data)
+                    df_old_vendas_data = padronizar_data_coluna(df_old_vendas_data)
+                    df_old_excel_data = padronizar_data_coluna(df_old_excel_data)
+                    # =======================================================
 
                     # 2. PROCESSAR TXT
                     new_txt_data_list = []
                     for uploaded_txt_file in uploaded_txt_files:
-                        df_txt_qty, effective_date_str, effective_date_full = process_txt_file_st(uploaded_txt_file)
+                        df_txt_qty, effective_date_str = process_txt_file_st(uploaded_txt_file)
                         if df_txt_qty is not None:
                             df_txt_qty['Dia'] = effective_date_str
-                            df_txt_qty['DataCompleta'] = effective_date_full
                             new_txt_data_list.append(df_txt_qty)
                     
                     if new_txt_data_list:
                         df_new_txt = pd.concat(new_txt_data_list, ignore_index=True)
                         df_all_txt_combined = pd.concat([df_old_txt_data, df_new_txt], ignore_index=True)
-                        if 'DataCompleta' in df_all_txt_combined.columns: 
-                            df_all_txt_combined['DataCompleta'] = pd.to_datetime(df_all_txt_combined['DataCompleta'], errors='coerce')
                         
                         df_all_processed_txt_data = df_all_txt_combined.groupby(['Vasilhame', 'Dia']).agg(
-                            Qtd_emprestimo=('Qtd_emprestimo', 'sum'), 
-                            DataCompleta=('DataCompleta', 'max')
+                            Qtd_emprestimo=('Qtd_emprestimo', 'sum')
                         ).reset_index()
                         
                         save_to_gsheets(sheet_client, 'txt_data', df_all_processed_txt_data)
@@ -609,12 +617,9 @@ def logistics_page():
                     if new_vendas_data_list:
                         df_new_vendas = pd.concat(new_vendas_data_list, ignore_index=True)
                         df_all_vendas_combined = pd.concat([df_old_vendas_data, df_new_vendas], ignore_index=True)
-                        if 'DataCompleta' in df_all_vendas_combined.columns: 
-                            df_all_vendas_combined['DataCompleta'] = pd.to_datetime(df_all_vendas_combined['DataCompleta'], errors='coerce')
                         
                         df_all_processed_vendas_data = df_all_vendas_combined.groupby(['Vasilhame', 'Dia']).agg(
-                            Vendas=('Vendas', 'sum'), 
-                            DataCompleta=('DataCompleta', 'max')
+                            Vendas=('Vendas', 'sum')
                         ).reset_index()
                         
                         save_to_gsheets(sheet_client, 'vendas_data', df_all_processed_vendas_data)
@@ -623,7 +628,7 @@ def logistics_page():
                         df_all_processed_vendas_data = df_old_vendas_data
                     
                     if df_all_processed_vendas_data.empty:
-                         df_all_processed_vendas_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Vendas', 'DataCompleta'])
+                         df_all_processed_vendas_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Vendas'])
 
                     # 4. PROCESSAR PDF
                     new_pdf_data_list = []
@@ -658,28 +663,27 @@ def logistics_page():
                         df_all_pdf_combined = pd.concat([df_old_pdf_data, df_new_pdf], ignore_index=True)
                         pdf_value_cols = [col for col in df_all_pdf_combined.columns if 'Credito' in col or 'Debito' in col]
                         df_all_pdf_combined[pdf_value_cols] = df_all_pdf_combined[pdf_value_cols].fillna(0)
-                        if 'DataCompleta' in df_all_pdf_combined.columns: 
-                            df_all_pdf_combined['DataCompleta'] = pd.to_datetime(df_all_pdf_combined['DataCompleta'], errors='coerce')
                         
-                        agg_dict = {col: 'sum' for col in pdf_value_cols}; agg_dict['DataCompleta'] = 'max' 
+                        agg_dict = {col: 'sum' for col in pdf_value_cols}
                         if pdf_value_cols: 
                             df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
                         else: 
-                            df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(DataCompleta=('DataCompleta', 'max')).reset_index()
+                            df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).first().reset_index()
                         
                         save_to_gsheets(sheet_client, 'pdf_data', df_all_processed_pdf_data)
                         st.success("PDF: Dados atualizados na Nuvem!")
                     else: 
                         df_all_processed_pdf_data = df_old_pdf_data
                     
-                    if df_all_processed_txt_data.empty: df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Qtd_emprestimo', 'DataCompleta'])
-                    if df_all_processed_pdf_data.empty: df_all_processed_pdf_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'DataCompleta'])
+                    if df_all_processed_txt_data.empty: df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Qtd_emprestimo'])
+                    if df_all_processed_pdf_data.empty: df_all_processed_pdf_data = pd.DataFrame(columns=['Vasilhame', 'Dia'])
 
                     # 5. PROCESSAR EXCEL
                     df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                     df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
-                    df_contagem['DataCompleta'] = df_contagem['Carimbo de data/hora'].dt.date
-                    df_contagem['Dia'] = df_contagem['Carimbo de data/hora'].dt.strftime('%d/%m')
+                    
+                    # PADRONIZAÇÃO: YYYY-MM-DD
+                    df_contagem['Dia'] = df_contagem['Carimbo de data/hora'].dt.strftime('%Y-%m-%d')
                     
                     def map_excel_names_and_get_target(name):
                         name_upper = str(name).upper()
@@ -777,26 +781,23 @@ def logistics_page():
 
                     df_contagem[['TargetCrate', 'TargetBottle', 'G_QC', 'G_QV', 'G_TC', 'G_TV', 'G_CAR', 'C_QC', 'C_QV', 'C_TC', 'C_TV', 'C_CAR']] = df_contagem.apply(calculate_assets_converted, axis=1)
 
-                    agg_cols_g = {'G_QC':'sum', 'G_QV':'sum', 'G_TC':'sum', 'G_TV':'sum', 'G_CAR':'sum', 'Carimbo de data/hora':'max'}
+                    agg_cols_g = {'G_QC':'sum', 'G_QV':'sum', 'G_TC':'sum', 'G_TV':'sum', 'G_CAR':'sum'}
                     df_agg_garrafa = df_contagem.dropna(subset=['TargetBottle']).groupby(['TargetBottle', 'Dia']).agg(agg_cols_g).reset_index()
                     df_agg_garrafa.rename(columns={'TargetBottle': 'Vasilhame', 'G_QC':'Quantidade estoque cheias', 'G_QV':'Quantidade estoque vazias', 'G_TC':'Em transito cheias (Entrega)', 'G_TV':'Em transito vazias (Entrega)', 'G_CAR':'Em transito (carreta)'}, inplace=True)
                     df_agg_garrafa['Contagem Cheias'] = df_agg_garrafa['Quantidade estoque cheias'] + df_agg_garrafa['Em transito cheias (Entrega)'] + df_agg_garrafa['Em transito (carreta)']
                     df_agg_garrafa['Contagem Vazias'] = df_agg_garrafa['Quantidade estoque vazias'] + df_agg_garrafa['Em transito vazias (Entrega)']
 
-                    agg_cols_c = {'C_QC':'sum', 'C_QV':'sum', 'C_TC':'sum', 'C_TV':'sum', 'C_CAR':'sum', 'Carimbo de data/hora':'max'}
+                    agg_cols_c = {'C_QC':'sum', 'C_QV':'sum', 'C_TC':'sum', 'C_TV':'sum', 'C_CAR':'sum'}
                     df_agg_caixa = df_contagem.dropna(subset=['TargetCrate']).groupby(['TargetCrate', 'Dia']).agg(agg_cols_c).reset_index()
                     df_agg_caixa.rename(columns={'TargetCrate': 'Vasilhame', 'C_QC':'Quantidade estoque cheias', 'C_QV':'Quantidade estoque vazias', 'C_TC':'Em transito cheias (Entrega)', 'C_TV':'Em transito vazias (Entrega)', 'C_CAR':'Em transito (carreta)'}, inplace=True)
                     df_agg_caixa['Contagem Cheias'] = df_agg_caixa['Quantidade estoque cheias'] + df_agg_caixa['Em transito cheias (Entrega)'] + df_agg_caixa['Em transito (carreta)']
                     df_agg_caixa['Contagem Vazias'] = df_agg_caixa['Quantidade estoque vazias'] + df_agg_caixa['Em transito vazias (Entrega)']
 
                     df_excel_agg = pd.concat([df_agg_garrafa, df_agg_caixa], ignore_index=True)
-                    df_excel_agg.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
-
+                    
                     if not df_old_excel_data.empty:
                          for col in df_excel_agg.columns:
                              if col not in df_old_excel_data.columns: df_old_excel_data[col] = 0
-                         if 'DataCompleta_excel' in df_old_excel_data.columns: 
-                             df_old_excel_data['DataCompleta_excel'] = pd.to_datetime(df_old_excel_data['DataCompleta_excel'], errors='coerce')
                          
                          df_excel_agg = pd.concat([df_old_excel_data, df_excel_agg]).drop_duplicates(subset=['Vasilhame', 'Dia'], keep='last').reset_index(drop=True)
                     
@@ -809,7 +810,7 @@ def logistics_page():
                     if not df_excel_agg.empty: all_dates.update(df_excel_agg['Dia'].unique())
                     if not df_all_processed_txt_data.empty: all_dates.update(df_all_processed_txt_data['Dia'].unique())
                     if not df_all_processed_pdf_data.empty: all_dates.update(df_all_processed_pdf_data['Dia'].unique())
-                    if not all_dates: all_dates.add(datetime.now().strftime('%d/%m'))
+                    if not all_dates: all_dates.add(datetime.now().strftime('%Y-%m-%d'))
                     
                     skeleton_rows = []
                     for prod in required_vasilhames:
@@ -829,23 +830,6 @@ def logistics_page():
                     df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_vendas_data, on=['Vasilhame', 'Dia'], how='left')
                     
-                    if 'DataCompleta_excel' not in df_final.columns:
-                        df_final['DataCompleta_excel'] = pd.NaT
-
-                    df_final['DataCompleta'] = df_final['DataCompleta_excel']
-                    if 'DataCompleta_txt' in df_final.columns: df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_txt'])
-                    if 'DataCompleta_pdf' in df_final.columns: df_final['DataCompleta'] = df_final['DataCompleta'].fillna(df_final['DataCompleta_pdf'])
-                    
-                    def infer_date(row):
-                        if pd.isna(row['DataCompleta']):
-                            try: return datetime.strptime(f"{row['Dia']}/{datetime.now().year}", "%d/%m/%Y")
-                            except: return pd.NaT
-                        return row['DataCompleta']
-                    df_final['DataCompleta'] = df_final.apply(infer_date, axis=1)
-
-                    cols_to_drop = [col for col in df_final.columns if col.startswith('DataCompleta_')]
-                    df_final.drop(cols_to_drop, axis=1, inplace=True)
-
                     output_form_cols = ['Quantidade estoque cheias', 'Quantidade estoque vazias', 'Em transito cheias (Entrega)', 'Em transito vazias (Entrega)', 'Em transito (carreta)']
                     numeric_cols = ['Contagem Cheias', 'Contagem Vazias', 'Qtd_emprestimo', 'Vendas'] + output_form_cols + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
                     
@@ -854,49 +838,34 @@ def logistics_page():
                     else:
                         for col in output_form_cols:
                             if col not in df_final.columns: df_final[col] = 0
-                    
+
                     if 'Vendas' not in df_final.columns: df_final['Vendas'] = 0
 
-                    groupby_cols = ['Vasilhame', 'Dia'] # <--- MUDANÇA AQUI: Agrupa só por Dia
+                    groupby_cols = ['Vasilhame', 'Dia']
                     cols_to_sum = [c for c in numeric_cols if c in df_final.columns]
-                    
-                    # 1. Soma os valores numéricos
-                    df_grouped_values = df_final.groupby(groupby_cols)[cols_to_sum].sum().reset_index()
-                    
-                    # 2. Recupera a melhor DataCompleta para aquele dia (para ordenação)
-                    df_dates = df_final.groupby(groupby_cols)['DataCompleta'].max().reset_index()
-                    
-                    # 3. Junta tudo de volta
-                    df_final = pd.merge(df_grouped_values, df_dates, on=['Vasilhame', 'Dia'], how='left')
-
-                    # -----------------------------------------------------------------
+                    df_final = df_final.groupby(groupby_cols)[cols_to_sum].sum().reset_index()
 
                     df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem Cheias'] + df_final['Contagem Vazias'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1) + df_final['Vendas']
                     
-                    df_final['DataCompleta'] = pd.to_datetime(df_final['DataCompleta'], errors='coerce')
-                    df_final.sort_values(by=['Vasilhame', 'DataCompleta'], inplace=True, na_position='first')
+                    df_final.sort_values(by=['Vasilhame', 'Dia'], inplace=True, na_position='first')
                     
                     def calcular_diferenca_regra_negocio(grupo):
-                        data_base_travamento = pd.to_datetime('2025-11-05')
-                        data_inicio_calculo = pd.to_datetime('2025-11-10')
+                        data_base_travamento = '2025-11-05'
+                        data_inicio_calculo = '2025-11-10'
                         
-                        # Garante que não tenhamos erro de NaT
-                        grupo['DataCompleta'] = pd.to_datetime(grupo['DataCompleta'], errors='coerce')
-                        
-                        mask_base = grupo['DataCompleta'] >= data_base_travamento
+                        mask_base = grupo['Dia'] >= data_base_travamento
                         dados_base = grupo.loc[mask_base]
                         if not dados_base.empty: estoque_travado = dados_base.iloc[0]['Total Revenda']
                         else: estoque_travado = 0
+                        
                         diferencas = pd.Series(0.0, index=grupo.index)
-                        mask_calculo = grupo['DataCompleta'] >= data_inicio_calculo
+                        mask_calculo = grupo['Dia'] >= data_inicio_calculo
                         if estoque_travado != 0: diferencas[mask_calculo] = grupo.loc[mask_calculo, 'Total Revenda'] - estoque_travado
                         grupo['Diferença'] = diferencas
                         return grupo
 
                     df_final = df_final.groupby('Vasilhame', group_keys=False).apply(calcular_diferenca_regra_negocio)
-                    
-                    # Remove coluna de ordenação antes de mostrar
-                    df_final_output = df_final.drop('DataCompleta', axis=1)
+                    df_final_output = df_final.copy() # Já está consolidado e limpo
 
                     output_cols = [c for c in df_final_output.columns if c not in ['Diferença', 'Vendas']]
                     df_final_output = df_final_output[output_cols + ['Diferença', 'Vendas']]
@@ -909,7 +878,6 @@ def logistics_page():
                     save_to_gsheets(sheet_client, 'CONSOLIDADO_GERAL', df_final_output)
                     st.success("Tabela Consolidada salva na aba 'CONSOLIDADO_GERAL'!")
 
-                    # GERA O DOWNLOAD EXCEL
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                         df_final_output.to_excel(writer, sheet_name='GERAL', index=False)
@@ -922,7 +890,6 @@ def logistics_page():
 
                         for product in sorted_products:
                             df_product = df_final_output[df_final_output['Vasilhame'] == product]
-                            # Limpeza de caracteres inválidos para nome de aba Excel
                             safe_sheet_name = str(product).replace('/', '-').replace('\\', '-').replace('?', '').replace('*', '').replace('[', '').replace(']', '').replace(':', '')[:31]
                             df_product.to_excel(writer, sheet_name=safe_sheet_name, index=False)
                             
@@ -1097,6 +1064,7 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
 
 
 
