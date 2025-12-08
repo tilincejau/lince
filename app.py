@@ -854,12 +854,22 @@ def logistics_page():
                     else:
                         for col in output_form_cols:
                             if col not in df_final.columns: df_final[col] = 0
-
+                    
                     if 'Vendas' not in df_final.columns: df_final['Vendas'] = 0
 
-                    groupby_cols = ['Vasilhame', 'Dia', 'DataCompleta']
+                    groupby_cols = ['Vasilhame', 'Dia'] # <--- MUDANÇA AQUI: Agrupa só por Dia
                     cols_to_sum = [c for c in numeric_cols if c in df_final.columns]
-                    df_final = df_final.groupby(groupby_cols)[cols_to_sum].sum().reset_index()
+                    
+                    # 1. Soma os valores numéricos
+                    df_grouped_values = df_final.groupby(groupby_cols)[cols_to_sum].sum().reset_index()
+                    
+                    # 2. Recupera a melhor DataCompleta para aquele dia (para ordenação)
+                    df_dates = df_final.groupby(groupby_cols)['DataCompleta'].max().reset_index()
+                    
+                    # 3. Junta tudo de volta
+                    df_final = pd.merge(df_grouped_values, df_dates, on=['Vasilhame', 'Dia'], how='left')
+
+                    # -----------------------------------------------------------------
 
                     df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem Cheias'] + df_final['Contagem Vazias'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1) + df_final['Vendas']
                     
@@ -869,6 +879,10 @@ def logistics_page():
                     def calcular_diferenca_regra_negocio(grupo):
                         data_base_travamento = pd.to_datetime('2025-11-05')
                         data_inicio_calculo = pd.to_datetime('2025-11-10')
+                        
+                        # Garante que não tenhamos erro de NaT
+                        grupo['DataCompleta'] = pd.to_datetime(grupo['DataCompleta'], errors='coerce')
+                        
                         mask_base = grupo['DataCompleta'] >= data_base_travamento
                         dados_base = grupo.loc[mask_base]
                         if not dados_base.empty: estoque_travado = dados_base.iloc[0]['Total Revenda']
@@ -880,6 +894,8 @@ def logistics_page():
                         return grupo
 
                     df_final = df_final.groupby('Vasilhame', group_keys=False).apply(calcular_diferenca_regra_negocio)
+                    
+                    # Remove coluna de ordenação antes de mostrar
                     df_final_output = df_final.drop('DataCompleta', axis=1)
 
                     output_cols = [c for c in df_final_output.columns if c not in ['Diferença', 'Vendas']]
@@ -888,13 +904,12 @@ def logistics_page():
                     st.subheader("✅ Tabela Consolidada de Vasilhames")
                     st.dataframe(df_final_output)
                     
-                    # -------------------------------------------------------------
-                    # NOVO: SALVAMENTO DO CONSOLIDADO NA NUVEM
-                    # -------------------------------------------------------------
+                    # SALVA NA NUVEM
                     st.info("Salvando tabela consolidada na Nuvem...")
                     save_to_gsheets(sheet_client, 'CONSOLIDADO_GERAL', df_final_output)
                     st.success("Tabela Consolidada salva na aba 'CONSOLIDADO_GERAL'!")
 
+                    # GERA O DOWNLOAD EXCEL
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                         df_final_output.to_excel(writer, sheet_name='GERAL', index=False)
@@ -907,6 +922,7 @@ def logistics_page():
 
                         for product in sorted_products:
                             df_product = df_final_output[df_final_output['Vasilhame'] == product]
+                            # Limpeza de caracteres inválidos para nome de aba Excel
                             safe_sheet_name = str(product).replace('/', '-').replace('\\', '-').replace('?', '').replace('*', '').replace('[', '').replace(']', '').replace(':', '')[:31]
                             df_product.to_excel(writer, sheet_name=safe_sheet_name, index=False)
                             
@@ -1081,5 +1097,6 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
 
 
