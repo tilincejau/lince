@@ -37,9 +37,10 @@ st.markdown("""
 # 2. CONFIGURAÇÃO E CONSTANTES GLOBAIS
 # ====================================================================
 
-# [IMPORTANTE] COLE AQUI O ID DA SUA PLANILHA DO GOOGLE SHEETS
-# Exemplo: https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE/edit
-SPREADSHEET_KEY = '1uFr9yhylYj7dINsDAr-6tECgNDxc21t9QhmC0cxBjhY' 
+# [IMPORTANTE] Substitua pelo ID da sua planilha se necessário, ou mantenha se já estiver configurado nos Secrets
+SPREADSHEET_KEY = 'COLE_O_ID_DA_SUA_PLANILHA_AQUI' 
+# Se estiver usando Secrets, o ID pode estar lá ou você cola aqui diretamente. 
+# Se o código anterior já funcionava o acesso, mantenha o ID que você usou.
 
 NAME_540_001 = '540-001 - GARRAFA 600ML' 
 NAME_550_001 = '550-001 - CAIXA PLASTICA 600ML'
@@ -61,75 +62,82 @@ FACTORS = {
 }
 
 # ====================================================================
-# 3. CONEXÃO GOOGLE SHEETS (SUBSTITUI SQLITE)
+# 3. CONEXÃO GOOGLE SHEETS
 # ====================================================================
 
 @st.cache_resource
 def connect_to_gsheets():
-    """Conecta ao Google Sheets usando Streamlit Secrets (Nuvem) ou arquivo local"""
+    """Conecta ao Google Sheets usando Streamlit Secrets ou arquivo local"""
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
     try:
-        # Tenta pegar dos Segredos do Streamlit (Nuvem)
+        # 1. Tenta pegar do Secrets (Nuvem)
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        # 2. Tenta pegar do arquivo local
         else:
-            # Tenta pegar do arquivo local (Computador)
             creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
             
         client = gspread.authorize(creds)
         
+        # Se o ID não estiver hardcoded acima, tenta pegar do secrets
+        sheet_key = SPREADSHEET_KEY
+        if sheet_key == 'COLE_O_ID_DA_SUA_PLANILHA_AQUI' and "spreadsheet_id" in st.secrets:
+             sheet_key = st.secrets["spreadsheet_id"]
+
         try:
-            sheet = client.open_by_key(SPREADSHEET_KEY)
+            sheet = client.open_by_key(sheet_key)
             return sheet
         except gspread.SpreadsheetNotFound:
-            st.error("Planilha não encontrada! Verifique o ID e se você compartilhou com o email do bot.")
+            st.error("Planilha não encontrada! Verifique o ID.")
             return None
     except Exception as e:
         st.error(f"Erro na autenticação do Google: {e}")
         return None
 
-
 def load_from_gsheets(sheet, tab_name):
-    """Lê uma aba específica da planilha e retorna como DataFrame"""
+    """Lê uma aba da planilha com tratamento agressivo de tipos para garantir fusão."""
     try:
         try:
             worksheet = sheet.worksheet(tab_name)
         except gspread.WorksheetNotFound:
-            return pd.DataFrame() # Aba não existe, retorna vazio
+            return pd.DataFrame() 
 
-        df = get_as_dataframe(worksheet, evaluate_formulas=True, dtype=str) # Lê tudo como string primeiro para segurança
+        # Lê tudo como string para evitar erros de parse inicial
+        df = get_as_dataframe(worksheet, evaluate_formulas=True, dtype=str)
         
-        # Limpeza: remove linhas e colunas vazias que o gspread pode trazer
+        # Limpeza básica
         df = df.dropna(how='all').dropna(axis=1, how='all')
-
-        # Conversão de Datas
-        cols_date = ['DataCompleta', 'DataCompleta_excel', 'DataCompleta_txt', 'DataCompleta_pdf']
-        for col in cols_date:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors='coerce')
         
-        # Conversão Numérica (Tenta converter colunas numéricas de volta para float/int)
+        # [CORREÇÃO 1] Remove espaços dos nomes das colunas (ex: "Vasilhame " -> "Vasilhame")
+        df.columns = df.columns.str.strip()
+
+        # [CORREÇÃO 2] Garante que Vasilhame seja string
+        if 'Vasilhame' in df.columns:
+            df['Vasilhame'] = df['Vasilhame'].astype(str)
+
+        # [CORREÇÃO 3] Converte colunas numéricas forçadamente (Coerce erros para NaN, depois 0)
+        cols_ignoradas = ['Vasilhame', 'Dia', 'DataCompleta', 'DataCompleta_excel', 'DataCompleta_txt', 'DataCompleta_pdf']
         for col in df.columns:
-            if col not in cols_date and col != 'Vasilhame' and col != 'Dia':
-                df[col] = pd.to_numeric(df[col], errors='ignore')
+            if col not in cols_ignoradas:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
         return df
     except Exception as e:
-        st.warning(f"Erro ao ler aba {tab_name}: {e}")
+        st.warning(f"Aviso ao ler aba {tab_name}: {e}")
         return pd.DataFrame()
 
 def save_to_gsheets(sheet, tab_name, df):
-    """Salva o DataFrame em uma aba, sobrescrevendo ou criando"""
+    """Salva o DataFrame em uma aba."""
     try:
         try:
             worksheet = sheet.worksheet(tab_name)
-            worksheet.clear() # Limpa dados antigos
+            worksheet.clear()
         except gspread.WorksheetNotFound:
             worksheet = sheet.add_worksheet(title=tab_name, rows="1000", cols="20")
         
-        # Prepara o DF: converte datas para string para o Sheets entender
+        # Prepara para exportação (converte datas para texto)
         df_export = df.copy()
         for col in df_export.select_dtypes(include=['datetime64[ns]']).columns:
              df_export[col] = df_export[col].astype(str).replace('NaT', '')
@@ -373,7 +381,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES (CORRIGIDO PROBLEMA DE DUPLICIDADE DE LINHAS) ---
+    # --- SCRIPT VASILHAMES (CORRIGIDO PROBLEMA DE APAGAR HISTÓRICO) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames (Nuvem ☁️)")
         
@@ -402,15 +410,20 @@ def logistics_page():
                     st.error(f"Erro ao limpar o banco: {e}")
         st.write("---")
 
-        # --- FUNÇÃO AUXILIAR PARA CORRIGIR DATAS DUPLICADAS ---
+        # --- FUNÇÃO AUXILIAR PARA CORRIGIR DATAS DUPLICADAS E FORMATOS ---
         def padronizar_data_coluna(df, nome_coluna='Dia'):
             """Força a coluna de data a ficar sempre como YYYY-MM-DD (string) para evitar quebras."""
             if df.empty or nome_coluna not in df.columns:
                 return df
             
-            # Converte para datetime primeiro (lidando com erros)
+            # Garante que seja string primeiro para limpeza
+            df[nome_coluna] = df[nome_coluna].astype(str)
+            # Remove horas se houver (2025-11-05 00:00:00 -> 2025-11-05)
+            df[nome_coluna] = df[nome_coluna].str.split(' ').str[0]
+            
+            # Tenta converter
             df[nome_coluna] = pd.to_datetime(df[nome_coluna], dayfirst=True, errors='coerce')
-            # Converte de volta para string formato ISO (2025-11-05)
+            # Formata final
             df[nome_coluna] = df[nome_coluna].dt.strftime('%Y-%m-%d')
             return df
 
@@ -596,6 +609,10 @@ def logistics_page():
                     
                     if new_txt_data_list:
                         df_new_txt = pd.concat(new_txt_data_list, ignore_index=True)
+                        # Garante que as colunas existam no DF antigo mesmo que esteja vazio
+                        if df_old_txt_data.empty and not df_new_txt.empty:
+                            df_old_txt_data = pd.DataFrame(columns=df_new_txt.columns)
+                            
                         df_all_txt_combined = pd.concat([df_old_txt_data, df_new_txt], ignore_index=True)
                         
                         df_all_processed_txt_data = df_all_txt_combined.groupby(['Vasilhame', 'Dia']).agg(
@@ -616,6 +633,9 @@ def logistics_page():
                     
                     if new_vendas_data_list:
                         df_new_vendas = pd.concat(new_vendas_data_list, ignore_index=True)
+                        if df_old_vendas_data.empty and not df_new_vendas.empty:
+                             df_old_vendas_data = pd.DataFrame(columns=df_new_vendas.columns)
+                        
                         df_all_vendas_combined = pd.concat([df_old_vendas_data, df_new_vendas], ignore_index=True)
                         
                         df_all_processed_vendas_data = df_all_vendas_combined.groupby(['Vasilhame', 'Dia']).agg(
@@ -660,6 +680,9 @@ def logistics_page():
                     
                     if new_pdf_data_list:
                         df_new_pdf = pd.concat(new_pdf_data_list, ignore_index=True)
+                        if df_old_pdf_data.empty and not df_new_pdf.empty:
+                             df_old_pdf_data = pd.DataFrame(columns=df_new_pdf.columns)
+                        
                         df_all_pdf_combined = pd.concat([df_old_pdf_data, df_new_pdf], ignore_index=True)
                         pdf_value_cols = [col for col in df_all_pdf_combined.columns if 'Credito' in col or 'Debito' in col]
                         df_all_pdf_combined[pdf_value_cols] = df_all_pdf_combined[pdf_value_cols].fillna(0)
@@ -1064,7 +1087,3 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
-
-
-
-
