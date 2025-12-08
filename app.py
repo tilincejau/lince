@@ -68,7 +68,7 @@ FACTORS = {
 @st.cache_resource
 def connect_to_gsheets():
     """Conecta ao Google Sheets usando Streamlit Secrets ou arquivo local"""
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    scope = ["https://docs.google.com/spreadsheets/d/", "https://www.googleapis.com/auth/drive"]
     
     try:
         # 1. Tenta pegar do Secrets (Nuvem)
@@ -1087,5 +1087,6 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
 
 
