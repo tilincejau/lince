@@ -8,19 +8,22 @@ import PyPDF2
 from openpyxl import load_workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import get_column_letter
-from sqlalchemy import create_engine, text
 import xlsxwriter
 
+# --- BIBLIOTECAS PARA GOOGLE SHEETS ---
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from gspread_dataframe import set_with_dataframe, get_as_dataframe
+
 # ====================================================================
-# 1. CONFIGURAÇÃO DA PÁGINA (OBRIGATÓRIO SER A PRIMEIRA LINHA EXECUTÁVEL)
+# 1. CONFIGURAÇÃO DA PÁGINA
 # ====================================================================
 st.set_page_config(
-    page_title="Lince Distribuidora - Sistema Integrado", 
-    page_icon="🏠", 
+    page_title="Lince Distribuidora - Nuvem", 
+    page_icon="☁️", 
     layout="centered"
 )
 
-# Estilização CSS Personalizada
 st.markdown("""
 <style>
     .stApp { background-color: #f0f2f6; } 
@@ -33,6 +36,10 @@ st.markdown("""
 # ====================================================================
 # 2. CONFIGURAÇÃO E CONSTANTES GLOBAIS
 # ====================================================================
+
+# [IMPORTANTE] COLE AQUI O ID DA SUA PLANILHA DO GOOGLE SHEETS
+# Exemplo: https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE/edit
+SPREADSHEET_KEY = '1uFr9yhylYj7dINsDAr-6tECgNDxc21t9QhmC0cxBjhY' 
 
 NAME_540_001 = '540-001 - GARRAFA 600ML' 
 NAME_550_001 = '550-001 - CAIXA PLASTICA 600ML'
@@ -54,33 +61,77 @@ FACTORS = {
 }
 
 # ====================================================================
-# 3. FUNÇÕES DE BANCO DE DADOS (CORRIGIDAS PARA PERSISTÊNCIA)
+# 3. CONEXÃO GOOGLE SHEETS (SUBSTITUI SQLITE)
 # ====================================================================
 
 @st.cache_resource
-def setup_database():
-    """Cria a conexão com o banco de forma cacheada e segura para threads."""
-    engine = create_engine('sqlite:///vasilhames.db', connect_args={'check_same_thread': False})
-    return engine
-
-def load_from_db(table_name, engine):
-    """Carrega dados do banco de forma robusta, garantindo conversão de datas."""
+def connect_to_gsheets():
+    """Conecta ao Google Sheets usando o arquivo credentials.json"""
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        df = pd.read_sql_table(table_name, con=engine)
+        # Tenta pegar do secrets do Streamlit Cloud ou arquivo local
+        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+        client = gspread.authorize(creds)
         
-        # Converte colunas de data imediatamente para evitar problemas de merge futuro
+        # Tenta abrir a planilha
+        try:
+            sheet = client.open_by_key(SPREADSHEET_KEY)
+            return sheet
+        except gspread.SpreadsheetNotFound:
+            st.error("Planilha não encontrada! Verifique o ID e se você compartilhou com o email do bot.")
+            return None
+    except Exception as e:
+        st.error(f"Erro na autenticação do Google: {e}")
+        return None
+
+def load_from_gsheets(sheet, tab_name):
+    """Lê uma aba específica da planilha e retorna como DataFrame"""
+    try:
+        try:
+            worksheet = sheet.worksheet(tab_name)
+        except gspread.WorksheetNotFound:
+            return pd.DataFrame() # Aba não existe, retorna vazio
+
+        df = get_as_dataframe(worksheet, evaluate_formulas=True, dtype=str) # Lê tudo como string primeiro para segurança
+        
+        # Limpeza: remove linhas e colunas vazias que o gspread pode trazer
+        df = df.dropna(how='all').dropna(axis=1, how='all')
+
+        # Conversão de Datas
         cols_date = ['DataCompleta', 'DataCompleta_excel', 'DataCompleta_txt', 'DataCompleta_pdf']
         for col in cols_date:
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col], errors='coerce')
-                
+        
+        # Conversão Numérica (Tenta converter colunas numéricas de volta para float/int)
+        for col in df.columns:
+            if col not in cols_date and col != 'Vasilhame' and col != 'Dia':
+                df[col] = pd.to_numeric(df[col], errors='ignore')
+
         return df
-    except ValueError:
-        # Tabela não existe ainda
-        return pd.DataFrame()
     except Exception as e:
-        st.error(f"Aviso: Não foi possível ler o histórico da tabela {table_name}. Erro: {e}")
+        st.warning(f"Erro ao ler aba {tab_name}: {e}")
         return pd.DataFrame()
+
+def save_to_gsheets(sheet, tab_name, df):
+    """Salva o DataFrame em uma aba, sobrescrevendo ou criando"""
+    try:
+        try:
+            worksheet = sheet.worksheet(tab_name)
+            worksheet.clear() # Limpa dados antigos
+        except gspread.WorksheetNotFound:
+            worksheet = sheet.add_worksheet(title=tab_name, rows="1000", cols="20")
+        
+        # Prepara o DF: converte datas para string para o Sheets entender
+        df_export = df.copy()
+        for col in df_export.select_dtypes(include=['datetime64[ns]']).columns:
+             df_export[col] = df_export[col].astype(str).replace('NaT', '')
+
+        set_with_dataframe(worksheet, df_export)
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar na aba {tab_name}: {e}")
+        return False
 
 # ====================================================================
 # 4. SISTEMA DE LOGIN
@@ -315,26 +366,29 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES (CORRIGIDO PERSISTÊNCIA) ---
+    # --- SCRIPT VASILHAMES (COM GOOGLE SHEETS) ---
     elif script_choice == "Vasilhames":
-        st.subheader("Controle de Vasilhames")
+        st.subheader("Controle de Vasilhames (Nuvem ☁️)")
         
-        # INICIALIZA O BANCO COM CACHE
-        engine = setup_database()
+        # INICIALIZA A CONEXÃO COM O GOOGLE SHEETS
+        sheet_client = connect_to_gsheets()
+        
+        if not sheet_client:
+            st.error("Não foi possível conectar ao Google Sheets. Verifique o arquivo credentials.json e o ID da planilha.")
+            st.stop()
 
         st.write("---")
         st.subheader("⚙️ Gerenciamento")
         col_reset, col_info = st.columns([1, 3])
         with col_reset:
-            if st.button("🗑️ Limpar Banco de Dados (Reiniciar)", type="primary", help="Cuidado: Isso apaga todo o histórico salvo no banco!"):
+            if st.button("🗑️ Limpar Nuvem (Reiniciar)", type="primary", help="Cuidado: Isso apaga todo o histórico salvo na Planilha Google!"):
                 try:
-                    with engine.connect() as conn:
-                        conn.execute(text("DROP TABLE IF EXISTS txt_data"))
-                        conn.execute(text("DROP TABLE IF EXISTS pdf_data"))
-                        conn.execute(text("DROP TABLE IF EXISTS vendas_data"))
-                        conn.execute(text("DROP TABLE IF EXISTS excel_data"))
-                        conn.commit()
-                    st.success("Histórico apagado com sucesso!")
+                    for tab in ['txt_data', 'pdf_data', 'vendas_data', 'excel_data']:
+                        try:
+                            ws = sheet_client.worksheet(tab)
+                            ws.clear()
+                        except: pass
+                    st.success("Histórico na nuvem apagado com sucesso!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao limpar o banco: {e}")
@@ -498,20 +552,20 @@ def logistics_page():
         if st.button("Processar e Consolidar Dados"):
             if uploaded_txt_files and uploaded_excel_contagem is not None:
                 try:
-                    st.info("Carregando histórico do banco e processando novos arquivos...")
+                    st.info("Sincronizando com Google Sheets e processando arquivos...")
                     
-                    # 1. CARREGAR DADOS ANTIGOS (COM TRATAMENTO DE ERRO ROBUSTO)
-                    df_old_txt_data = load_from_db('txt_data', engine)
-                    df_old_pdf_data = load_from_db('pdf_data', engine)
-                    df_old_vendas_data = load_from_db('vendas_data', engine)
-                    df_old_excel_data = load_from_db('excel_data', engine)
+                    # 1. CARREGAR DADOS ANTIGOS DA NUVEM (SHEETS)
+                    df_old_txt_data = load_from_gsheets(sheet_client, 'txt_data')
+                    df_old_pdf_data = load_from_gsheets(sheet_client, 'pdf_data')
+                    df_old_vendas_data = load_from_gsheets(sheet_client, 'vendas_data')
+                    df_old_excel_data = load_from_gsheets(sheet_client, 'excel_data')
                     
-                    # CORREÇÃO DE COMPATIBILIDADE (RENOMEAR COLUNA ANTIGA NO BANCO)
+                    # COMPATIBILIDADE
                     if not df_old_excel_data.empty:
                         if 'DataCompleta' in df_old_excel_data.columns and 'DataCompleta_excel' not in df_old_excel_data.columns:
                              df_old_excel_data.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
 
-                    # 2. PROCESSAR TXT E CONCATENAR COM O ANTIGO
+                    # 2. PROCESSAR TXT
                     new_txt_data_list = []
                     for uploaded_txt_file in uploaded_txt_files:
                         df_txt_qty, effective_date_str, effective_date_full = process_txt_file_st(uploaded_txt_file)
@@ -522,7 +576,6 @@ def logistics_page():
                     
                     if new_txt_data_list:
                         df_new_txt = pd.concat(new_txt_data_list, ignore_index=True)
-                        # Aqui garantimos que df_old_txt_data existe mesmo que vazia para o concat não falhar
                         df_all_txt_combined = pd.concat([df_old_txt_data, df_new_txt], ignore_index=True)
                         if 'DataCompleta' in df_all_txt_combined.columns: 
                             df_all_txt_combined['DataCompleta'] = pd.to_datetime(df_all_txt_combined['DataCompleta'], errors='coerce')
@@ -532,12 +585,12 @@ def logistics_page():
                             DataCompleta=('DataCompleta', 'max')
                         ).reset_index()
                         
-                        df_all_processed_txt_data.to_sql('txt_data', con=engine, if_exists='replace', index=False)
-                        st.success("Dados TXT atualizados e salvos!")
+                        save_to_gsheets(sheet_client, 'txt_data', df_all_processed_txt_data)
+                        st.success("TXT: Dados atualizados na Nuvem!")
                     else: 
                         df_all_processed_txt_data = df_old_txt_data 
                     
-                    # 3. PROCESSAR VENDAS E CONCATENAR
+                    # 3. PROCESSAR VENDAS
                     new_vendas_data_list = []
                     if uploaded_vendas_files:
                         for v_file in uploaded_vendas_files:
@@ -555,15 +608,15 @@ def logistics_page():
                             DataCompleta=('DataCompleta', 'max')
                         ).reset_index()
                         
-                        df_all_processed_vendas_data.to_sql('vendas_data', con=engine, if_exists='replace', index=False)
-                        st.success("Dados de Vendas atualizados!")
+                        save_to_gsheets(sheet_client, 'vendas_data', df_all_processed_vendas_data)
+                        st.success("Vendas: Dados atualizados na Nuvem!")
                     else:
                         df_all_processed_vendas_data = df_old_vendas_data
                     
                     if df_all_processed_vendas_data.empty:
                          df_all_processed_vendas_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Vendas', 'DataCompleta'])
 
-                    # 4. PROCESSAR PDF E CONCATENAR
+                    # 4. PROCESSAR PDF
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
                         pdf_map = {
@@ -605,15 +658,15 @@ def logistics_page():
                         else: 
                             df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(DataCompleta=('DataCompleta', 'max')).reset_index()
                         
-                        df_all_processed_pdf_data.to_sql('pdf_data', con=engine, if_exists='replace', index=False)
-                        st.success("Dados PDF atualizados!")
+                        save_to_gsheets(sheet_client, 'pdf_data', df_all_processed_pdf_data)
+                        st.success("PDF: Dados atualizados na Nuvem!")
                     else: 
                         df_all_processed_pdf_data = df_old_pdf_data
                     
                     if df_all_processed_txt_data.empty: df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Qtd_emprestimo', 'DataCompleta'])
                     if df_all_processed_pdf_data.empty: df_all_processed_pdf_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'DataCompleta'])
 
-                    # 5. PROCESSAR EXCEL E CONCATENAR
+                    # 5. PROCESSAR EXCEL
                     df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                     df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
                     df_contagem['DataCompleta'] = df_contagem['Carimbo de data/hora'].dt.date
@@ -738,7 +791,8 @@ def logistics_page():
                          
                          df_excel_agg = pd.concat([df_old_excel_data, df_excel_agg]).drop_duplicates(subset=['Vasilhame', 'Dia'], keep='last').reset_index(drop=True)
                     
-                    df_excel_agg.to_sql('excel_data', con=engine, if_exists='replace', index=False)
+                    save_to_gsheets(sheet_client, 'excel_data', df_excel_agg)
+                    st.success("Contagem Excel: Dados atualizados na Nuvem!")
 
                     # 6. UNIFICAR TUDO PARA EXIBIÇÃO
                     required_vasilhames = list(FACTORS.keys()) + list(CRATE_TO_BOTTLE_MAP.values())
