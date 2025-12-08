@@ -37,10 +37,8 @@ st.markdown("""
 # 2. CONFIGURAÇÃO E CONSTANTES GLOBAIS
 # ====================================================================
 
-# [IMPORTANTE] Substitua pelo ID da sua planilha se necessário, ou mantenha se já estiver configurado nos Secrets
-SPREADSHEET_KEY = '1uFr9yhylYj7dINsDAr-6tECgNDxc21t9QhmC0cxBjhY' 
-# Se estiver usando Secrets, o ID pode estar lá ou você cola aqui diretamente. 
-# Se o código anterior já funcionava o acesso, mantenha o ID que você usou.
+# [IMPORTANTE] SEU ID DA PLANILHA
+SPREADSHEET_KEY = '1uFr9yhylYj7dINsDAr-6tECgNDxc21t9QhmC0cxBjhY'
 
 NAME_540_001 = '540-001 - GARRAFA 600ML' 
 NAME_550_001 = '550-001 - CAIXA PLASTICA 600ML'
@@ -68,7 +66,7 @@ FACTORS = {
 @st.cache_resource
 def connect_to_gsheets():
     """Conecta ao Google Sheets usando Streamlit Secrets ou arquivo local"""
-    scope = ["https://docs.google.com/spreadsheets/d/", "https://www.googleapis.com/auth/drive"]
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
     try:
         # 1. Tenta pegar do Secrets (Nuvem)
@@ -81,16 +79,11 @@ def connect_to_gsheets():
             
         client = gspread.authorize(creds)
         
-        # Se o ID não estiver hardcoded acima, tenta pegar do secrets
-        sheet_key = SPREADSHEET_KEY
-        if sheet_key == 'COLE_O_ID_DA_SUA_PLANILHA_AQUI' and "spreadsheet_id" in st.secrets:
-             sheet_key = st.secrets["spreadsheet_id"]
-
         try:
-            sheet = client.open_by_key(sheet_key)
+            sheet = client.open_by_key(SPREADSHEET_KEY)
             return sheet
         except gspread.SpreadsheetNotFound:
-            st.error("Planilha não encontrada! Verifique o ID.")
+            st.error("Planilha não encontrada! Verifique se o ID está correto e se você compartilhou a planilha com o e-mail do robô.")
             return None
     except Exception as e:
         st.error(f"Erro na autenticação do Google: {e}")
@@ -110,6 +103,8 @@ def load_from_gsheets(sheet, tab_name):
         # Limpeza básica
         df = df.dropna(how='all').dropna(axis=1, how='all')
         
+        if df.empty: return pd.DataFrame()
+
         # [CORREÇÃO 1] Remove espaços dos nomes das colunas (ex: "Vasilhame " -> "Vasilhame")
         df.columns = df.columns.str.strip()
 
@@ -121,11 +116,13 @@ def load_from_gsheets(sheet, tab_name):
         cols_ignoradas = ['Vasilhame', 'Dia', 'DataCompleta', 'DataCompleta_excel', 'DataCompleta_txt', 'DataCompleta_pdf']
         for col in df.columns:
             if col not in cols_ignoradas:
+                # Remove espaços em branco dentro das células numéricas
+                df[col] = df[col].astype(str).str.replace(' ', '').replace(',', '.')
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
         return df
     except Exception as e:
-        st.warning(f"Aviso ao ler aba {tab_name}: {e}")
+        st.warning(f"Aviso ao ler aba {tab_name}: {e}. O histórico pode ser ignorado.")
         return pd.DataFrame()
 
 def save_to_gsheets(sheet, tab_name, df):
@@ -381,7 +378,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES (CORRIGIDO PROBLEMA DE APAGAR HISTÓRICO) ---
+    # --- SCRIPT VASILHAMES (COM CORREÇÃO DE DUPLICATAS E LEITURA BLINDADA) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames (Nuvem ☁️)")
         
@@ -1087,6 +1084,3 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
-
-
-
