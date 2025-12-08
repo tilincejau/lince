@@ -38,7 +38,7 @@ st.markdown("""
 # ====================================================================
 
 # [IMPORTANTE] Substitua pelo ID da sua planilha se necessário, ou mantenha se já estiver configurado nos Secrets
-SPREADSHEET_KEY = 'COLE_O_ID_DA_SUA_PLANILHA_AQUI' 
+SPREADSHEET_KEY = '1uFr9yhylYj7dINsDAr-6tECgNDxc21t9QhmC0cxBjhY' 
 # Se estiver usando Secrets, o ID pode estar lá ou você cola aqui diretamente. 
 # Se o código anterior já funcionava o acesso, mantenha o ID que você usou.
 
@@ -1087,3 +1087,4 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
