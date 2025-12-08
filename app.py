@@ -66,14 +66,20 @@ FACTORS = {
 
 @st.cache_resource
 def connect_to_gsheets():
-    """Conecta ao Google Sheets usando o arquivo credentials.json"""
+    """Conecta ao Google Sheets usando Streamlit Secrets (Nuvem) ou arquivo local"""
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    
     try:
-        # Tenta pegar do secrets do Streamlit Cloud ou arquivo local
-        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+        # Tenta pegar dos Segredos do Streamlit (Nuvem)
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        else:
+            # Tenta pegar do arquivo local (Computador)
+            creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+            
         client = gspread.authorize(creds)
         
-        # Tenta abrir a planilha
         try:
             sheet = client.open_by_key(SPREADSHEET_KEY)
             return sheet
@@ -83,6 +89,7 @@ def connect_to_gsheets():
     except Exception as e:
         st.error(f"Erro na autenticação do Google: {e}")
         return None
+
 
 def load_from_gsheets(sheet, tab_name):
     """Lê uma aba específica da planilha e retorna como DataFrame"""
@@ -1065,3 +1072,4 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
