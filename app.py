@@ -1,5 +1,4 @@
 import streamlit as st
-import base64
 import pandas as pd
 import re
 import io
@@ -10,11 +9,29 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import get_column_letter
 from sqlalchemy import create_engine, text
-import os
 import xlsxwriter
 
 # ====================================================================
-# CONFIGURAÇÃO E CONSTANTES GLOBAIS
+# 1. CONFIGURAÇÃO DA PÁGINA (OBRIGATÓRIO SER A PRIMEIRA LINHA EXECUTÁVEL)
+# ====================================================================
+st.set_page_config(
+    page_title="Lince Distribuidora - Sistema Integrado", 
+    page_icon="🏠", 
+    layout="centered"
+)
+
+# Estilização CSS Personalizada
+st.markdown("""
+<style>
+    .stApp { background-color: #f0f2f6; } 
+    div.stButton > button:first-child { background-color: #007bff; color: white; border-radius: 5px; font-weight: bold;} 
+    .stTitle { text-align: center; color: #004d99; font-family: 'Arial', sans-serif;}
+    h1, h2, h3 { color: #004d99; }
+</style>
+""", unsafe_allow_html=True)
+
+# ====================================================================
+# 2. CONFIGURAÇÃO E CONSTANTES GLOBAIS
 # ====================================================================
 
 NAME_540_001 = '540-001 - GARRAFA 600ML' 
@@ -37,20 +54,50 @@ FACTORS = {
 }
 
 # ====================================================================
-# LOGIN E PAGINA INICIAL
+# 3. FUNÇÕES DE BANCO DE DADOS (CORRIGIDAS PARA PERSISTÊNCIA)
+# ====================================================================
+
+@st.cache_resource
+def setup_database():
+    """Cria a conexão com o banco de forma cacheada e segura para threads."""
+    engine = create_engine('sqlite:///vasilhames.db', connect_args={'check_same_thread': False})
+    return engine
+
+def load_from_db(table_name, engine):
+    """Carrega dados do banco de forma robusta, garantindo conversão de datas."""
+    try:
+        df = pd.read_sql_table(table_name, con=engine)
+        
+        # Converte colunas de data imediatamente para evitar problemas de merge futuro
+        cols_date = ['DataCompleta', 'DataCompleta_excel', 'DataCompleta_txt', 'DataCompleta_pdf']
+        for col in cols_date:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+                
+        return df
+    except ValueError:
+        # Tabela não existe ainda
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Aviso: Não foi possível ler o histórico da tabela {table_name}. Erro: {e}")
+        return pd.DataFrame()
+
+# ====================================================================
+# 4. SISTEMA DE LOGIN
 # ====================================================================
 
 def login_form():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown("<h2 style='text-align: center; color: #004d99; font-family: 'Arial Black', sans-serif;'>Lince Distribuidora</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>Lince Distribuidora</h2>", unsafe_allow_html=True)
         st.markdown("---")
         with st.form("login_form", clear_on_submit=False):
-            st.markdown("Por favor, insira suas credenciais para continuar.")
-            username = st.text_input("Usuário", key="username_input", placeholder="Digite seu nome de usuário")
+            st.markdown("Por favor, insira suas credenciais.")
+            username = st.text_input("Usuário", key="username_input", placeholder="Digite seu usuário")
             password = st.text_input("Senha", type="password", key="password_input", placeholder="Digite sua senha")
             st.markdown("<br>", unsafe_allow_html=True)
             submit_button = st.form_submit_button("Entrar", use_container_width=True)
+        
         if submit_button:
             if username in st.session_state.LOGIN_INFO and st.session_state.LOGIN_INFO[username] == password:
                 st.session_state['is_logged_in'] = True
@@ -62,15 +109,15 @@ def login_form():
 
 def main_page():
     st.markdown(f"<h1 style='text-align: center;'>Página Inicial</h1>", unsafe_allow_html=True)
-    st.markdown(f"<h3 style='text-align: center;'>Bem-vindo(a), **{st.session_state['username']}**!</h3>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center;'>Bem-vindo(a), <b>{st.session_state['username']}</b>!</p>", unsafe_allow_html=True)
     st.markdown("---")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Logística", use_container_width=True):
+        if st.button("🚛 Logística", use_container_width=True):
             st.session_state['current_page'] = 'logistics'
             st.rerun()
     with col2:
-        if st.button("Comercial", use_container_width=True):
+        if st.button("📈 Comercial", use_container_width=True):
             st.session_state['current_page'] = 'commercial'
             st.rerun()
     st.markdown("---")
@@ -80,24 +127,22 @@ def main_page():
         st.session_state.pop('current_page', None)
         st.rerun()
 
-def setup_database():
-    engine = create_engine('sqlite:///vasilhames.db')
-    return engine
-
-def load_from_db(table_name, engine):
-    if engine.dialect.has_table(engine.connect(), table_name):
-        return pd.read_sql_table(table_name, con=engine)
-    return pd.DataFrame()
-
 # ====================================================================
-# SETOR DE LOGÍSTICA
+# 5. SETOR DE LOGÍSTICA
 # ====================================================================
 def logistics_page():
     st.title("Setor de Logística")
-    st.markdown("Bem-vindo(a) ao setor de Logística. Abaixo estão os scripts disponíveis para análise.")
+    
+    col_voltar, col_vazio = st.columns([1, 5])
+    with col_voltar:
+        if st.button("⬅️ Voltar"):
+            st.session_state['current_page'] = 'home'
+            st.rerun()
+
+    st.markdown("---")
     
     script_choice = st.selectbox(
-        "Selecione um script para executar:",
+        "Selecione uma ferramenta:",
         ("Selecione...", "Acurácia", "Validade", "Vasilhames", "Abastecimento"),
         key="log_select" 
     )
@@ -270,9 +315,11 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
 
-    # --- SCRIPT VASILHAMES FINAL (CORRIGIDO KEYERROR DATACOMPLETA) ---
+    # --- SCRIPT VASILHAMES (CORRIGIDO PERSISTÊNCIA) ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames")
+        
+        # INICIALIZA O BANCO COM CACHE
         engine = setup_database()
 
         st.write("---")
@@ -451,17 +498,20 @@ def logistics_page():
         if st.button("Processar e Consolidar Dados"):
             if uploaded_txt_files and uploaded_excel_contagem is not None:
                 try:
-                    st.info("Processando...")
+                    st.info("Carregando histórico do banco e processando novos arquivos...")
                     
+                    # 1. CARREGAR DADOS ANTIGOS (COM TRATAMENTO DE ERRO ROBUSTO)
                     df_old_txt_data = load_from_db('txt_data', engine)
                     df_old_pdf_data = load_from_db('pdf_data', engine)
                     df_old_vendas_data = load_from_db('vendas_data', engine)
                     df_old_excel_data = load_from_db('excel_data', engine)
                     
                     # CORREÇÃO DE COMPATIBILIDADE (RENOMEAR COLUNA ANTIGA NO BANCO)
-                    if 'DataCompleta' in df_old_excel_data.columns and 'DataCompleta_excel' not in df_old_excel_data.columns:
-                         df_old_excel_data.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
+                    if not df_old_excel_data.empty:
+                        if 'DataCompleta' in df_old_excel_data.columns and 'DataCompleta_excel' not in df_old_excel_data.columns:
+                             df_old_excel_data.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
 
+                    # 2. PROCESSAR TXT E CONCATENAR COM O ANTIGO
                     new_txt_data_list = []
                     for uploaded_txt_file in uploaded_txt_files:
                         df_txt_qty, effective_date_str, effective_date_full = process_txt_file_st(uploaded_txt_file)
@@ -472,13 +522,22 @@ def logistics_page():
                     
                     if new_txt_data_list:
                         df_new_txt = pd.concat(new_txt_data_list, ignore_index=True)
+                        # Aqui garantimos que df_old_txt_data existe mesmo que vazia para o concat não falhar
                         df_all_txt_combined = pd.concat([df_old_txt_data, df_new_txt], ignore_index=True)
-                        if 'DataCompleta' in df_all_txt_combined.columns: df_all_txt_combined['DataCompleta'] = pd.to_datetime(df_all_txt_combined['DataCompleta'], errors='coerce')
-                        df_all_processed_txt_data = df_all_txt_combined.groupby(['Vasilhame', 'Dia']).agg(Qtd_emprestimo=('Qtd_emprestimo', 'sum'), DataCompleta=('DataCompleta', 'max')).reset_index()
+                        if 'DataCompleta' in df_all_txt_combined.columns: 
+                            df_all_txt_combined['DataCompleta'] = pd.to_datetime(df_all_txt_combined['DataCompleta'], errors='coerce')
+                        
+                        df_all_processed_txt_data = df_all_txt_combined.groupby(['Vasilhame', 'Dia']).agg(
+                            Qtd_emprestimo=('Qtd_emprestimo', 'sum'), 
+                            DataCompleta=('DataCompleta', 'max')
+                        ).reset_index()
+                        
                         df_all_processed_txt_data.to_sql('txt_data', con=engine, if_exists='replace', index=False)
-                        st.success("Dados TXT atualizados!")
-                    else: df_all_processed_txt_data = df_old_txt_data 
+                        st.success("Dados TXT atualizados e salvos!")
+                    else: 
+                        df_all_processed_txt_data = df_old_txt_data 
                     
+                    # 3. PROCESSAR VENDAS E CONCATENAR
                     new_vendas_data_list = []
                     if uploaded_vendas_files:
                         for v_file in uploaded_vendas_files:
@@ -488,8 +547,14 @@ def logistics_page():
                     if new_vendas_data_list:
                         df_new_vendas = pd.concat(new_vendas_data_list, ignore_index=True)
                         df_all_vendas_combined = pd.concat([df_old_vendas_data, df_new_vendas], ignore_index=True)
-                        if 'DataCompleta' in df_all_vendas_combined.columns: df_all_vendas_combined['DataCompleta'] = pd.to_datetime(df_all_vendas_combined['DataCompleta'], errors='coerce')
-                        df_all_processed_vendas_data = df_all_vendas_combined.groupby(['Vasilhame', 'Dia']).agg(Vendas=('Vendas', 'sum'), DataCompleta=('DataCompleta', 'max')).reset_index()
+                        if 'DataCompleta' in df_all_vendas_combined.columns: 
+                            df_all_vendas_combined['DataCompleta'] = pd.to_datetime(df_all_vendas_combined['DataCompleta'], errors='coerce')
+                        
+                        df_all_processed_vendas_data = df_all_vendas_combined.groupby(['Vasilhame', 'Dia']).agg(
+                            Vendas=('Vendas', 'sum'), 
+                            DataCompleta=('DataCompleta', 'max')
+                        ).reset_index()
+                        
                         df_all_processed_vendas_data.to_sql('vendas_data', con=engine, if_exists='replace', index=False)
                         st.success("Dados de Vendas atualizados!")
                     else:
@@ -498,6 +563,7 @@ def logistics_page():
                     if df_all_processed_vendas_data.empty:
                          df_all_processed_vendas_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Vendas', 'DataCompleta'])
 
+                    # 4. PROCESSAR PDF E CONCATENAR
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
                         pdf_map = {
@@ -530,17 +596,24 @@ def logistics_page():
                         df_all_pdf_combined = pd.concat([df_old_pdf_data, df_new_pdf], ignore_index=True)
                         pdf_value_cols = [col for col in df_all_pdf_combined.columns if 'Credito' in col or 'Debito' in col]
                         df_all_pdf_combined[pdf_value_cols] = df_all_pdf_combined[pdf_value_cols].fillna(0)
-                        if 'DataCompleta' in df_all_pdf_combined.columns: df_all_pdf_combined['DataCompleta'] = pd.to_datetime(df_all_pdf_combined['DataCompleta'], errors='coerce')
+                        if 'DataCompleta' in df_all_pdf_combined.columns: 
+                            df_all_pdf_combined['DataCompleta'] = pd.to_datetime(df_all_pdf_combined['DataCompleta'], errors='coerce')
+                        
                         agg_dict = {col: 'sum' for col in pdf_value_cols}; agg_dict['DataCompleta'] = 'max' 
-                        if pdf_value_cols: df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
-                        else: df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(DataCompleta=('DataCompleta', 'max')).reset_index()
+                        if pdf_value_cols: 
+                            df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(agg_dict)
+                        else: 
+                            df_all_processed_pdf_data = df_all_pdf_combined.groupby(['Vasilhame', 'Dia'], as_index=False).agg(DataCompleta=('DataCompleta', 'max')).reset_index()
+                        
                         df_all_processed_pdf_data.to_sql('pdf_data', con=engine, if_exists='replace', index=False)
                         st.success("Dados PDF atualizados!")
-                    else: df_all_processed_pdf_data = df_old_pdf_data
+                    else: 
+                        df_all_processed_pdf_data = df_old_pdf_data
                     
                     if df_all_processed_txt_data.empty: df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Qtd_emprestimo', 'DataCompleta'])
                     if df_all_processed_pdf_data.empty: df_all_processed_pdf_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'DataCompleta'])
 
+                    # 5. PROCESSAR EXCEL E CONCATENAR
                     df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                     df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
                     df_contagem['DataCompleta'] = df_contagem['Carimbo de data/hora'].dt.date
@@ -660,11 +733,14 @@ def logistics_page():
                     if not df_old_excel_data.empty:
                          for col in df_excel_agg.columns:
                              if col not in df_old_excel_data.columns: df_old_excel_data[col] = 0
-                         if 'DataCompleta_excel' in df_old_excel_data.columns: df_old_excel_data['DataCompleta_excel'] = pd.to_datetime(df_old_excel_data['DataCompleta_excel'], errors='coerce')
+                         if 'DataCompleta_excel' in df_old_excel_data.columns: 
+                             df_old_excel_data['DataCompleta_excel'] = pd.to_datetime(df_old_excel_data['DataCompleta_excel'], errors='coerce')
+                         
                          df_excel_agg = pd.concat([df_old_excel_data, df_excel_agg]).drop_duplicates(subset=['Vasilhame', 'Dia'], keep='last').reset_index(drop=True)
                     
                     df_excel_agg.to_sql('excel_data', con=engine, if_exists='replace', index=False)
 
+                    # 6. UNIFICAR TUDO PARA EXIBIÇÃO
                     required_vasilhames = list(FACTORS.keys()) + list(CRATE_TO_BOTTLE_MAP.values())
                     all_dates = set()
                     if not df_excel_agg.empty: all_dates.update(df_excel_agg['Dia'].unique())
@@ -690,7 +766,6 @@ def logistics_page():
                     df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_vendas_data, on=['Vasilhame', 'Dia'], how='left')
                     
-                    # FIX KEY ERROR DATACOMPLETA_EXCEL
                     if 'DataCompleta_excel' not in df_final.columns:
                         df_final['DataCompleta_excel'] = pd.NaT
 
@@ -846,16 +921,19 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-    if st.button("Voltar para o Início", key="log_voltar"):
-        st.session_state['current_page'] = 'home'
-        st.rerun()
-
 # ====================================================================
-# SETOR COMERCIAL
+# 6. SETOR COMERCIAL
 # ====================================================================
 def commercial_page():
     st.title("Setor Comercial")
-    st.markdown("Bem-vindo(a) ao setor Comercial. Abaixo estão os scripts disponíveis para análise.")
+    
+    col_voltar, col_vazio = st.columns([1, 5])
+    with col_voltar:
+        if st.button("⬅️ Voltar"):
+            st.session_state['current_page'] = 'home'
+            st.rerun()
+
+    st.markdown("---")
     script_selection = st.selectbox("Selecione o script:", ("Selecione...", "Troca de Canal", "Circuito Execução"), key="com_select")
 
     if script_selection == "Troca de Canal":
@@ -919,18 +997,17 @@ def commercial_page():
                 with pd.ExcelWriter(output, engine="xlsxwriter") as writer: df_transformed.to_excel(writer, index=False)
                 st.download_button(label="📥 Baixar Arquivo", data=output.getvalue(), file_name="circuito_execucao_transformado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e: st.error(f"Erro: {e}")
-                
-    if st.button("Voltar para o Início", key="com_voltar"):
-        st.session_state['current_page'] = 'home'
-        st.rerun()
+
+# ====================================================================
+# 7. EXECUÇÃO PRINCIPAL
+# ====================================================================
 
 if 'is_logged_in' not in st.session_state: st.session_state['is_logged_in'] = False
 if 'current_page' not in st.session_state: st.session_state['current_page'] = 'login'
 if 'LOGIN_INFO' not in st.session_state: st.session_state['LOGIN_INFO'] = {"admin": "Joao789", "amanda": "12345", "marcia": "54321"}
-st.set_page_config(page_title="Lince Distribuidora - Login", page_icon="🏠", layout="centered")
-st.markdown("""<style>.stApp { background-color: #f0f2f6; } div.stButton > button:first-child { background-color: #007bff; color: white; border-radius: 5px; } .stTitle { text-align: center; color: #004d99; }</style>""", unsafe_allow_html=True)
 
 if st.session_state.get('is_logged_in', False):
     page_functions = {'home': main_page, 'logistics': logistics_page, 'commercial': commercial_page}
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
-else: login_form()
+else:
+    login_form()
