@@ -1310,10 +1310,23 @@ if 'current_page' not in st.session_state: st.session_state['current_page'] = 'l
 if 'LOGIN_INFO' not in st.session_state: st.session_state['LOGIN_INFO'] = {"admin": "Joao789", "amanda": "12345", "marcia": "54321"}
 
 if st.session_state.get('is_logged_in', False):
-    page_functions = {'home': main_page, 'logistics': logistics_page, 'commercial': commercial_page}
-    page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
+    # Adicione 'assessment': assessment_page no dicionário
+    page_functions = {
+        'home': main_page, 
+        'logistics': logistics_page, 
+        'commercial': commercial_page,
+        'assessment': assessment_page  # <--- NOVA LINHA AQUI
+    }
+    
+    # Carrega a página
+    current = st.session_state.get('current_page', 'home')
+    if current in page_functions:
+        page_functions[current]()
+    else:
+        main_page()
 else:
     login_form()
+
 
 
 
