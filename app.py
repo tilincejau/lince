@@ -564,49 +564,63 @@ def logistics_page():
                     st.info("Sincronizando com Google Sheets e processando arquivos...")
                     
                     # 1. CARREGAR DADOS ANTIGOS DA NUVEM (SHEETS)
-                    df_old_txt_data = load_from_gsheets(sheet_client, 'txt_data')
-                    df_old_pdf_data = load_from_gsheets(sheet_client, 'pdf_data')
-                    df_old_vendas_data = load_from_gsheets(sheet_client, 'vendas_data')
-                    df_old_excel_data = load_from_gsheets(sheet_client, 'excel_data')
-                    
-                   # 1. CARREGAR DADOS ANTIGOS DA NUVEM (SHEETS)
-                    df_old_txt_data = load_from_gsheets(sheet_client, 'txt_data')
-                    df_old_pdf_data = load_from_gsheets(sheet_client, 'pdf_data')
-                    df_old_vendas_data = load_from_gsheets(sheet_client, 'vendas_data')
-                    df_old_excel_data = load_from_gsheets(sheet_client, 'excel_data')
-                    
-                    # --- BLOCO DE CORREÇÃO (FORMATAÇÃO E LIMPEZA) ---
-                    def limpar_e_padronizar(df, col_valor=None):
+                    try:
+                        df_old_txt_data = load_from_gsheets(sheet_client, 'txt_data')
+                        df_old_pdf_data = load_from_gsheets(sheet_client, 'pdf_data')
+                        df_old_vendas_data = load_from_gsheets(sheet_client, 'vendas_data')
+                        df_old_excel_data = load_from_gsheets(sheet_client, 'excel_data')
+                    except Exception as e:
+                        st.error(f"Erro ao baixar dados da nuvem. Tente limpar e reiniciar. Detalhe: {e}")
+                        st.stop()
+
+                    # --- FUNÇÃO DE LIMPEZA PROFUNDA (BLINDAGEM) ---
+                    def sanear_dataframe(df, col_valor=None):
                         if df.empty: return df
                         
-                        # 1. Padronizar Data (Correção do Dia duplicado)
+                        # 1. FORÇAR DATA NO FORMATO DD/MM
+                        # Tenta usar a DataCompleta primeiro
                         if 'DataCompleta' in df.columns:
+                            # Converte para datetime (ignora erros)
                             df['DataCompleta'] = pd.to_datetime(df['DataCompleta'], errors='coerce')
+                            # Se a conversão falhou (NaT), remove a linha para não dar erro
                             df = df.dropna(subset=['DataCompleta'])
+                            # Recria a coluna Dia do zero, garantindo formato 05/11
                             df['Dia'] = df['DataCompleta'].dt.strftime('%d/%m')
                         
-                        # 2. Forçar conversão de Números (Correção do Estoque Zero)
+                        # 2. SE NÃO TIVER DATA COMPLETA, TENTA SALVAR A COLUNA DIA
+                        elif 'Dia' in df.columns:
+                            # Se o dia estiver como "2025-11-05", converte e ajusta
+                            try:
+                                temp_date = pd.to_datetime(df['Dia'], errors='coerce')
+                                df.loc[temp_date.notna(), 'Dia'] = temp_date.dt.strftime('%d/%m')
+                            except: pass
+
+                        # 3. FORÇAR NÚMEROS (CORRIGE O BUG DE 2112)
                         if col_valor and col_valor in df.columns:
-                            # Tenta limpar pontos e vírgulas se for string
-                            # Se o Google mandou uma "data" string, o coerce vai transformar em NaN (0), 
-                            # mas se você arrumou na planilha (passo 1), isso garante que será lido como número.
+                            # Se o valor for string, troca vírgula por ponto
+                            if df[col_valor].dtype == object:
+                                df[col_valor] = df[col_valor].astype(str).str.replace(',', '.')
+                            # Força virar número. Se for data ou texto estranho, vira 0.
                             df[col_valor] = pd.to_numeric(df[col_valor], errors='coerce').fillna(0)
-                            
+                        
                         return df
 
-                    # Aplica as correções especificando qual coluna é o valor numérico
-                    df_old_txt_data = limpar_e_padronizar(df_old_txt_data, col_valor='Qtd_emprestimo')
-                    df_old_pdf_data = limpar_e_padronizar(df_old_pdf_data) # PDF tem várias colunas, tratado depois
-                    df_old_vendas_data = limpar_e_padronizar(df_old_vendas_data, col_valor='Vendas')
-
-                    # Tratamento Especial para o Excel
+                    # Aplica a limpeza
+                    df_old_txt_data = sanear_dataframe(df_old_txt_data, col_valor='Qtd_emprestimo')
+                    df_old_pdf_data = sanear_dataframe(df_old_pdf_data) # PDF tem múltiplas colunas de valor
+                    df_old_vendas_data = sanear_dataframe(df_old_vendas_data, col_valor='Vendas')
+                    
+                    # Tratamento específico para o Excel (que tem nomes de colunas variados)
                     if not df_old_excel_data.empty:
-                        col_ref = 'DataCompleta_excel' if 'DataCompleta_excel' in df_old_excel_data.columns else 'DataCompleta'
-                        if col_ref in df_old_excel_data.columns:
-                             df_old_excel_data[col_ref] = pd.to_datetime(df_old_excel_data[col_ref], errors='coerce')
-                             df_old_excel_data.dropna(subset=[col_ref], inplace=True)
-                             df_old_excel_data['Dia'] = df_old_excel_data[col_ref].dt.strftime('%d/%m')
-                    # --- FIM DO BLOCO DE CORREÇÃO ---
+                        # Descobre qual é a coluna de data certa
+                        col_data = 'DataCompleta'
+                        if 'DataCompleta_excel' in df_old_excel_data.columns: col_data = 'DataCompleta_excel'
+                        
+                        if col_data in df_old_excel_data.columns:
+                            df_old_excel_data[col_data] = pd.to_datetime(df_old_excel_data[col_data], errors='coerce')
+                            df_old_excel_data.dropna(subset=[col_data], inplace=True)
+                            df_old_excel_data['Dia'] = df_old_excel_data[col_data].dt.strftime('%d/%m')
+                    # --- FIM DA BLINDAGEM ---
 
                     # COMPATIBILIDADE
                     if not df_old_excel_data.empty:
@@ -1120,6 +1134,7 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
 
 
 
