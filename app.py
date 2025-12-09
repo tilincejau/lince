@@ -169,7 +169,10 @@ def main_page():
     st.markdown(f"<h1 style='text-align: center;'>Página Inicial</h1>", unsafe_allow_html=True)
     st.markdown(f"<p style='text-align: center;'>Bem-vindo(a), <b>{st.session_state['username']}</b>!</p>", unsafe_allow_html=True)
     st.markdown("---")
-    col1, col2 = st.columns(2)
+    
+    # Colunas para os botões (agora são 3)
+    col1, col2, col3 = st.columns(3)
+    
     with col1:
         if st.button("🚛 Logística", use_container_width=True):
             st.session_state['current_page'] = 'logistics'
@@ -178,6 +181,12 @@ def main_page():
         if st.button("📈 Comercial", use_container_width=True):
             st.session_state['current_page'] = 'commercial'
             st.rerun()
+    with col3:
+        # NOVO BOTÃO AQUI
+        if st.button("📊 Assessment", use_container_width=True):
+            st.session_state['current_page'] = 'assessment'
+            st.rerun()
+            
     st.markdown("---")
     if st.button("Sair", use_container_width=True):
         st.session_state['is_logged_in'] = False
@@ -186,7 +195,7 @@ def main_page():
         st.rerun()
 
 # ====================================================================
-# 5. SETOR DE LOGÍSTICA
+# 1. SETOR DE LOGÍSTICA
 # ====================================================================
 def logistics_page():
     st.title("Setor de Logística")
@@ -1112,7 +1121,7 @@ def logistics_page():
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
 # ====================================================================
-# 6. SETOR COMERCIAL
+# 2. SETOR COMERCIAL
 # ====================================================================
 def commercial_page():
     st.title("Setor Comercial")
@@ -1189,7 +1198,111 @@ def commercial_page():
             except Exception as e: st.error(f"Erro: {e}")
 
 # ====================================================================
-# 7. EXECUÇÃO PRINCIPAL
+# 3. SETOR DE ASSESSMENT (NOVO)
+# ====================================================================
+def assessment_page():
+    st.title("Setor de Assessment")
+    
+    col_voltar, col_vazio = st.columns([1, 5])
+    with col_voltar:
+        if st.button("⬅️ Voltar"):
+            st.session_state['current_page'] = 'home'
+            st.rerun()
+
+    st.markdown("---")
+    
+    script_choice = st.selectbox(
+        "Selecione uma ferramenta:",
+        ("Selecione...", "CMDT"),
+        key="assess_select"
+    )
+    
+    if script_choice == "CMDT":
+        st.subheader("Filtro CMDT (Chopeiras e Refrigeradores)")
+        st.info("O arquivo deve conter a coluna: **Cmd_Material**")
+        
+        uploaded_file = st.file_uploader("Envie o arquivo CMDT (.xlsx)", type=["xlsx"], key="cmdt_uploader")
+        
+        if uploaded_file is not None:
+            try:
+                # Carregar o arquivo
+                df = pd.read_excel(uploaded_file)
+                
+                # Verificar se a coluna existe
+                coluna_chave = 'Cmd_Material'
+                if coluna_chave not in df.columns:
+                    st.error(f"Erro: A coluna '{coluna_chave}' não foi encontrada no arquivo.")
+                    return
+
+                # Normalizar a coluna para texto maiúsculo para facilitar a busca
+                # Cria uma série auxiliar temporária para filtragem (não altera o dado original se não quiser)
+                series_check = df[coluna_chave].astype(str).str.upper().str.strip()
+
+                # --- LÓGICA DE FILTRAGEM ---
+                
+                # 1. Chopeiras (Começam com: Chopeira, Chop, Chope)
+                # O termo 'CHOP' já cobre 'CHOPE' e 'CHOPEIRA', mas vamos ser explícitos conforme pedido
+                termos_chopeira = ('CHOPEIRA', 'CHOP', 'CHOPE') 
+                mask_chopeira = series_check.str.startswith(termos_chopeira)
+                df_chopeiras = df[mask_chopeira].copy()
+
+                # 2. Refrigeradores (Começam com: Ref, Refr, Visa, Pil)
+                termos_refri = ('REF', 'REFR', 'VISA', 'PIL')
+                mask_refri = series_check.str.startswith(termos_refri)
+                df_refrigeradores = df[mask_refri].copy()
+
+                # --- EXIBIÇÃO E DOWNLOAD ---
+                
+                st.markdown("---")
+                
+                # Coluna 1: Chopeiras
+                c1, c2 = st.columns(2)
+                
+                with c1:
+                    st.success(f"🍺 Chopeiras encontradas: **{len(df_chopeiras)}**")
+                    if not df_chopeiras.empty:
+                        # Botão Download Chopeiras
+                        output_chop = io.BytesIO()
+                        with pd.ExcelWriter(output_chop, engine='xlsxwriter') as writer:
+                            df_chopeiras.to_excel(writer, index=False)
+                        output_chop.seek(0)
+                        
+                        st.download_button(
+                            label="📥 Baixar Chopeiras (.xlsx)",
+                            data=output_chop,
+                            file_name="CMDT_Chopeiras.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                
+                # Coluna 2: Refrigeradores
+                with c2:
+                    st.success(f"❄️ Refrigeradores encontrados: **{len(df_refrigeradores)}**")
+                    if not df_refrigeradores.empty:
+                        # Botão Download Refrigeradores
+                        output_ref = io.BytesIO()
+                        with pd.ExcelWriter(output_ref, engine='xlsxwriter') as writer:
+                            df_refrigeradores.to_excel(writer, index=False)
+                        output_ref.seek(0)
+                        
+                        st.download_button(
+                            label="📥 Baixar Refrigeradores (.xlsx)",
+                            data=output_ref,
+                            file_name="CMDT_Refrigeradores.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+
+                # Preview dos dados (opcional)
+                with st.expander("Ver prévia dos dados filtrados"):
+                    st.write("**Chopeiras (Primeiras 5 linhas):**")
+                    st.dataframe(df_chopeiras.head())
+                    st.write("**Refrigeradores (Primeiras 5 linhas):**")
+                    st.dataframe(df_refrigeradores.head())
+
+            except Exception as e:
+                st.error(f"Erro ao processar o arquivo: {e}")
+
+# ====================================================================
+# 4. EXECUÇÃO PRINCIPAL
 # ====================================================================
 
 if 'is_logged_in' not in st.session_state: st.session_state['is_logged_in'] = False
@@ -1201,6 +1314,7 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
 
 
 
