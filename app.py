@@ -386,22 +386,42 @@ def logistics_page():
 
         st.write("---")
         st.subheader("⚙️ Gerenciamento")
-        col_reset, col_info = st.columns([1, 3])
-        with col_reset:
-            if st.button("🗑️ Limpar Nuvem (Reiniciar)", type="primary", help="Cuidado: Isso apaga todo o histórico salvo na Planilha Google!"):
-                try:
-                    # Lista de abas para limpar
-                    abas_para_limpar = ['txt_data', 'pdf_data', 'vendas_data', 'excel_data', 'CONSOLIDADO_GERAL']
-                    for tab in abas_para_limpar:
-                        try:
-                            ws = sheet_client.worksheet(tab)
-                            ws.clear()
-                        except: pass
-                    st.success("Histórico na nuvem apagado com sucesso!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao limpar o banco: {e}")
+        
+        # CRIA UMA CAIXA RETRÁTIL (EXPANDER) PARA ESCONDER O BOTÃO PERIGOSO
+        with st.expander("🔴 ZONA DE PERIGO: Limpar Banco de Dados (Clique para abrir)"):
+            st.warning("⚠️ ATENÇÃO: Esta ação é IRREVERSÍVEL!")
+            st.markdown("Ao clicar no botão abaixo, **todo o histórico** salvo nas planilhas do Google (TXT, PDF, Vendas, Excel) será apagado permanentemente.")
+            
+            # CHECKBOX DE SEGURANÇA (TRAVA)
+            trava_seguranca = st.checkbox("Sim, eu tenho certeza e quero apagar todo o histórico.")
+            
+            # O BOTÃO SÓ APARECE SE A TRAVA ESTIVER MARCADA
+            if trava_seguranca:
+                if st.button("🗑️ CONFIRMAR LIMPEZA TOTAL", type="primary"):
+                    try:
+                        # Lista de abas para limpar
+                        abas_para_limpar = ['txt_data', 'pdf_data', 'vendas_data', 'excel_data', 'CONSOLIDADO_GERAL']
+                        bar = st.progress(0)
+                        
+                        for i, tab in enumerate(abas_para_limpar):
+                            try:
+                                ws = sheet_client.worksheet(tab)
+                                ws.clear()
+                            except: pass
+                            bar.progress((i + 1) / len(abas_para_limpar))
+                            
+                        st.success("Histórico na nuvem apagado com sucesso!")
+                        # Aguarda 2 segundos e recarrega
+                        import time
+                        time.sleep(2)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao limpar o banco: {e}")
+            else:
+                st.info("Para liberar o botão de apagar, marque a caixa de confirmação acima.")
+
         st.write("---")
+    
 
         def process_vendas_file(file_content):
             content = file_content.getvalue().decode('latin1')
@@ -1181,6 +1201,7 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
 
 
 
