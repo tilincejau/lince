@@ -569,6 +569,31 @@ def logistics_page():
                     df_old_vendas_data = load_from_gsheets(sheet_client, 'vendas_data')
                     df_old_excel_data = load_from_gsheets(sheet_client, 'excel_data')
                     
+                    # --- BLOCO DE CORREÇÃO (ADICIONE ISSO AQUI) ---
+                    # Essa função força o banco antigo a ficar no formato dd/mm igual ao seu arquivo novo
+                    def padronizar_formato_banco(df):
+                        if not df.empty and 'DataCompleta' in df.columns:
+                            # Garante que é uma data válida
+                            df['DataCompleta'] = pd.to_datetime(df['DataCompleta'], errors='coerce')
+                            # Remove datas inválidas (NaT) se houver
+                            df = df.dropna(subset=['DataCompleta'])
+                            # Força a coluna Dia a ser dd/mm (ex: 05/11)
+                            df['Dia'] = df['DataCompleta'].dt.strftime('%d/%m')
+                        return df
+
+                    # Aplica a correção em todas as tabelas que vieram do Google Sheets
+                    df_old_txt_data = padronizar_formato_banco(df_old_txt_data)
+                    df_old_pdf_data = padronizar_formato_banco(df_old_pdf_data)
+                    df_old_vendas_data = padronizar_formato_banco(df_old_vendas_data)
+
+                    # O Excel precisa de um cuidado extra com o nome da coluna
+                    if not df_old_excel_data.empty:
+                        col_ref = 'DataCompleta_excel' if 'DataCompleta_excel' in df_old_excel_data.columns else 'DataCompleta'
+                        if col_ref in df_old_excel_data.columns:
+                             df_old_excel_data[col_ref] = pd.to_datetime(df_old_excel_data[col_ref], errors='coerce')
+                             df_old_excel_data.dropna(subset=[col_ref], inplace=True)
+                             df_old_excel_data['Dia'] = df_old_excel_data[col_ref].dt.strftime('%d/%m')
+
                     # COMPATIBILIDADE
                     if not df_old_excel_data.empty:
                         if 'DataCompleta' in df_old_excel_data.columns and 'DataCompleta_excel' not in df_old_excel_data.columns:
@@ -1081,6 +1106,7 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
 
 
 
