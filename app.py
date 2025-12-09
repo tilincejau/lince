@@ -857,7 +857,7 @@ def logistics_page():
                     st.success("Contagem Excel: Dados atualizados na Nuvem!")
 
                     # ====================================================================
-                    # 6. UNIFICAR TUDO PARA EXIBIÇÃO (CORRIGIDO PARA REMOVER DUPLICATAS)
+                    # 6. UNIFICAR TUDO PARA EXIBIÇÃO (CORRIGIDO PARA INCLUIR TODOS OS PRODUTOS)
                     # ====================================================================
                     
                     # Função auxiliar para garantir que a coluna 'Dia' seja estritamente 'dd/mm'
@@ -865,104 +865,96 @@ def logistics_page():
                         if df.empty: return df
                         df = df.copy()
                         
-                        # Se tiver DataCompleta, usa ela como fonte da verdade
                         if 'DataCompleta' in df.columns:
                             df['DataCompleta'] = pd.to_datetime(df['DataCompleta'], errors='coerce')
-                            # Se falhar a conversão, tenta não perder a linha
                             mask_valid = df['DataCompleta'].notna()
                             if mask_valid.any():
                                 df.loc[mask_valid, 'Dia'] = df.loc[mask_valid, 'DataCompleta'].dt.strftime('%d/%m')
                         
-                        # Se ainda assim o Dia estiver estranho (ex: 2025-11-05 string), força conversão
                         try:
-                            # Tenta converter a coluna Dia como data
                             temp_dates = pd.to_datetime(df['Dia'], format='%d/%m', errors='coerce')
-                            # Se deu NaT (falha), tenta formato universal
                             mask_nat = temp_dates.isna()
                             if mask_nat.any():
                                 temp_dates.loc[mask_nat] = pd.to_datetime(df.loc[mask_nat, 'Dia'], errors='coerce')
-                            
-                            # Aplica o formato visual final
                             df.loc[temp_dates.notna(), 'Dia'] = temp_dates.dt.strftime('%d/%m')
-                        except:
-                            pass
-                            
+                        except: pass
                         return df
 
-                    # 1. Aplica a padronização visual em TODAS as fontes de dados antes de misturar
+                    # 1. Aplica a padronização visual
                     df_excel_agg = forcar_formato_visual(df_excel_agg)
                     df_all_processed_txt_data = forcar_formato_visual(df_all_processed_txt_data)
                     df_all_processed_pdf_data = forcar_formato_visual(df_all_processed_pdf_data)
                     df_all_processed_vendas_data = forcar_formato_visual(df_all_processed_vendas_data)
 
-                    # 2. Gera a lista de produtos e datas únicas
-                    required_vasilhames = list(FACTORS.keys()) + list(CRATE_TO_BOTTLE_MAP.values())
+                    # 2. Gera a lista de DATAS únicas
                     all_dates = set()
-                    
                     if not df_excel_agg.empty: all_dates.update(df_excel_agg['Dia'].dropna().unique())
                     if not df_all_processed_txt_data.empty: all_dates.update(df_all_processed_txt_data['Dia'].dropna().unique())
                     if not df_all_processed_pdf_data.empty: all_dates.update(df_all_processed_pdf_data['Dia'].dropna().unique())
-                    
-                    # Garante que a data atual esteja na lista se não houver nada
                     if not all_dates: all_dates.add(datetime.now().strftime('%d/%m'))
+
+                    # 3. Gera a lista de PRODUTOS (Vasilhames) únicos
+                    # Começa com os obrigatórios (Garrafas e Caixas)
+                    required_vasilhames = set(list(FACTORS.keys()) + list(CRATE_TO_BOTTLE_MAP.values()))
                     
-                    # 3. Cria o Esqueleto (Grid mestre)
+                    # Adiciona dinamicamente qualquer outro produto encontrado nos arquivos (Barris, Cilindros, etc.)
+                    if not df_all_processed_txt_data.empty and 'Vasilhame' in df_all_processed_txt_data.columns:
+                        required_vasilhames.update(df_all_processed_txt_data['Vasilhame'].dropna().unique())
+                    
+                    if not df_all_processed_pdf_data.empty and 'Vasilhame' in df_all_processed_pdf_data.columns:
+                        required_vasilhames.update(df_all_processed_pdf_data['Vasilhame'].dropna().unique())
+                        
+                    if not df_excel_agg.empty and 'Vasilhame' in df_excel_agg.columns:
+                        required_vasilhames.update(df_excel_agg['Vasilhame'].dropna().unique())
+
+                    # 4. Cria o Esqueleto (Grid mestre)
                     skeleton_rows = []
-                    for prod in required_vasilhames:
-                        for day in sorted(list(all_dates)): # Ordena para ficar bonito
+                    sorted_products = sorted(list(required_vasilhames)) # Ordena alfabeticamente
+                    
+                    for prod in sorted_products:
+                        for day in sorted(list(all_dates)):
                              skeleton_rows.append({'Vasilhame': prod, 'Dia': day})
                     df_skeleton = pd.DataFrame(skeleton_rows)
 
-                    # 4. Faz o Merge (Cruzamento)
-                    # Primeiro cria a base com todas as combinações possíveis
+                    # 5. Faz o Merge (Cruzamento)
                     df_final = df_skeleton.copy()
                     
-                    # Junta Excel
+                    # Junta as tabelas
                     df_final = pd.merge(df_final, df_excel_agg, on=['Vasilhame', 'Dia'], how='left')
-                    # Junta TXT
                     df_final = pd.merge(df_final, df_all_processed_txt_data, on=['Vasilhame', 'Dia'], how='left')
-                    # Junta PDF
                     df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
-                    # Junta Vendas
                     df_final = pd.merge(df_final, df_all_processed_vendas_data, on=['Vasilhame', 'Dia'], how='left')
                     
-                    # 5. Tratamento de Data Completa para ordenação
-                    # Consolida as colunas de data que podem ter vindo dos merges
+                    # 6. Tratamento de Data Completa
                     cols_data = [c for c in df_final.columns if 'DataCompleta' in c]
                     df_final['DataCompleta'] = pd.NaT
-                    
                     for col in cols_data:
                         df_final['DataCompleta'] = df_final['DataCompleta'].fillna(pd.to_datetime(df_final[col], errors='coerce'))
-                        # Remove a coluna auxiliar depois de usar
-                        if col != 'DataCompleta':
-                            df_final.drop(col, axis=1, inplace=True)
+                        if col != 'DataCompleta': df_final.drop(col, axis=1, inplace=True)
 
-                    # Se ainda faltar data, infere pelo Dia + Ano Atual
                     def infer_date(row):
                         if pd.isna(row['DataCompleta']):
                             try: 
                                 current_year = datetime.now().year
-                                # Se o dia for "17/11" e estamos em "01/01", cuidado com ano, mas para simplicidade:
                                 return datetime.strptime(f"{row['Dia']}/{current_year}", "%d/%m/%Y")
                             except: return pd.NaT
                         return row['DataCompleta']
                     
                     df_final['DataCompleta'] = df_final.apply(infer_date, axis=1)
 
-                    # 6. Limpeza final e Cálculos
+                    # 7. Limpeza final e Cálculos
                     output_form_cols = ['Quantidade estoque cheias', 'Quantidade estoque vazias', 'Em transito cheias (Entrega)', 'Em transito vazias (Entrega)', 'Em transito (carreta)']
                     numeric_cols = ['Contagem Cheias', 'Contagem Vazias', 'Qtd_emprestimo', 'Vendas'] + output_form_cols + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
                     
-                    # Preenche vazios com 0
                     for col in numeric_cols:
                         if col in df_final.columns: 
                             df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0)
                         else:
-                            df_final[col] = 0 # Se a coluna não existir, cria com 0
+                            df_final[col] = 0
 
                     if 'Vendas' not in df_final.columns: df_final['Vendas'] = 0
 
-                    # Agrupa para somar caso ainda tenha sobrado alguma duplicata de linha
+                    # Agrupa para somar duplicatas
                     groupby_cols = ['Vasilhame', 'Dia', 'DataCompleta']
                     cols_to_sum = [c for c in numeric_cols if c in df_final.columns]
                     df_final = df_final.groupby(groupby_cols)[cols_to_sum].sum().reset_index()
@@ -970,33 +962,26 @@ def logistics_page():
                     # Cálculo Final
                     df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem Cheias'] + df_final['Contagem Vazias'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1) + df_final['Vendas']
                     
-                    # Ordenação
                     df_final.sort_values(by=['Vasilhame', 'DataCompleta'], inplace=True, na_position='first')
                     
-                    # Regra de Negócio (Diferença)
+                    # Regra de Negócio
                     def calcular_diferenca_regra_negocio(grupo):
                         data_base_travamento = pd.to_datetime('2025-11-05')
                         data_inicio_calculo = pd.to_datetime('2025-11-10')
-                        
                         mask_base = grupo['DataCompleta'] >= data_base_travamento
                         dados_base = grupo.loc[mask_base]
-                        
                         if not dados_base.empty: estoque_travado = dados_base.iloc[0]['Total Revenda']
                         else: estoque_travado = 0
-                        
                         diferencas = pd.Series(0.0, index=grupo.index)
                         mask_calculo = grupo['DataCompleta'] >= data_inicio_calculo
-                        
                         if estoque_travado != 0: 
                             diferencas[mask_calculo] = grupo.loc[mask_calculo, 'Total Revenda'] - estoque_travado
-                        
                         grupo['Diferença'] = diferencas
                         return grupo
 
                     df_final = df_final.groupby('Vasilhame', group_keys=False).apply(calcular_diferenca_regra_negocio)
                     df_final_output = df_final.drop('DataCompleta', axis=1)
 
-                    # Reordenar colunas
                     output_cols = [c for c in df_final_output.columns if c not in ['Diferença', 'Vendas']]
                     df_final_output = df_final_output[output_cols + ['Diferença', 'Vendas']]
                     
@@ -1196,6 +1181,7 @@ if st.session_state.get('is_logged_in', False):
     page_functions.get(st.session_state.get('current_page', 'home'), main_page)()
 else:
     login_form()
+
 
 
 
