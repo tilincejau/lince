@@ -1198,7 +1198,7 @@ def commercial_page():
             except Exception as e: st.error(f"Erro: {e}")
 
 # ====================================================================
-# 3. SETOR DE ASSESSMENT (NOVO)
+# 8. SETOR DE ASSESSMENT
 # ====================================================================
 def assessment_page():
     st.title("Setor de Assessment")
@@ -1211,12 +1211,14 @@ def assessment_page():
 
     st.markdown("---")
     
+    # Adicionada a nova opção no menu
     script_choice = st.selectbox(
         "Selecione uma ferramenta:",
-        ("Selecione...", "CMDT"),
+        ("Selecione...", "CMDT", "Controle MPVs"),
         key="assess_select"
     )
     
+    # --- FERRAMENTA 1: CMDT ---
     if script_choice == "CMDT":
         st.subheader("Filtro CMDT (Chopeiras e Refrigeradores)")
         st.info("O arquivo deve conter a coluna: **Cmd_Material**")
@@ -1225,81 +1227,119 @@ def assessment_page():
         
         if uploaded_file is not None:
             try:
-                # Carregar o arquivo
                 df = pd.read_excel(uploaded_file)
                 
-                # Verificar se a coluna existe
                 coluna_chave = 'Cmd_Material'
                 if coluna_chave not in df.columns:
                     st.error(f"Erro: A coluna '{coluna_chave}' não foi encontrada no arquivo.")
                     return
 
-                # Normalizar a coluna para texto maiúsculo para facilitar a busca
-                # Cria uma série auxiliar temporária para filtragem (não altera o dado original se não quiser)
                 series_check = df[coluna_chave].astype(str).str.upper().str.strip()
 
-                # --- LÓGICA DE FILTRAGEM ---
-                
-                # 1. Chopeiras (Começam com: Chopeira, Chop, Chope)
-                # O termo 'CHOP' já cobre 'CHOPE' e 'CHOPEIRA', mas vamos ser explícitos conforme pedido
+                # Chopeiras
                 termos_chopeira = ('CHOPEIRA', 'CHOP', 'CHOPE') 
                 mask_chopeira = series_check.str.startswith(termos_chopeira)
                 df_chopeiras = df[mask_chopeira].copy()
 
-                # 2. Refrigeradores (Começam com: Ref, Refr, Visa, Pil)
+                # Refrigeradores
                 termos_refri = ('REF', 'REFR', 'VISA', 'PIL')
                 mask_refri = series_check.str.startswith(termos_refri)
                 df_refrigeradores = df[mask_refri].copy()
 
-                # --- EXIBIÇÃO E DOWNLOAD ---
-                
                 st.markdown("---")
-                
-                # Coluna 1: Chopeiras
                 c1, c2 = st.columns(2)
                 
                 with c1:
                     st.success(f"🍺 Chopeiras encontradas: **{len(df_chopeiras)}**")
                     if not df_chopeiras.empty:
-                        # Botão Download Chopeiras
                         output_chop = io.BytesIO()
                         with pd.ExcelWriter(output_chop, engine='xlsxwriter') as writer:
                             df_chopeiras.to_excel(writer, index=False)
                         output_chop.seek(0)
-                        
-                        st.download_button(
-                            label="📥 Baixar Chopeiras (.xlsx)",
-                            data=output_chop,
-                            file_name="CMDT_Chopeiras.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
+                        st.download_button(label="📥 Baixar Chopeiras", data=output_chop, file_name="CMDT_Chopeiras.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 
-                # Coluna 2: Refrigeradores
                 with c2:
                     st.success(f"❄️ Refrigeradores encontrados: **{len(df_refrigeradores)}**")
                     if not df_refrigeradores.empty:
-                        # Botão Download Refrigeradores
                         output_ref = io.BytesIO()
                         with pd.ExcelWriter(output_ref, engine='xlsxwriter') as writer:
                             df_refrigeradores.to_excel(writer, index=False)
                         output_ref.seek(0)
-                        
-                        st.download_button(
-                            label="📥 Baixar Refrigeradores (.xlsx)",
-                            data=output_ref,
-                            file_name="CMDT_Refrigeradores.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-
-                # Preview dos dados (opcional)
-                with st.expander("Ver prévia dos dados filtrados"):
-                    st.write("**Chopeiras (Primeiras 5 linhas):**")
-                    st.dataframe(df_chopeiras.head())
-                    st.write("**Refrigeradores (Primeiras 5 linhas):**")
-                    st.dataframe(df_refrigeradores.head())
+                        st.download_button(label="📥 Baixar Refrigeradores", data=output_ref, file_name="CMDT_Refrigeradores.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo: {e}")
+
+    # --- FERRAMENTA 2: CONTROLE MPVs (NOVA) ---
+    elif script_choice == "Controle MPVs":
+        st.subheader("Controle MPVs")
+        st.info("Colunas necessárias: **Estoque Atual**, **Estoque Saída**, **Prod (Cód-Descr)**")
+        
+        uploaded_mpv = st.file_uploader("Envie o arquivo de Controle (.xlsx)", type=["xlsx"], key="mpv_uploader")
+        
+        if uploaded_mpv is not None:
+            try:
+                df_mpv = pd.read_excel(uploaded_mpv)
+                
+                # Verifica colunas necessárias
+                required_cols = ['Estoque Atual', 'Estoque Saída', 'Prod (Cód-Descr)']
+                missing_cols = [col for col in required_cols if col not in df_mpv.columns]
+                
+                if missing_cols:
+                    st.error(f"Erro: As seguintes colunas não foram encontradas: {', '.join(missing_cols)}")
+                else:
+                    # Totais antes do filtro para comparação
+                    total_inicial = len(df_mpv)
+                    
+                    # 1. Remover Estoque Atual Negativo (Mantém >= 0)
+                    # Convertemos para numérico para garantir, erros viram NaN
+                    df_mpv['Estoque Atual'] = pd.to_numeric(df_mpv['Estoque Atual'], errors='coerce').fillna(0)
+                    df_mpv = df_mpv[df_mpv['Estoque Atual'] >= 0]
+                    
+                    # 2. Remover Estoque Saída Zerado (Mantém != 0)
+                    df_mpv['Estoque Saída'] = pd.to_numeric(df_mpv['Estoque Saída'], errors='coerce').fillna(0)
+                    df_mpv = df_mpv[df_mpv['Estoque Saída'] != 0]
+                    
+                    # 3. Remover produtos com nomes proibidos
+                    # Lista de palavras para excluir
+                    palavras_proibidas = [
+                        "GARRAFA", "CAIXA", "MESA", "PALETE", "TV", "DIVOSAN", 
+                        "REF", "REFR", "CHOPE", "CHOP", "CHOPEIRA"
+                    ]
+                    
+                    # Normaliza a coluna para maiúsculo e string
+                    col_prod = df_mpv['Prod (Cód-Descr)'].astype(str).str.upper()
+                    
+                    # Cria uma máscara: True onde encontrar qualquer palavra proibida
+                    # O join cria uma regex "GARRAFA|CAIXA|MESA..."
+                    padrao_regex = '|'.join(palavras_proibidas)
+                    mask_proibidos = col_prod.str.contains(padrao_regex, regex=True, na=False)
+                    
+                    # Mantém apenas o que NÃO (~) for proibido
+                    df_final_mpv = df_mpv[~mask_proibidos].copy()
+                    
+                    total_final = len(df_final_mpv)
+                    
+                    st.success(f"Processamento concluído! Linhas restantes: **{total_final}** (de {total_inicial})")
+                    
+                    # Preview
+                    st.dataframe(df_final_mpv.head(10))
+                    
+                    # Botão de Download
+                    output_mpv = io.BytesIO()
+                    with pd.ExcelWriter(output_mpv, engine='xlsxwriter') as writer:
+                        df_final_mpv.to_excel(writer, index=False)
+                    output_mpv.seek(0)
+                    
+                    st.download_button(
+                        label="📥 Baixar MPVs Filtrados",
+                        data=output_mpv,
+                        file_name="Controle_MPVs_Filtrado.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+
+            except Exception as e:
+                st.error(f"Erro ao processar MPVs: {e}")
 
 # ====================================================================
 # 4. EXECUÇÃO PRINCIPAL
@@ -1326,6 +1366,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
