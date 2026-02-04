@@ -1433,16 +1433,3 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
-
-
-
-
-
-
-
-
-
-
-
-
-
