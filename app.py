@@ -275,7 +275,9 @@ def logistics_page():
 
     elif script_choice == "Validade":
         st.subheader("Controle de Validade")
+
         def parse_estoque_txt_st(file_content):
+            # ... (MANTÉM O CÓDIGO DA FUNÇÃO parse_estoque_txt_st IGUAL AO ORIGINAL)
             lines = [line.decode('latin1') for line in file_content.getvalue().splitlines()]
             separator_string = '-' * 116
             separator_indices = [i for i, line in enumerate(lines) if separator_string in line]
@@ -297,59 +299,113 @@ def logistics_page():
                         row_values.extend([int(cx), int(un)])
                     if len(row_values) == 14: data.append(row_values)
             return pd.DataFrame(data, columns=col_names)
+
         def extract_units_per_box(product_name):
+            # ... (MANTÉM IGUAL AO ORIGINAL)
             product_name = str(product_name).upper().replace(' ', '')
             match_multiplication = re.search(r'(\d+)X(\d+)(?:UN|U)', product_name)
             if match_multiplication: return int(match_multiplication.group(1)) * int(match_multiplication.group(2))
             match_direct = re.search(r'(\d+)(?:UN|U)', product_name)
             if match_direct: return int(match_direct.group(1)) 
             return 1
+
         uploaded_excel_file = st.file_uploader("Envie o arquivo Excel 'Controle de Validade.xlsx'", type=["xlsx"], key="validade_excel_uploader") 
         uploaded_txt_file = st.file_uploader("Envie o arquivo de texto de estoque", type=["txt"], key="validade_txt_uploader")
+
         if uploaded_excel_file is not None and uploaded_txt_file is not None:
             try:
                 df_validade = pd.read_excel(uploaded_excel_file)
+                # Limpeza básica nos nomes das colunas
                 df_validade.columns = df_validade.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
+
                 df_estoque = parse_estoque_txt_st(uploaded_txt_file)
                 if df_estoque.empty: st.warning("O arquivo TXT está vazio ou não pôde ser processado."); return
-                validity_cols = ['Validade', 'Validade.1', 'Validade.2', 'Validade.3', 'Validade.4']
+
+                # --- CORREÇÃO AQUI: LISTAS ATUALIZADAS PARA O SEU FORMATO EXATO ---
+                # Antes estava 'Validade.1', agora está 'Validade 2', etc.
+                validity_cols = ['Validade', 'Validade 2', 'Validade 3', 'Validade 4', 'Validade 5']
                 quantity_caixa_cols = ['Quantidade (CAIXA)', 'Quantidade 2 (CAIXA)', 'Quantidade 3 (CAIXA)', 'Quantidade 4 (CAIXA)', 'Quantidade 5 (CAIXA)']
                 quantity_unidade_cols = ['Quantidade (UNIDADE)', 'Quantidade 2 (UNIDADE)', 'Quantidade 3 (UNIDADE)', 'Quantidade 4 (UNIDADE)', 'Quantidade 5 (UNIDADE)']
+                
                 all_validity_entries = []
+                
+                # Loop ajustado para ser mais tolerante com nomes de colunas
                 for i in range(len(validity_cols)):
-                    cols_to_check = ['Qual Produto ?', validity_cols[i], quantity_caixa_cols[i], quantity_unidade_cols[i]]
+                    v_col = validity_cols[i]
+                    c_col = quantity_caixa_cols[i]
+                    u_col = quantity_unidade_cols[i]
+
+                    # Verifica se a coluna existe no Excel (se não existir exatamente, tenta achar uma parecida)
+                    if v_col not in df_validade.columns:
+                        # Tenta fallback para o padrão antigo (com ponto) caso o Excel mude no futuro
+                        v_col_alt = v_col.replace(' ', '.') 
+                        if v_col_alt in df_validade.columns:
+                            v_col = v_col_alt
+                    
+                    cols_to_check = ['Qual Produto ?', v_col] # Não obriga a ter coluna de Qtd se tiver só a validade preenchida
+                    
                     if all(col in df_validade.columns for col in cols_to_check):
-                        temp_df = df_validade[cols_to_check].copy()
-                        temp_df.rename(columns={validity_cols[i]: 'Validade', quantity_caixa_cols[i]: 'Quantidade (CAIXA)', quantity_unidade_cols[i]: 'Quantidade (UNIDADE)'}, inplace=True)
+                        # Pega colunas de qtd se existirem, se não, assume 0
+                        cols_select = ['Qual Produto ?', v_col]
+                        if c_col in df_validade.columns: cols_select.append(c_col)
+                        if u_col in df_validade.columns: cols_select.append(u_col)
+
+                        temp_df = df_validade[cols_select].copy()
+                        
+                        # Renomeia para padrão interno
+                        rename_map = {v_col: 'Validade'}
+                        if c_col in temp_df.columns: rename_map[c_col] = 'Quantidade (CAIXA)'
+                        if u_col in temp_df.columns: rename_map[u_col] = 'Quantidade (UNIDADE)'
+                        
+                        temp_df.rename(columns=rename_map, inplace=True)
+                        
+                        # Garante colunas numéricas
+                        if 'Quantidade (CAIXA)' not in temp_df.columns: temp_df['Quantidade (CAIXA)'] = 0
+                        if 'Quantidade (UNIDADE)' not in temp_df.columns: temp_df['Quantidade (UNIDADE)'] = 0
+
                         all_validity_entries.append(temp_df)
+
                 all_validity_entries = [df for df in all_validity_entries if not df.dropna(subset=['Validade']).empty]
+                
                 melted_df_validade_all = pd.concat(all_validity_entries, ignore_index=True) if all_validity_entries else pd.DataFrame(columns=['Qual Produto ?', 'Validade', 'Quantidade (CAIXA)', 'Quantidade (UNIDADE)'])
+                
                 melted_df_validade_all.dropna(subset=['Validade'], inplace=True)
                 melted_df_validade_all['Validade'] = pd.to_datetime(melted_df_validade_all['Validade'], errors='coerce')
                 melted_df_validade_all.dropna(subset=['Validade'], inplace=True)
+                
                 melted_df_validade_all['Quantidade (CAIXA)'] = pd.to_numeric(melted_df_validade_all['Quantidade (CAIXA)'], errors='coerce').fillna(0)
                 melted_df_validade_all['Quantidade (UNIDADE)'] = pd.to_numeric(melted_df_validade_all['Quantidade (UNIDADE)'], errors='coerce').fillna(0)
+                
                 split_data_validade = melted_df_validade_all['Qual Produto ?'].astype(str).str.split(' - ', n=1, expand=True)
                 melted_df_validade_all['Codigo Produto'] = split_data_validade[0].str.strip()
                 melted_df_validade_all['Nome Produto'] = split_data_validade[1].str.strip()
+                
                 melted_df_validade_all['Units_Per_Box_Temp'] = melted_df_validade_all['Nome Produto'].apply(extract_units_per_box)
+                
                 grouped = melted_df_validade_all.groupby(['Codigo Produto', 'Nome Produto', 'Validade']).agg({'Quantidade (CAIXA)': 'sum', 'Quantidade (UNIDADE)': 'sum', 'Units_Per_Box_Temp': 'first'}).reset_index()
+                
                 def convert_total_units_to_boxes_and_units(row):
                     units_per_box = row['Units_Per_Box_Temp'] or 1
                     total_units = (row['Quantidade (CAIXA)'] * units_per_box) + row['Quantidade (UNIDADE)']
                     row['Quantidade (CAIXA)'] = total_units // units_per_box
                     row['Quantidade (UNIDADE)'] = total_units % units_per_box
                     return row
+                    
                 grouped = grouped.apply(convert_total_units_to_boxes_and_units, axis=1)
                 grouped.drop('Units_Per_Box_Temp', axis=1, inplace=True)
+                
                 data_atual = datetime.now()
                 grouped['Dias para Vencer'] = (grouped['Validade'] - data_atual).dt.days
+                
                 conditions = [grouped['Dias para Vencer'] <= 45, (grouped['Dias para Vencer'] > 45) & (grouped['Dias para Vencer'] <= 60), grouped['Dias para Vencer'] > 60]
                 choices = ['VALIDADE CURTA', 'ATENÇÃO', 'OK']
                 grouped['Status Validade'] = np.select(conditions, choices, default='Indefinido')
+                
                 grouped['Validade_DateOnly'] = grouped['Validade'].dt.date
+                
                 sorted_grouped = grouped.sort_values(by=['Codigo Produto', 'Validade']).reset_index(drop=True)
                 sorted_grouped['Validade_Rank'] = sorted_grouped.groupby('Codigo Produto')['Validade'].rank(method='first').astype(int)
+                
                 final_rows = []
                 for product_code, group in sorted_grouped.groupby('Codigo Produto'):
                     row = {'Codigo Produto': product_code, 'Nome Produto': group['Nome Produto'].iloc[0]}
@@ -361,26 +417,37 @@ def logistics_page():
                         row[f'Dias para Vencer {i}'] = r['Dias para Vencer']
                         row[f'Status Validade {i}'] = r['Status Validade']
                     final_rows.append(row)
+                    
                 final_df = pd.DataFrame(final_rows)
+                
                 if not df_estoque.empty:
                     df_estoque['COD.RED.'] = df_estoque['COD.RED.'].astype(str)
                     final_df['Codigo Produto'] = final_df['Codigo Produto'].astype(str)
+                    
                     df_saldo = df_estoque[['COD.RED.', 'SALDO FÍSICO CX', 'SALDO FÍSICO UN']].drop_duplicates('COD.RED.')
                     df_saldo.rename(columns={'SALDO FÍSICO CX': 'Saldo Físico TXT Caixa', 'SALDO FÍSICO UN': 'Saldo Físico TXT Unidade'}, inplace=True)
+                    
                     final_df = pd.merge(final_df, df_saldo, how='left', left_on='Codigo Produto', right_on='COD.RED.')
                     final_df.drop('COD.RED.', axis=1, inplace=True)
+                
                 quantidade_caixa_cols = [col for col in final_df.columns if re.match(r'Quantidade \(CAIXA\) \d+', col)]
                 quantidade_unidade_cols = [col for col in final_df.columns if re.match(r'Quantidade \(UNIDADE\) \d+', col)]
+                
                 final_df['Contagem Fisica CX'] = final_df[quantidade_caixa_cols].sum(axis=1)
                 final_df['Contagem Fisica UN'] = final_df[quantidade_unidade_cols].sum(axis=1)
+                
                 st.subheader("✅ Relatório de Validade Gerado")
                 st.dataframe(final_df)
+                
                 excel_data = io.BytesIO()
                 final_df.to_excel(excel_data, sheet_name='Controle de Estoque', index=False)
                 excel_data.seek(0)
                 st.download_button(label="📥 Baixar Relatório de Validade", data=excel_data, file_name="Controle_Estoque_Completo.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
+                import traceback
+                st.text(traceback.format_exc())
 
     # --- SCRIPT VASILHAMES (COM SALVAMENTO DO CONSOLIDADO) ---
     elif script_choice == "Vasilhames":
@@ -1366,6 +1433,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
