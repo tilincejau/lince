@@ -1186,7 +1186,6 @@ def logistics_page():
 
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
-
 # ====================================================================
 # 2. SETOR COMERCIAL
 # ====================================================================
@@ -1247,7 +1246,7 @@ def commercial_page():
                     st.download_button(label="📥 Baixar Arquivo", data=output_with_dropdown.getvalue(), file_name="troca_canal_processada.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e: st.error(f"Erro: {e}")
 
-    # --- SCRIPT 2: CIRCUITO EXECUÇÃO (CORRIGIDO) ---
+    # --- SCRIPT 2: CIRCUITO EXECUÇÃO (ATUALIZADO) ---
     elif script_selection == "Circuito Execução":
         st.subheader("Circuito Execução")
 
@@ -1260,34 +1259,35 @@ def commercial_page():
             cell_pattern = re.compile(r"\(\s*(\d+)\s*Pontos\s*\)", re.IGNORECASE)
 
             for col in df_transformed.columns:
-                # 1. Verifica se a coluna tem "(XX Pontos)" no nome
-                header_match = header_pattern.search(str(col))
+                str_col = str(col)
+                # Tenta encontrar pontos no cabeçalho
+                header_match = header_pattern.search(str_col)
                 
-                if header_match:
-                    # Pontuação padrão definida no cabeçalho (ex: 30)
-                    default_points = int(header_match.group(1))
+                # Se achar, define como padrão. Se não, fica None.
+                default_points = int(header_match.group(1)) if header_match else None
+                
+                # Gatilho: Processa se tiver pontos no cabeçalho OU se for a coluna de Precificação
+                if header_match or "PRECIFICADAS" in str_col.upper():
                     
                     def process_cell(val):
-                        # Converte para string para evitar erro se vier número
                         s = str(val).strip()
                         
-                        # CASO 1: A célula diz explicitamente os pontos? Ex: "Sim (100 Pontos)"
+                        # 1. Tenta extrair pontos EXPLICITOS na célula (ex: "Sim (100 Pontos)")
                         cell_match = cell_pattern.search(s)
                         if cell_match:
                             return int(cell_match.group(1))
                         
-                        # CASO 2: A célula contém palavras chave (Sim, Presença, Visibilidade...)?
-                        s_upper = s.upper()
-                        # --- LISTA ATUALIZADA AQUI EMBAIXO ---
-                        palavras_chave = ["SIM", "PRESENÇA", "PRESENCA", "OK", "CONFORME", "VISIBILIDADE"]
+                        # 2. Se não achou na célula, usa o padrão do cabeçalho (se existir)
+                        # Aplica para palavras chaves como Sim, Presença, Visibilidade, etc.
+                        if default_points is not None:
+                            s_upper = s.upper()
+                            palavras_chave = ["SIM", "PRESENÇA", "PRESENCA", "OK", "CONFORME", "VISIBILIDADE"]
+                            if any(x in s_upper for x in palavras_chave):
+                                return default_points
+                            if s == '1': # Excel as vezes traz boolean como 1
+                                return default_points
                         
-                        if any(x in s_upper for x in palavras_chave):
-                            return default_points
-                        
-                        if s == '1': # Às vezes o Excel traz 1 como Sim
-                            return default_points
-
-                        # CASO 3: Não, 0, Vazio ou texto desconhecido -> 0
+                        # 3. Se nada der certo (Não, 0, Vazio, ou coluna sem header point e sem cell point), vira 0
                         return 0
 
                     df_transformed[col] = df_transformed[col].apply(process_cell)
@@ -1320,6 +1320,7 @@ def commercial_page():
                 )
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo: {e}")
+
 # ====================================================================
 # 8. SETOR DE ASSESSMENT
 # ====================================================================
@@ -1489,6 +1490,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
