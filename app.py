@@ -1276,10 +1276,12 @@ def commercial_page():
                         if cell_match:
                             return int(cell_match.group(1))
                         
-                        # CASO 2: A célula indica presença (Sim, Presença, OK, 1)?
+                        # CASO 2: A célula contém palavras chave (Sim, Presença, Visibilidade...)?
                         s_upper = s.upper()
-                        # Adicione aqui outras palavras que indicam "Sim" se necessário
-                        if any(x in s_upper for x in ["SIM", "PRESENÇA", "PRESENCA", "OK", "CONFORME"]):
+                        # --- LISTA ATUALIZADA AQUI EMBAIXO ---
+                        palavras_chave = ["SIM", "PRESENÇA", "PRESENCA", "OK", "CONFORME", "VISIBILIDADE"]
+                        
+                        if any(x in s_upper for x in palavras_chave):
                             return default_points
                         
                         if s == '1': # Às vezes o Excel traz 1 como Sim
@@ -1487,6 +1489,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
