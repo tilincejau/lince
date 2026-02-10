@@ -1244,7 +1244,7 @@ def commercial_page():
                     st.download_button(label="📥 Baixar Arquivo", data=output_with_dropdown.getvalue(), file_name="troca_canal_processada.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e: st.error(f"Erro: {e}")
 
-   elif script_selection == "Circuito Execução":
+elif script_selection == "Circuito Execução":
         st.subheader("Circuito Execução")
 
         def transform_points_columns(df):
@@ -1484,6 +1484,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
