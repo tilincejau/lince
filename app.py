@@ -1244,25 +1244,76 @@ def commercial_page():
                     st.download_button(label="📥 Baixar Arquivo", data=output_with_dropdown.getvalue(), file_name="troca_canal_processada.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e: st.error(f"Erro: {e}")
 
-    elif script_selection == "Circuito Execução":
+   elif script_selection == "Circuito Execução":
         st.subheader("Circuito Execução")
-        def extract_points(column_name): match = re.search(r"\(\s*(\d+)\s*Pontos\s*\)", column_name); return int(match.group(1)) if match else None
+
         def transform_points_columns(df):
             df_transformed = df.copy()
+            
+            # Regex para achar pontos no título da coluna: ex "(30 Pontos)"
+            header_pattern = re.compile(r"\(\s*(\d+)\s*Pontos\s*\)", re.IGNORECASE)
+            # Regex para achar pontos dentro da célula: ex "Sim (100 Pontos)"
+            cell_pattern = re.compile(r"\(\s*(\d+)\s*Pontos\s*\)", re.IGNORECASE)
+
             for col in df_transformed.columns:
-                if "Pontos" in col:
-                    points = extract_points(col)
-                    if points is not None: df_transformed[col] = df_transformed[col].apply(lambda x: points if x == "Presença" else 0)
+                # 1. Verifica se a coluna tem "(XX Pontos)" no nome
+                header_match = header_pattern.search(str(col))
+                
+                if header_match:
+                    # Pontuação padrão definida no cabeçalho (ex: 30)
+                    default_points = int(header_match.group(1))
+                    
+                    def process_cell(val):
+                        # Converte para string para evitar erro se vier número
+                        s = str(val).strip()
+                        
+                        # CASO 1: A célula diz explicitamente os pontos? Ex: "Sim (100 Pontos)"
+                        cell_match = cell_pattern.search(s)
+                        if cell_match:
+                            return int(cell_match.group(1))
+                        
+                        # CASO 2: A célula indica presença (Sim, Presença, OK, 1)?
+                        s_upper = s.upper()
+                        # Adicione aqui outras palavras que indicam "Sim" se necessário
+                        if any(x in s_upper for x in ["SIM", "PRESENÇA", "PRESENCA", "OK", "CONFORME"]):
+                            return default_points
+                        
+                        if s == '1': # Às vezes o Excel traz 1 como Sim
+                            return default_points
+
+                        # CASO 3: Não, 0, Vazio ou texto desconhecido -> 0
+                        return 0
+
+                    df_transformed[col] = df_transformed[col].apply(process_cell)
+            
             return df_transformed
+
         uploaded_file_2 = st.file_uploader("Envie o arquivo (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
         if uploaded_file_2 is not None:
             try:
-                df_points = pd.read_excel(uploaded_file_2); st.dataframe(df_points)
-                df_transformed = transform_points_columns(df_points); st.dataframe(df_transformed)
+                df_points = pd.read_excel(uploaded_file_2)
+                st.write("Visualização original (5 primeiras linhas):")
+                st.dataframe(df_points.head())
+                
+                df_transformed = transform_points_columns(df_points)
+                
+                st.success("Transformação concluída!")
+                st.write("Visualização processada:")
+                st.dataframe(df_transformed.head())
+                
                 output = io.BytesIO()
-                with pd.ExcelWriter(output, engine="xlsxwriter") as writer: df_transformed.to_excel(writer, index=False)
-                st.download_button(label="📥 Baixar Arquivo", data=output.getvalue(), file_name="circuito_execucao_transformado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            except Exception as e: st.error(f"Erro: {e}")
+                with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                    df_transformed.to_excel(writer, index=False)
+                output.seek(0)
+                
+                st.download_button(
+                    label="📥 Baixar Arquivo Transformado",
+                    data=output,
+                    file_name="circuito_execucao_final.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            except Exception as e:
+                st.error(f"Erro ao processar o arquivo: {e}")
 
 # ====================================================================
 # 8. SETOR DE ASSESSMENT
@@ -1433,5 +1484,6 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
