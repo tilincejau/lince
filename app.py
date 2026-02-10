@@ -1202,8 +1202,10 @@ def commercial_page():
     st.markdown("---")
     script_selection = st.selectbox("Selecione o script:", ("Selecione...", "Troca de Canal", "Circuito Execução"), key="com_select")
 
+    # --- SCRIPT 1: TROCA DE CANAL ---
     if script_selection == "Troca de Canal":
         st.subheader("Troca de Canal")
+        
         def transform_google_forms_data(df):
             processed_records = []
             if df.empty or len(df.columns) < 28: return pd.DataFrame()
@@ -1225,6 +1227,7 @@ def commercial_page():
                             processed_records.append({'DATA': data_value, 'SV': sv_value, 'VD': vd_final, 'PDV': pdv_info_val, 'DE': de_category_val, 'PARA': para_value, 'Status': ''})
                 except IndexError: continue
             return pd.DataFrame(processed_records)
+
         uploaded_file_1 = st.file_uploader("Envie o arquivo (.xlsx)", type=["xlsx"], key="troca_canal_uploader") 
         if uploaded_file_1 is not None:
             try:
@@ -1244,7 +1247,8 @@ def commercial_page():
                     st.download_button(label="📥 Baixar Arquivo", data=output_with_dropdown.getvalue(), file_name="troca_canal_processada.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e: st.error(f"Erro: {e}")
 
-elif script_selection == "Circuito Execução":
+    # --- SCRIPT 2: CIRCUITO EXECUÇÃO (CORRIGIDO) ---
+    elif script_selection == "Circuito Execução":
         st.subheader("Circuito Execução")
 
         def transform_points_columns(df):
@@ -1314,7 +1318,6 @@ elif script_selection == "Circuito Execução":
                 )
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo: {e}")
-
 # ====================================================================
 # 8. SETOR DE ASSESSMENT
 # ====================================================================
@@ -1484,6 +1487,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
