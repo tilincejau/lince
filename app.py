@@ -1414,7 +1414,7 @@ def assessment_page():
 
 if 'is_logged_in' not in st.session_state: st.session_state['is_logged_in'] = False
 if 'current_page' not in st.session_state: st.session_state['current_page'] = 'login'
-if 'LOGIN_INFO' not in st.session_state: st.session_state['LOGIN_INFO'] = {"admin": "Joao789", "amanda": "12345", "marcia": "54321", "gabi", "G12bi"}
+if 'LOGIN_INFO' not in st.session_state: st.session_state['LOGIN_INFO'] = {"admin": "Joao789", "amanda": "12345", "marcia": "54321", "gabi": "G12bi"}
 
 if st.session_state.get('is_logged_in', False):
     # Adicione 'assessment': assessment_page no dicionário
@@ -1433,4 +1433,5 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
