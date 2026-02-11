@@ -1246,7 +1246,7 @@ def commercial_page():
                     st.download_button(label="📥 Baixar Arquivo", data=output_with_dropdown.getvalue(), file_name="troca_canal_processada.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e: st.error(f"Erro: {e}")
 
-    # --- SCRIPT 2: CIRCUITO EXECUÇÃO (ATUALIZADO) ---
+    # --- SCRIPT 2: CIRCUITO EXECUÇÃO ---
     elif script_selection == "Circuito Execução":
         st.subheader("Circuito Execução")
 
@@ -1258,39 +1258,47 @@ def commercial_page():
             # Regex para achar pontos dentro da célula: ex "Sim (100 Pontos)"
             cell_pattern = re.compile(r"\(\s*(\d+)\s*Pontos\s*\)", re.IGNORECASE)
 
+            # 1. TRATAMENTO DAS CÉLULAS (TEXTO PARA NÚMERO)
             for col in df_transformed.columns:
                 str_col = str(col)
-                # Tenta encontrar pontos no cabeçalho
                 header_match = header_pattern.search(str_col)
                 
-                # Se achar, define como padrão. Se não, fica None.
                 default_points = int(header_match.group(1)) if header_match else None
                 
-                # Gatilho: Processa se tiver pontos no cabeçalho OU se for a coluna de Precificação
                 if header_match or "PRECIFICADAS" in str_col.upper():
-                    
                     def process_cell(val):
                         s = str(val).strip()
                         
-                        # 1. Tenta extrair pontos EXPLICITOS na célula (ex: "Sim (100 Pontos)")
                         cell_match = cell_pattern.search(s)
                         if cell_match:
                             return int(cell_match.group(1))
                         
-                        # 2. Se não achou na célula, usa o padrão do cabeçalho (se existir)
-                        # Aplica para palavras chaves como Sim, Presença, Visibilidade, etc.
                         if default_points is not None:
                             s_upper = s.upper()
                             palavras_chave = ["SIM", "PRESENÇA", "PRESENCA", "OK", "CONFORME", "VISIBILIDADE"]
                             if any(x in s_upper for x in palavras_chave):
                                 return default_points
-                            if s == '1': # Excel as vezes traz boolean como 1
+                            if s == '1': 
                                 return default_points
                         
-                        # 3. Se nada der certo (Não, 0, Vazio, ou coluna sem header point e sem cell point), vira 0
                         return 0
 
                     df_transformed[col] = df_transformed[col].apply(process_cell)
+            
+            # 2. CRIAÇÃO DAS COLUNAS DE SOMA POR LINHA
+            # Filtramos as colunas que começam com o termo desejado, transformamos os dados em numéricos (ignorando erros) e somamos a linha
+            
+            cols_presenca = [c for c in df_transformed.columns if str(c).strip().upper().startswith("PRESENÇA")]
+            df_transformed["PRESENÇA"] = df_transformed[cols_presenca].apply(pd.to_numeric, errors='coerce').sum(axis=1)
+
+            cols_visibilidade = [c for c in df_transformed.columns if str(c).strip().upper().startswith("VISIBILIDADE")]
+            df_transformed["VISIBILIDADE"] = df_transformed[cols_visibilidade].apply(pd.to_numeric, errors='coerce').sum(axis=1)
+
+            cols_posicionamento = [c for c in df_transformed.columns if str(c).strip().upper().startswith("POSICIONAMENTO DE NOSSO PRODUTOS")]
+            df_transformed["POSICIONAMENTO DE NOSSO PRODUTOS"] = df_transformed[cols_posicionamento].apply(pd.to_numeric, errors='coerce').sum(axis=1)
+
+            cols_geladas = [c for c in df_transformed.columns if str(c).strip().upper().startswith("TEM NOSSAS CERVEJAS GELADAS")]
+            df_transformed["TEM NOSSAS CERVEJAS GELADAS"] = df_transformed[cols_geladas].apply(pd.to_numeric, errors='coerce').sum(axis=1)
             
             return df_transformed
 
@@ -1490,6 +1498,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
