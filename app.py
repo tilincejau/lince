@@ -1246,19 +1246,20 @@ def commercial_page():
                     st.download_button(label="📥 Baixar Arquivo", data=output_with_dropdown.getvalue(), file_name="troca_canal_processada.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e: st.error(f"Erro: {e}")
 
-    # --- SCRIPT 2: CIRCUITO EXECUÇÃO ---
+    # --- SCRIPT 2: CIRCUITO EXECUÇÃO E COM12 ---
     elif script_selection == "Circuito Execução":
         st.subheader("Circuito Execução")
 
+        # =============================================================
+        # FERRAMENTA 1: CIRCUITO DE EXECUÇÃO ORIGINAL
+        # =============================================================
         def transform_points_columns(df):
             df_transformed = df.copy()
             
-            # Regex para achar pontos no título da coluna: ex "(30 Pontos)"
             header_pattern = re.compile(r"\(\s*(\d+)\s*Pontos\s*\)", re.IGNORECASE)
-            # Regex para achar pontos dentro da célula: ex "Sim (100 Pontos)"
             cell_pattern = re.compile(r"\(\s*(\d+)\s*Pontos\s*\)", re.IGNORECASE)
 
-            # 1. TRATAMENTO DAS CÉLULAS (TEXTO PARA NÚMERO)
+            # Extração de pontos das células
             for col in df_transformed.columns:
                 str_col = str(col)
                 header_match = header_pattern.search(str_col)
@@ -1285,9 +1286,7 @@ def commercial_page():
 
                     df_transformed[col] = df_transformed[col].apply(process_cell)
             
-            # 2. CRIAÇÃO DAS COLUNAS DE SOMA POR LINHA
-            # Filtramos as colunas que começam com o termo desejado, transformamos os dados em numéricos (ignorando erros) e somamos a linha
-            
+            # Cálculo das Somas por Categoria (Soma em Linha)
             cols_presenca = [c for c in df_transformed.columns if str(c).strip().upper().startswith("PRESENÇA")]
             df_transformed["PRESENÇA"] = df_transformed[cols_presenca].apply(pd.to_numeric, errors='coerce').sum(axis=1)
 
@@ -1302,17 +1301,17 @@ def commercial_page():
             
             return df_transformed
 
-        uploaded_file_2 = st.file_uploader("Envie o arquivo (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
+        uploaded_file_2 = st.file_uploader("Envie o arquivo do Circuito (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
         if uploaded_file_2 is not None:
             try:
                 df_points = pd.read_excel(uploaded_file_2)
-                st.write("Visualização original (5 primeiras linhas):")
+                st.write("Visualização original Circuito (5 primeiras linhas):")
                 st.dataframe(df_points.head())
                 
                 df_transformed = transform_points_columns(df_points)
                 
-                st.success("Transformação concluída!")
-                st.write("Visualização processada:")
+                st.success("Transformação do Circuito concluída!")
+                st.write("Visualização processada Circuito:")
                 st.dataframe(df_transformed.head())
                 
                 output = io.BytesIO()
@@ -1321,13 +1320,90 @@ def commercial_page():
                 output.seek(0)
                 
                 st.download_button(
-                    label="📥 Baixar Arquivo Transformado",
+                    label="📥 Baixar Arquivo Circuito Transformado",
                     data=output,
                     file_name="circuito_execucao_final.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             except Exception as e:
-                st.error(f"Erro ao processar o arquivo: {e}")
+                st.error(f"Erro ao processar o arquivo de Circuito: {e}")
+
+        # =============================================================
+        # FERRAMENTA 2: NOVO ARQUIVO (RESUMO COM12)
+        # =============================================================
+        st.markdown("---")
+        st.subheader("Transformação e Agrupamento COM12")
+        st.info("Deixa apenas 1 linha por **CodCli**, somando as métricas e unindo os Produtos (ProdCod e ProdDesc) com vírgula.")
+
+        def transform_com12_data(df):
+            df_transformed = df.copy()
+            
+            # Definindo as colunas numéricas que devem ser somadas
+            cols_to_sum = ['QtdeVdaSemBonifTOTAL', 'BonRevenda', 'BonFabrica', 'QtdeVdaSemBonRGB', 'BonRevRGB', 'BonFabRGB', 'consideraSkuTotal', 'HL', 'HL RGB']
+            
+            # Tratamento: remover espaços, trocar vírgula por ponto e tratar o traço '-' como 0
+            for col in cols_to_sum:
+                if col in df_transformed.columns:
+                    df_transformed[col] = df_transformed[col].astype(str).str.replace(',', '.', regex=False).str.strip()
+                    df_transformed[col] = df_transformed[col].replace(['-', ''], '0')
+                    df_transformed[col] = pd.to_numeric(df_transformed[col], errors='coerce').fillna(0)
+                    
+            # --- NOVO: Remover '2216-' das colunas Vend Cli (Cód) e Sup Cli (Cód) ---
+            if 'Vend Cli (Cód)' in df_transformed.columns:
+                df_transformed['Vend Cli (Cód)'] = df_transformed['Vend Cli (Cód)'].astype(str).str.replace('2216-', '', regex=False)
+            if 'Sup Cli (Cód)' in df_transformed.columns:
+                df_transformed['Sup Cli (Cód)'] = df_transformed['Sup Cli (Cód)'].astype(str).str.replace('2216-', '', regex=False)
+                    
+            # Dicionário de Agrupamento
+            agg_dict = {}
+            for col in df_transformed.columns:
+                if col == 'CodCli':
+                    continue
+                elif col in cols_to_sum:
+                    agg_dict[col] = 'sum'
+                elif col in ['ProdCod', 'ProdDesc']:
+                    # Junta com vírgula. Usei o unique() para o texto não ficar duplicado se o mesmo produto aparecer várias vezes
+                    agg_dict[col] = lambda x: ', '.join(x.dropna().astype(str).unique())
+                else:
+                    # Para canal, vendedor, etc, a lógica pega sempre a primeira aparição, 
+                    # já que será igual para o mesmo CodCli
+                    agg_dict[col] = 'first'
+                    
+            # Agrupa os dados usando a biblioteca Pandas
+            df_grouped = df_transformed.groupby('CodCli', as_index=False).agg(agg_dict)
+            return df_grouped
+
+        uploaded_com12 = st.file_uploader("Envie o arquivo COM12 (.xlsx ou .csv)", type=["xlsx", "csv"], key="com12_uploader")
+        if uploaded_com12 is not None:
+            try:
+                # O sistema aceita o envio de arquivo em XLSX e em CSV sem quebrar
+                if uploaded_com12.name.endswith('.csv'):
+                    df_com12 = pd.read_csv(uploaded_com12)
+                else:
+                    df_com12 = pd.read_excel(uploaded_com12)
+                    
+                st.write("Visualização original COM12 (5 primeiras linhas):")
+                st.dataframe(df_com12.head())
+                
+                df_com12_grouped = transform_com12_data(df_com12)
+                
+                st.success("Agrupamento COM12 concluído!")
+                st.write("Visualização processada COM12:")
+                st.dataframe(df_com12_grouped.head())
+                
+                output_com12 = io.BytesIO()
+                with pd.ExcelWriter(output_com12, engine="xlsxwriter") as writer:
+                    df_com12_grouped.to_excel(writer, index=False)
+                output_com12.seek(0)
+                
+                st.download_button(
+                    label="📥 Baixar Arquivo COM12 Agrupado",
+                    data=output_com12,
+                    file_name="COM12_Agrupado.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            except Exception as e:
+                st.error(f"Erro ao processar o arquivo COM12: {e}")
 
 # ====================================================================
 # 8. SETOR DE ASSESSMENT
@@ -1498,6 +1574,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
