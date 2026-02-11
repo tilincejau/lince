@@ -1338,7 +1338,7 @@ def commercial_page():
         def transform_com12_data(df):
             df_transformed = df.copy()
             
-            # Definindo as colunas numéricas que devem ser somadas
+            # Definindo as colunas numéricas iniciais que devem ser tratadas
             cols_to_sum = ['QtdeVdaSemBonifTOTAL', 'BonRevenda', 'BonFabrica', 'QtdeVdaSemBonRGB', 'BonRevRGB', 'BonFabRGB', 'consideraSkuTotal', 'HL', 'HL RGB']
             
             # Tratamento: remover espaços, trocar vírgula por ponto e tratar o traço '-' como 0
@@ -1348,7 +1348,18 @@ def commercial_page():
                     df_transformed[col] = df_transformed[col].replace(['-', ''], '0')
                     df_transformed[col] = pd.to_numeric(df_transformed[col], errors='coerce').fillna(0)
                     
-            # --- NOVO: Remover '2216-' das colunas Vend Cli (Cód) e Sup Cli (Cód) ---
+            # --- NOVO: Criar as colunas de TotalVda e TotalVdaRGB ---
+            df_transformed['TotalVda'] = df_transformed.get('QtdeVdaSemBonifTOTAL', 0) + df_transformed.get('BonRevenda', 0) + df_transformed.get('BonFabrica', 0)
+            df_transformed['TotalVdaRGB'] = df_transformed.get('QtdeVdaSemBonRGB', 0) + df_transformed.get('BonRevRGB', 0) + df_transformed.get('BonFabRGB', 0)
+            
+            # Adicionamos as novas colunas à lista para que sejam somadas no groupby
+            cols_to_sum.extend(['TotalVda', 'TotalVdaRGB'])
+
+            # --- NOVO: Formatar RefMes para MM/YYYY ---
+            if 'RefMes' in df_transformed.columns:
+                df_transformed['RefMes'] = pd.to_datetime(df_transformed['RefMes'], errors='coerce').dt.strftime('%m/%Y')
+
+            # --- Remover '2216-' das colunas Vend Cli (Cód) e Sup Cli (Cód) ---
             if 'Vend Cli (Cód)' in df_transformed.columns:
                 df_transformed['Vend Cli (Cód)'] = df_transformed['Vend Cli (Cód)'].astype(str).str.replace('2216-', '', regex=False)
             if 'Sup Cli (Cód)' in df_transformed.columns:
@@ -1404,7 +1415,6 @@ def commercial_page():
                 )
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo COM12: {e}")
-
 # ====================================================================
 # 8. SETOR DE ASSESSMENT
 # ====================================================================
@@ -1574,6 +1584,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
