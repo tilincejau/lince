@@ -1251,7 +1251,7 @@ def commercial_page():
         st.subheader("Transformação e Agrupamento COM12")
         st.info("Deixa apenas 1 linha por **CodCli**, somando as métricas, adicionando colunas de meses (soma) e unindo os Produtos com vírgula.")
 
-        def transform_com12_data(df):
+       def transform_com12_data(df):
             df_transformed = df.copy()
             
             # Definindo as colunas numéricas iniciais que devem ser tratadas
@@ -1279,32 +1279,63 @@ def commercial_page():
                 df_transformed['Sup Cli (Cód)'] = df_transformed['Sup Cli (Cód)'].astype(str).str.replace('2216-', '', regex=False)
                     
             # =========================================================
-            # NOVO: AGRUPAMENTO DOS MESES (Coluna H = Índice 7, Coluna L = Índice 11)
-            # Salvando as colunas originais pelo índice da base que entrou na função
+            # NOVO: AGRUPAMENTO DOS MESES (H = 7, K = 10, L = 11)
             # =========================================================
             pivot_meses = pd.DataFrame()
             
             if len(df.columns) > 11:
-                col_mes = df.columns[7]    # Coluna H original (Meses)
-                col_valor = df.columns[11] # Coluna L original (Valores)
+                col_mes = df.columns[7]    # Coluna H (Meses)
+                col_sku = df.columns[10]   # Coluna K (consideraSkuTotal)
+                col_valor = df.columns[11] # Coluna L (Valores)
                 
-                if col_mes in df_transformed.columns and col_valor in df_transformed.columns:
-                    df_transformed['TEMP_VALOR_L'] = df_transformed[col_valor].astype(str).str.replace(',', '.', regex=False).str.replace('-', '0')
-                    df_transformed['TEMP_VALOR_L'] = pd.to_numeric(df_transformed['TEMP_VALOR_L'], errors='coerce').fillna(0)
+                # Se a coluna de mês existe, faremos as duas tabelas dinâmicas
+                if col_mes in df_transformed.columns:
                     
-                    pivot_meses = pd.pivot_table(
+                    # 1. Prepara e cruza a Coluna L (Valor Principal)
+                    if col_valor in df_transformed.columns:
+                        df_transformed['TEMP_VALOR_L'] = df_transformed[col_valor].astype(str).str.replace(',', '.', regex=False).str.replace('-', '0')
+                        df_transformed['TEMP_VALOR_L'] = pd.to_numeric(df_transformed['TEMP_VALOR_L'], errors='coerce').fillna(0)
+                    else:
+                        df_transformed['TEMP_VALOR_L'] = 0
+                        
+                    pivot_l = pd.pivot_table(
                         df_transformed,
                         values='TEMP_VALOR_L',
                         index='CodCli',
                         columns=col_mes,
                         aggfunc='sum',
                         fill_value=0
-                    ).reset_index()
+                    )
+                    pivot_l.columns = [str(c).strip() for c in pivot_l.columns]
+                    pivot_l = pivot_l.reset_index()
+
+                    # 2. Prepara e cruza a Coluna K (SKU)
+                    if col_sku in df_transformed.columns:
+                        df_transformed['TEMP_VALOR_K'] = df_transformed[col_sku].astype(str).str.replace(',', '.', regex=False).str.replace('-', '0')
+                        df_transformed['TEMP_VALOR_K'] = pd.to_numeric(df_transformed['TEMP_VALOR_K'], errors='coerce').fillna(0)
+                    else:
+                        df_transformed['TEMP_VALOR_K'] = 0
+
+                    pivot_k = pd.pivot_table(
+                        df_transformed,
+                        values='TEMP_VALOR_K',
+                        index='CodCli',
+                        columns=col_mes,
+                        aggfunc='sum',
+                        fill_value=0
+                    )
+                    # Adiciona o sufixo " (SKU)" para não dar erro de coluna duplicada com os nomes dos meses
+                    pivot_k.columns = [f"{str(c).strip()} (SKU)" for c in pivot_k.columns]
+                    pivot_k = pivot_k.reset_index()
+
+                    # 3. Junta os dois pivôs (Meses L + Meses K)
+                    pivot_meses = pd.merge(pivot_l, pivot_k, on='CodCli', how='outer')
                     
-                    df_transformed.drop(columns=['TEMP_VALOR_L'], inplace=True)
+                    # Remove colunas temporárias para não sujar o dataframe principal
+                    df_transformed.drop(columns=['TEMP_VALOR_L', 'TEMP_VALOR_K'], inplace=True, errors='ignore')
 
             # =========================================================
-            # AGRUPAMENTO ORIGINAL
+            # AGRUPAMENTO ORIGINAL (Mantendo as outras colunas)
             # =========================================================
             agg_dict = {}
             for col in df_transformed.columns:
@@ -1320,11 +1351,12 @@ def commercial_page():
             df_grouped = df_transformed.groupby('CodCli', as_index=False).agg(agg_dict)
 
             # =========================================================
-            # MERGE: Anexar os Meses
+            # MERGE: Anexar todas as colunas de Meses ao arquivo final
             # =========================================================
             if not pivot_meses.empty:
                 df_grouped = pd.merge(df_grouped, pivot_meses, on='CodCli', how='left')
                 meses_adicionados = [c for c in pivot_meses.columns if c != 'CodCli']
+                # Preenche com 0 quem não teve movimentação naqueles meses
                 df_grouped[meses_adicionados] = df_grouped[meses_adicionados].fillna(0)
 
             return df_grouped
@@ -1509,3 +1541,4 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
