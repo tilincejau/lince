@@ -1251,7 +1251,7 @@ def commercial_page():
         st.subheader("Transformação e Agrupamento COM12")
         st.info("Deixa apenas 1 linha por **CodCli**, somando as métricas, adicionando colunas de meses (soma) e unindo os Produtos com vírgula.")
 
-       def transform_com12_data(df):
+        def transform_com12_data(df):
             df_transformed = df.copy()
             
             # Definindo as colunas numéricas iniciais que devem ser tratadas
@@ -1541,4 +1541,5 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
