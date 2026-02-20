@@ -1382,9 +1382,9 @@ def commercial_page():
                 df_grouped[meses_adicionados] = df_grouped[meses_adicionados].fillna(0)
 
             # =========================================================
-            # REMOÇÃO DE COLUNAS INDESEJADAS
+            # REMOÇÃO DE COLUNAS INDESEJADAS (Adicionado RefMes)
             # =========================================================
-            colunas_para_remover = ['HL RGB', 'TotalVda', 'TotalVdaRGB']
+            colunas_para_remover = ['HL RGB', 'TotalVda', 'TotalVdaRGB', 'RefMes']
             df_grouped.drop(columns=[c for c in colunas_para_remover if c in df_grouped.columns], inplace=True)
 
             return df_grouped
@@ -1569,6 +1569,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
