@@ -1304,19 +1304,60 @@ def commercial_page():
         uploaded_file_2 = st.file_uploader("Envie o arquivo do Circuito (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
         if uploaded_file_2 is not None:
             try:
+                # 1. Leitura do arquivo original
                 df_points = pd.read_excel(uploaded_file_2)
                 st.write("Visualização original Circuito (5 primeiras linhas):")
                 st.dataframe(df_points.head())
                 
+                # 2. Transforma as colunas originais (seu código já existente)
                 df_transformed = transform_points_columns(df_points)
                 
-                st.success("Transformação do Circuito concluída!")
-                st.write("Visualização processada Circuito:")
-                st.dataframe(df_transformed.head())
+                # =========================================================
+                # NOVO: AGRUPAMENTO DOS MESES (Coluna H e Coluna L)
+                # =========================================================
+                # No Pandas, a Coluna A é índice 0. Logo:
+                # Coluna H = índice 7 (Meses)
+                # Coluna L = índice 11 (Valores a somar)
+                
+                # Identificando os nomes das colunas pelas posições
+                col_cliente = df_points.columns[0] # Supondo que a Coluna A seja o identificador do Cliente
+                col_mes = df_points.columns[7]     # Coluna H
+                col_valor = df_points.columns[11]  # Coluna L
+                
+                # Cria um DataFrame temporário só com as colunas necessárias
+                df_meses_temp = df_points[[col_cliente, col_mes, col_valor]].copy()
+                
+                # Garante que a coluna de valor é numérica (transforma erros/vazios em 0)
+                df_meses_temp[col_valor] = pd.to_numeric(df_meses_temp[col_valor], errors='coerce').fillna(0)
+                
+                # Cria a tabela dinâmica: Soma dos Valores, dividida por Cliente (linhas) e Meses (colunas)
+                df_pivot_meses = pd.pivot_table(
+                    df_meses_temp,
+                    values=col_valor,
+                    index=col_cliente,
+                    columns=col_mes,
+                    aggfunc='sum',
+                    fill_value=0
+                ).reset_index()
+                
+                # (Opcional) Se quiser garantir que apenas as colunas de meses específicos fiquem:
+                # meses_desejados = [m for m in ['Dezembro', 'Jan', 'Fev'] if m in df_pivot_meses.columns]
+                # df_pivot_meses = df_pivot_meses[[col_cliente] + meses_desejados]
+
+                # =========================================================
+                # MERGE: Juntar a transformação original com a soma dos meses
+                # =========================================================
+                # Agrupa o df_transformed pelo cliente caso haja linhas duplicadas por cliente 
+                # (Se for 1 linha por cliente no arquivo original, o merge direto também funciona)
+                df_final = pd.merge(df_transformed, df_pivot_meses, on=col_cliente, how='left')
+                
+                st.success("Transformação do Circuito com Meses concluída!")
+                st.write("Visualização processada Circuito Final:")
+                st.dataframe(df_final.head())
                 
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                    df_transformed.to_excel(writer, index=False)
+                    df_final.to_excel(writer, index=False)
                 output.seek(0)
                 
                 st.download_button(
@@ -1584,6 +1625,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
