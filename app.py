@@ -1249,7 +1249,7 @@ def commercial_page():
         # =============================================================
         st.markdown("---")
         st.subheader("Transformação e Agrupamento COM12")
-        st.info("Deixa apenas 1 linha por **CodCli**, somando as métricas, adicionando colunas (primeiro todos os SKUs, depois todos os HLs) e unindo os Produtos com vírgula.")
+        st.info("Deixa apenas 1 linha por **CodCli**, somando as métricas, adicionando colunas (primeiro SKUs, depois HLs) e removendo colunas indesejadas.")
 
         def transform_com12_data(df):
             df_transformed = df.copy()
@@ -1380,6 +1380,12 @@ def commercial_page():
                 meses_adicionados = [c for c in pivot_meses.columns if c != 'CodCli']
                 # Preenche com 0 quem não teve movimentação naqueles meses
                 df_grouped[meses_adicionados] = df_grouped[meses_adicionados].fillna(0)
+
+            # =========================================================
+            # REMOÇÃO DE COLUNAS INDESEJADAS
+            # =========================================================
+            colunas_para_remover = ['HL RGB', 'TotalVda', 'TotalVdaRGB']
+            df_grouped.drop(columns=[c for c in colunas_para_remover if c in df_grouped.columns], inplace=True)
 
             return df_grouped
 
@@ -1563,6 +1569,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
