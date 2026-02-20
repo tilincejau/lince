@@ -37,8 +37,6 @@ st.markdown("""
 # 2. CONFIGURAÇÃO E CONSTANTES GLOBAIS
 # ====================================================================
 
-# [IMPORTANTE] COLE AQUI O ID DA SUA PLANILHA DO GOOGLE SHEETS
-# Exemplo: https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE/edit
 SPREADSHEET_KEY = '1uFr9yhylYj7dINsDAr-6tECgNDxc21t9QhmC0cxBjhY' 
 
 NAME_540_001 = '540-001 - GARRAFA 600ML' 
@@ -61,7 +59,7 @@ FACTORS = {
 }
 
 # ====================================================================
-# 3. CONEXÃO GOOGLE SHEETS (SUBSTITUI SQLITE)
+# 3. CONEXÃO GOOGLE SHEETS
 # ====================================================================
 
 @st.cache_resource
@@ -70,12 +68,10 @@ def connect_to_gsheets():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
     try:
-        # Tenta pegar dos Segredos do Streamlit (Nuvem)
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         else:
-            # Tenta pegar do arquivo local (Computador)
             creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
             
         client = gspread.authorize(creds)
@@ -90,27 +86,22 @@ def connect_to_gsheets():
         st.error(f"Erro na autenticação do Google: {e}")
         return None
 
-
 def load_from_gsheets(sheet, tab_name):
     """Lê uma aba específica da planilha e retorna como DataFrame"""
     try:
         try:
             worksheet = sheet.worksheet(tab_name)
         except gspread.WorksheetNotFound:
-            return pd.DataFrame() # Aba não existe, retorna vazio
+            return pd.DataFrame() 
 
-        df = get_as_dataframe(worksheet, evaluate_formulas=True, dtype=str) # Lê tudo como string primeiro para segurança
-        
-        # Limpeza: remove linhas e colunas vazias que o gspread pode trazer
+        df = get_as_dataframe(worksheet, evaluate_formulas=True, dtype=str) 
         df = df.dropna(how='all').dropna(axis=1, how='all')
 
-        # Conversão de Datas
         cols_date = ['DataCompleta', 'DataCompleta_excel', 'DataCompleta_txt', 'DataCompleta_pdf']
         for col in cols_date:
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col], errors='coerce')
         
-        # Conversão Numérica (Tenta converter colunas numéricas de volta para float/int)
         for col in df.columns:
             if col not in cols_date and col != 'Vasilhame' and col != 'Dia':
                 df[col] = pd.to_numeric(df[col], errors='ignore')
@@ -125,11 +116,10 @@ def save_to_gsheets(sheet, tab_name, df):
     try:
         try:
             worksheet = sheet.worksheet(tab_name)
-            worksheet.clear() # Limpa dados antigos
+            worksheet.clear() 
         except gspread.WorksheetNotFound:
             worksheet = sheet.add_worksheet(title=tab_name, rows="1000", cols="20")
         
-        # Prepara o DF: converte datas para string para o Sheets entender
         df_export = df.copy()
         for col in df_export.select_dtypes(include=['datetime64[ns]']).columns:
              df_export[col] = df_export[col].astype(str).replace('NaT', '')
@@ -170,7 +160,6 @@ def main_page():
     st.markdown(f"<p style='text-align: center;'>Bem-vindo(a), <b>{st.session_state['username']}</b>!</p>", unsafe_allow_html=True)
     st.markdown("---")
     
-    # Colunas para os botões (agora são 3)
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -182,7 +171,6 @@ def main_page():
             st.session_state['current_page'] = 'commercial'
             st.rerun()
     with col3:
-        # NOVO BOTÃO AQUI
         if st.button("📊 Assessment", use_container_width=True):
             st.session_state['current_page'] = 'assessment'
             st.rerun()
@@ -195,7 +183,7 @@ def main_page():
         st.rerun()
 
 # ====================================================================
-# 1. SETOR DE LOGÍSTICA
+# 5. SETOR DE LOGÍSTICA
 # ====================================================================
 def logistics_page():
     st.title("Setor de Logística")
@@ -273,11 +261,11 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro no script de Acurácia: {e}")
 
+    # --- SCRIPT VALIDADE ---
     elif script_choice == "Validade":
         st.subheader("Controle de Validade")
 
         def parse_estoque_txt_st(file_content):
-            # ... (MANTÉM O CÓDIGO DA FUNÇÃO parse_estoque_txt_st IGUAL AO ORIGINAL)
             lines = [line.decode('latin1') for line in file_content.getvalue().splitlines()]
             separator_string = '-' * 116
             separator_indices = [i for i, line in enumerate(lines) if separator_string in line]
@@ -301,7 +289,6 @@ def logistics_page():
             return pd.DataFrame(data, columns=col_names)
 
         def extract_units_per_box(product_name):
-            # ... (MANTÉM IGUAL AO ORIGINAL)
             product_name = str(product_name).upper().replace(' ', '')
             match_multiplication = re.search(r'(\d+)X(\d+)(?:UN|U)', product_name)
             if match_multiplication: return int(match_multiplication.group(1)) * int(match_multiplication.group(2))
@@ -315,51 +302,42 @@ def logistics_page():
         if uploaded_excel_file is not None and uploaded_txt_file is not None:
             try:
                 df_validade = pd.read_excel(uploaded_excel_file)
-                # Limpeza básica nos nomes das colunas
                 df_validade.columns = df_validade.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
 
                 df_estoque = parse_estoque_txt_st(uploaded_txt_file)
                 if df_estoque.empty: st.warning("O arquivo TXT está vazio ou não pôde ser processado."); return
 
-                # --- CORREÇÃO AQUI: LISTAS ATUALIZADAS PARA O SEU FORMATO EXATO ---
-                # Antes estava 'Validade.1', agora está 'Validade 2', etc.
                 validity_cols = ['Validade', 'Validade 2', 'Validade 3', 'Validade 4', 'Validade 5']
                 quantity_caixa_cols = ['Quantidade (CAIXA)', 'Quantidade 2 (CAIXA)', 'Quantidade 3 (CAIXA)', 'Quantidade 4 (CAIXA)', 'Quantidade 5 (CAIXA)']
                 quantity_unidade_cols = ['Quantidade (UNIDADE)', 'Quantidade 2 (UNIDADE)', 'Quantidade 3 (UNIDADE)', 'Quantidade 4 (UNIDADE)', 'Quantidade 5 (UNIDADE)']
                 
                 all_validity_entries = []
                 
-                # Loop ajustado para ser mais tolerante com nomes de colunas
                 for i in range(len(validity_cols)):
                     v_col = validity_cols[i]
                     c_col = quantity_caixa_cols[i]
                     u_col = quantity_unidade_cols[i]
 
-                    # Verifica se a coluna existe no Excel (se não existir exatamente, tenta achar uma parecida)
                     if v_col not in df_validade.columns:
-                        # Tenta fallback para o padrão antigo (com ponto) caso o Excel mude no futuro
                         v_col_alt = v_col.replace(' ', '.') 
                         if v_col_alt in df_validade.columns:
                             v_col = v_col_alt
                     
-                    cols_to_check = ['Qual Produto ?', v_col] # Não obriga a ter coluna de Qtd se tiver só a validade preenchida
+                    cols_to_check = ['Qual Produto ?', v_col]
                     
                     if all(col in df_validade.columns for col in cols_to_check):
-                        # Pega colunas de qtd se existirem, se não, assume 0
                         cols_select = ['Qual Produto ?', v_col]
                         if c_col in df_validade.columns: cols_select.append(c_col)
                         if u_col in df_validade.columns: cols_select.append(u_col)
 
                         temp_df = df_validade[cols_select].copy()
                         
-                        # Renomeia para padrão interno
                         rename_map = {v_col: 'Validade'}
                         if c_col in temp_df.columns: rename_map[c_col] = 'Quantidade (CAIXA)'
                         if u_col in temp_df.columns: rename_map[u_col] = 'Quantidade (UNIDADE)'
                         
                         temp_df.rename(columns=rename_map, inplace=True)
                         
-                        # Garante colunas numéricas
                         if 'Quantidade (CAIXA)' not in temp_df.columns: temp_df['Quantidade (CAIXA)'] = 0
                         if 'Quantidade (UNIDADE)' not in temp_df.columns: temp_df['Quantidade (UNIDADE)'] = 0
 
@@ -446,14 +424,11 @@ def logistics_page():
                 
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
-                import traceback
-                st.text(traceback.format_exc())
 
-    # --- SCRIPT VASILHAMES (COM SALVAMENTO DO CONSOLIDADO) ---
+    # --- SCRIPT VASILHAMES ---
     elif script_choice == "Vasilhames":
         st.subheader("Controle de Vasilhames (Nuvem ☁️)")
         
-        # INICIALIZA A CONEXÃO COM O GOOGLE SHEETS
         sheet_client = connect_to_gsheets()
         
         if not sheet_client:
@@ -463,19 +438,15 @@ def logistics_page():
         st.write("---")
         st.subheader("⚙️ Gerenciamento")
         
-        # CRIA UMA CAIXA RETRÁTIL (EXPANDER) PARA ESCONDER O BOTÃO PERIGOSO
         with st.expander("🔴 ZONA DE PERIGO: Limpar Banco de Dados (Clique para abrir)"):
             st.warning("⚠️ ATENÇÃO: Esta ação é IRREVERSÍVEL!")
             st.markdown("Ao clicar no botão abaixo, **todo o histórico** salvo nas planilhas do Google (TXT, PDF, Vendas, Excel) será apagado permanentemente.")
             
-            # CHECKBOX DE SEGURANÇA (TRAVA)
             trava_seguranca = st.checkbox("Sim, eu tenho certeza e quero apagar todo o histórico.")
             
-            # O BOTÃO SÓ APARECE SE A TRAVA ESTIVER MARCADA
             if trava_seguranca:
                 if st.button("🗑️ CONFIRMAR LIMPEZA TOTAL", type="primary"):
                     try:
-                        # Lista de abas para limpar
                         abas_para_limpar = ['txt_data', 'pdf_data', 'vendas_data', 'excel_data', 'CONSOLIDADO_GERAL']
                         bar = st.progress(0)
                         
@@ -487,7 +458,6 @@ def logistics_page():
                             bar.progress((i + 1) / len(abas_para_limpar))
                             
                         st.success("Histórico na nuvem apagado com sucesso!")
-                        # Aguarda 2 segundos e recarrega
                         import time
                         time.sleep(2)
                         st.rerun()
@@ -498,7 +468,6 @@ def logistics_page():
 
         st.write("---")
     
-
         def process_vendas_file(file_content):
             content = file_content.getvalue().decode('latin1')
             filename_date_match = re.search(r'VENDA(\d{4})\.TXT', file_content.name)
@@ -659,7 +628,6 @@ def logistics_page():
                 try:
                     st.info("Sincronizando com Google Sheets e processando arquivos...")
                     
-                    # 1. CARREGAR DADOS ANTIGOS DA NUVEM (SHEETS)
                     try:
                         df_old_txt_data = load_from_gsheets(sheet_client, 'txt_data')
                         df_old_pdf_data = load_from_gsheets(sheet_client, 'pdf_data')
@@ -669,61 +637,40 @@ def logistics_page():
                         st.error(f"Erro ao baixar dados da nuvem. Tente limpar e reiniciar. Detalhe: {e}")
                         st.stop()
 
-                    # --- FUNÇÃO DE LIMPEZA PROFUNDA (BLINDAGEM) ---
                     def sanear_dataframe(df, col_valor=None):
                         if df.empty: return df
-                        
-                        # 1. FORÇAR DATA NO FORMATO DD/MM
-                        # Tenta usar a DataCompleta primeiro
                         if 'DataCompleta' in df.columns:
-                            # Converte para datetime (ignora erros)
                             df['DataCompleta'] = pd.to_datetime(df['DataCompleta'], errors='coerce')
-                            # Se a conversão falhou (NaT), remove a linha para não dar erro
                             df = df.dropna(subset=['DataCompleta'])
-                            # Recria a coluna Dia do zero, garantindo formato 05/11
                             df['Dia'] = df['DataCompleta'].dt.strftime('%d/%m')
-                        
-                        # 2. SE NÃO TIVER DATA COMPLETA, TENTA SALVAR A COLUNA DIA
                         elif 'Dia' in df.columns:
-                            # Se o dia estiver como "2025-11-05", converte e ajusta
                             try:
                                 temp_date = pd.to_datetime(df['Dia'], errors='coerce')
                                 df.loc[temp_date.notna(), 'Dia'] = temp_date.dt.strftime('%d/%m')
                             except: pass
 
-                        # 3. FORÇAR NÚMEROS (CORRIGE O BUG DE 2112)
                         if col_valor and col_valor in df.columns:
-                            # Se o valor for string, troca vírgula por ponto
                             if df[col_valor].dtype == object:
                                 df[col_valor] = df[col_valor].astype(str).str.replace(',', '.')
-                            # Força virar número. Se for data ou texto estranho, vira 0.
                             df[col_valor] = pd.to_numeric(df[col_valor], errors='coerce').fillna(0)
-                        
                         return df
 
-                    # Aplica a limpeza
                     df_old_txt_data = sanear_dataframe(df_old_txt_data, col_valor='Qtd_emprestimo')
-                    df_old_pdf_data = sanear_dataframe(df_old_pdf_data) # PDF tem múltiplas colunas de valor
+                    df_old_pdf_data = sanear_dataframe(df_old_pdf_data) 
                     df_old_vendas_data = sanear_dataframe(df_old_vendas_data, col_valor='Vendas')
                     
-                    # Tratamento específico para o Excel (que tem nomes de colunas variados)
                     if not df_old_excel_data.empty:
-                        # Descobre qual é a coluna de data certa
                         col_data = 'DataCompleta'
                         if 'DataCompleta_excel' in df_old_excel_data.columns: col_data = 'DataCompleta_excel'
-                        
                         if col_data in df_old_excel_data.columns:
                             df_old_excel_data[col_data] = pd.to_datetime(df_old_excel_data[col_data], errors='coerce')
                             df_old_excel_data.dropna(subset=[col_data], inplace=True)
                             df_old_excel_data['Dia'] = df_old_excel_data[col_data].dt.strftime('%d/%m')
-                    # --- FIM DA BLINDAGEM ---
 
-                    # COMPATIBILIDADE
                     if not df_old_excel_data.empty:
                         if 'DataCompleta' in df_old_excel_data.columns and 'DataCompleta_excel' not in df_old_excel_data.columns:
                              df_old_excel_data.rename(columns={'DataCompleta': 'DataCompleta_excel'}, inplace=True)
 
-                    # 2. PROCESSAR TXT
                     new_txt_data_list = []
                     for uploaded_txt_file in uploaded_txt_files:
                         df_txt_qty, effective_date_str, effective_date_full = process_txt_file_st(uploaded_txt_file)
@@ -748,7 +695,6 @@ def logistics_page():
                     else: 
                         df_all_processed_txt_data = df_old_txt_data 
                     
-                    # 3. PROCESSAR VENDAS
                     new_vendas_data_list = []
                     if uploaded_vendas_files:
                         for v_file in uploaded_vendas_files:
@@ -774,7 +720,6 @@ def logistics_page():
                     if df_all_processed_vendas_data.empty:
                          df_all_processed_vendas_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Vendas', 'DataCompleta'])
 
-                    # 4. PROCESSAR PDF
                     new_pdf_data_list = []
                     if uploaded_pdf_files:
                         pdf_map = {
@@ -824,7 +769,6 @@ def logistics_page():
                     if df_all_processed_txt_data.empty: df_all_processed_txt_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'Qtd_emprestimo', 'DataCompleta'])
                     if df_all_processed_pdf_data.empty: df_all_processed_pdf_data = pd.DataFrame(columns=['Vasilhame', 'Dia', 'DataCompleta'])
 
-                    # 5. PROCESSAR EXCEL
                     df_contagem = pd.read_excel(uploaded_excel_contagem, sheet_name='Respostas ao formulário 1')
                     df_contagem['Carimbo de data/hora'] = pd.to_datetime(df_contagem['Carimbo de data/hora'])
                     df_contagem['DataCompleta'] = df_contagem['Carimbo de data/hora'].dt.date
@@ -873,21 +817,17 @@ def logistics_page():
                              total_vazias = qtd_vazias + transito_vazias
                              
                              if target_crate is None and target_bottle is not None:
-                                 # Garrafa Avulsa
                                  garrafa_cheia = total_cheias + total_vazias
                                  caixa_cheia = 0
                                  caixa_vazia = 0
                              elif target_bottle:
-                                 # Caixa com Garrafa
                                  garrafa_cheia = total_cheias * factor
                                  caixa_cheia = total_cheias
                                  caixa_vazia = total_vazias
                              else:
-                                 # Só Caixa
                                  caixa_cheia = total_cheias
                                  caixa_vazia = total_vazias
                         else:
-                            # Legado
                             if 'Total' in row.index and pd.notnull(row['Total']): total = float(row['Total'])
                             else: total = float(row.get('Quantidade estoque ?', 0) or 0) + float(row.get('Em transito (Entrega)?', 0) or 0) + float(row.get('Em transito (carreta)?', 0) or 0)
                             
@@ -952,11 +892,6 @@ def logistics_page():
                     save_to_gsheets(sheet_client, 'excel_data', df_excel_agg)
                     st.success("Contagem Excel: Dados atualizados na Nuvem!")
 
-                    # ====================================================================
-                    # 6. UNIFICAR TUDO PARA EXIBIÇÃO (CORRIGIDO PARA INCLUIR TODOS OS PRODUTOS)
-                    # ====================================================================
-                    
-                    # Função auxiliar para garantir que a coluna 'Dia' seja estritamente 'dd/mm'
                     def forcar_formato_visual(df):
                         if df.empty: return df
                         df = df.copy()
@@ -976,24 +911,19 @@ def logistics_page():
                         except: pass
                         return df
 
-                    # 1. Aplica a padronização visual
                     df_excel_agg = forcar_formato_visual(df_excel_agg)
                     df_all_processed_txt_data = forcar_formato_visual(df_all_processed_txt_data)
                     df_all_processed_pdf_data = forcar_formato_visual(df_all_processed_pdf_data)
                     df_all_processed_vendas_data = forcar_formato_visual(df_all_processed_vendas_data)
 
-                    # 2. Gera a lista de DATAS únicas
                     all_dates = set()
                     if not df_excel_agg.empty: all_dates.update(df_excel_agg['Dia'].dropna().unique())
                     if not df_all_processed_txt_data.empty: all_dates.update(df_all_processed_txt_data['Dia'].dropna().unique())
                     if not df_all_processed_pdf_data.empty: all_dates.update(df_all_processed_pdf_data['Dia'].dropna().unique())
                     if not all_dates: all_dates.add(datetime.now().strftime('%d/%m'))
 
-                    # 3. Gera a lista de PRODUTOS (Vasilhames) únicos
-                    # Começa com os obrigatórios (Garrafas e Caixas)
                     required_vasilhames = set(list(FACTORS.keys()) + list(CRATE_TO_BOTTLE_MAP.values()))
                     
-                    # Adiciona dinamicamente qualquer outro produto encontrado nos arquivos (Barris, Cilindros, etc.)
                     if not df_all_processed_txt_data.empty and 'Vasilhame' in df_all_processed_txt_data.columns:
                         required_vasilhames.update(df_all_processed_txt_data['Vasilhame'].dropna().unique())
                     
@@ -1003,25 +933,21 @@ def logistics_page():
                     if not df_excel_agg.empty and 'Vasilhame' in df_excel_agg.columns:
                         required_vasilhames.update(df_excel_agg['Vasilhame'].dropna().unique())
 
-                    # 4. Cria o Esqueleto (Grid mestre)
                     skeleton_rows = []
-                    sorted_products = sorted(list(required_vasilhames)) # Ordena alfabeticamente
+                    sorted_products = sorted(list(required_vasilhames)) 
                     
                     for prod in sorted_products:
                         for day in sorted(list(all_dates)):
                              skeleton_rows.append({'Vasilhame': prod, 'Dia': day})
                     df_skeleton = pd.DataFrame(skeleton_rows)
 
-                    # 5. Faz o Merge (Cruzamento)
                     df_final = df_skeleton.copy()
                     
-                    # Junta as tabelas
                     df_final = pd.merge(df_final, df_excel_agg, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_txt_data, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_pdf_data, on=['Vasilhame', 'Dia'], how='left')
                     df_final = pd.merge(df_final, df_all_processed_vendas_data, on=['Vasilhame', 'Dia'], how='left')
                     
-                    # 6. Tratamento de Data Completa
                     cols_data = [c for c in df_final.columns if 'DataCompleta' in c]
                     df_final['DataCompleta'] = pd.NaT
                     for col in cols_data:
@@ -1038,7 +964,6 @@ def logistics_page():
                     
                     df_final['DataCompleta'] = df_final.apply(infer_date, axis=1)
 
-                    # 7. Limpeza final e Cálculos
                     output_form_cols = ['Quantidade estoque cheias', 'Quantidade estoque vazias', 'Em transito cheias (Entrega)', 'Em transito vazias (Entrega)', 'Em transito (carreta)']
                     numeric_cols = ['Contagem Cheias', 'Contagem Vazias', 'Qtd_emprestimo', 'Vendas'] + output_form_cols + [col for col in df_final.columns if 'Credito' in col or 'Debito' in col]
                     
@@ -1050,17 +975,14 @@ def logistics_page():
 
                     if 'Vendas' not in df_final.columns: df_final['Vendas'] = 0
 
-                    # Agrupa para somar duplicatas
                     groupby_cols = ['Vasilhame', 'Dia', 'DataCompleta']
                     cols_to_sum = [c for c in numeric_cols if c in df_final.columns]
                     df_final = df_final.groupby(groupby_cols)[cols_to_sum].sum().reset_index()
 
-                    # Cálculo Final
                     df_final['Total Revenda'] = df_final['Qtd_emprestimo'] + df_final['Contagem Cheias'] + df_final['Contagem Vazias'] + df_final.filter(like='Credito').sum(axis=1) - df_final.filter(like='Debito').sum(axis=1) + df_final['Vendas']
                     
                     df_final.sort_values(by=['Vasilhame', 'DataCompleta'], inplace=True, na_position='first')
                     
-                    # Regra de Negócio
                     def calcular_diferenca_regra_negocio(grupo):
                         data_base_travamento = pd.to_datetime('2025-11-05')
                         data_inicio_calculo = pd.to_datetime('2025-11-10')
@@ -1084,9 +1006,6 @@ def logistics_page():
                     st.subheader("✅ Tabela Consolidada de Vasilhames")
                     st.dataframe(df_final_output)
                     
-                    # -------------------------------------------------------------
-                    # NOVO: SALVAMENTO DO CONSOLIDADO NA NUVEM
-                    # -------------------------------------------------------------
                     st.info("Salvando tabela consolidada na Nuvem...")
                     save_to_gsheets(sheet_client, 'CONSOLIDADO_GERAL', df_final_output)
                     st.success("Tabela Consolidada salva na aba 'CONSOLIDADO_GERAL'!")
@@ -1111,8 +1030,6 @@ def logistics_page():
 
                 except Exception as e:
                     st.error(f"Ocorreu um erro durante o processamento: {e}")
-                    import traceback
-                    st.error(traceback.format_exc())
 
     elif script_choice == "Abastecimento":
         st.subheader("Análise de Abastecimento")
@@ -1186,8 +1103,9 @@ def logistics_page():
 
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
+
 # ====================================================================
-# 2. SETOR COMERCIAL
+# 6. SETOR COMERCIAL
 # ====================================================================
 def commercial_page():
     st.title("Setor Comercial")
@@ -1259,7 +1177,6 @@ def commercial_page():
             header_pattern = re.compile(r"\(\s*(\d+)\s*Pontos\s*\)", re.IGNORECASE)
             cell_pattern = re.compile(r"\(\s*(\d+)\s*Pontos\s*\)", re.IGNORECASE)
 
-            # Extração de pontos das células
             for col in df_transformed.columns:
                 str_col = str(col)
                 header_match = header_pattern.search(str_col)
@@ -1286,7 +1203,6 @@ def commercial_page():
 
                     df_transformed[col] = df_transformed[col].apply(process_cell)
             
-            # Cálculo das Somas por Categoria (Soma em Linha)
             cols_presenca = [c for c in df_transformed.columns if str(c).strip().upper().startswith("PRESENÇA")]
             df_transformed["PRESENÇA"] = df_transformed[cols_presenca].apply(pd.to_numeric, errors='coerce').sum(axis=1)
 
@@ -1304,60 +1220,19 @@ def commercial_page():
         uploaded_file_2 = st.file_uploader("Envie o arquivo do Circuito (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
         if uploaded_file_2 is not None:
             try:
-                # 1. Leitura do arquivo original
                 df_points = pd.read_excel(uploaded_file_2)
                 st.write("Visualização original Circuito (5 primeiras linhas):")
                 st.dataframe(df_points.head())
                 
-                # 2. Transforma as colunas originais (seu código já existente)
                 df_transformed = transform_points_columns(df_points)
                 
-                # =========================================================
-                # NOVO: AGRUPAMENTO DOS MESES (Coluna H e Coluna L)
-                # =========================================================
-                # No Pandas, a Coluna A é índice 0. Logo:
-                # Coluna H = índice 7 (Meses)
-                # Coluna L = índice 11 (Valores a somar)
-                
-                # Identificando os nomes das colunas pelas posições
-                col_cliente = df_points.columns[0] # Supondo que a Coluna A seja o identificador do Cliente
-                col_mes = df_points.columns[7]     # Coluna H
-                col_valor = df_points.columns[11]  # Coluna L
-                
-                # Cria um DataFrame temporário só com as colunas necessárias
-                df_meses_temp = df_points[[col_cliente, col_mes, col_valor]].copy()
-                
-                # Garante que a coluna de valor é numérica (transforma erros/vazios em 0)
-                df_meses_temp[col_valor] = pd.to_numeric(df_meses_temp[col_valor], errors='coerce').fillna(0)
-                
-                # Cria a tabela dinâmica: Soma dos Valores, dividida por Cliente (linhas) e Meses (colunas)
-                df_pivot_meses = pd.pivot_table(
-                    df_meses_temp,
-                    values=col_valor,
-                    index=col_cliente,
-                    columns=col_mes,
-                    aggfunc='sum',
-                    fill_value=0
-                ).reset_index()
-                
-                # (Opcional) Se quiser garantir que apenas as colunas de meses específicos fiquem:
-                # meses_desejados = [m for m in ['Dezembro', 'Jan', 'Fev'] if m in df_pivot_meses.columns]
-                # df_pivot_meses = df_pivot_meses[[col_cliente] + meses_desejados]
-
-                # =========================================================
-                # MERGE: Juntar a transformação original com a soma dos meses
-                # =========================================================
-                # Agrupa o df_transformed pelo cliente caso haja linhas duplicadas por cliente 
-                # (Se for 1 linha por cliente no arquivo original, o merge direto também funciona)
-                df_final = pd.merge(df_transformed, df_pivot_meses, on=col_cliente, how='left')
-                
-                st.success("Transformação do Circuito com Meses concluída!")
-                st.write("Visualização processada Circuito Final:")
-                st.dataframe(df_final.head())
+                st.success("Transformação do Circuito concluída!")
+                st.write("Visualização processada Circuito:")
+                st.dataframe(df_transformed.head())
                 
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                    df_final.to_excel(writer, index=False)
+                    df_transformed.to_excel(writer, index=False)
                 output.seek(0)
                 
                 st.download_button(
@@ -1370,11 +1245,11 @@ def commercial_page():
                 st.error(f"Erro ao processar o arquivo de Circuito: {e}")
 
         # =============================================================
-        # FERRAMENTA 2: NOVO ARQUIVO (RESUMO COM12)
+        # FERRAMENTA 2: NOVO ARQUIVO (RESUMO COM12) - ATUALIZADA
         # =============================================================
         st.markdown("---")
         st.subheader("Transformação e Agrupamento COM12")
-        st.info("Deixa apenas 1 linha por **CodCli**, somando as métricas e unindo os Produtos (ProdCod e ProdDesc) com vírgula.")
+        st.info("Deixa apenas 1 linha por **CodCli**, somando as métricas, adicionando colunas de meses (soma) e unindo os Produtos com vírgula.")
 
         def transform_com12_data(df):
             df_transformed = df.copy()
@@ -1389,24 +1264,48 @@ def commercial_page():
                     df_transformed[col] = df_transformed[col].replace(['-', ''], '0')
                     df_transformed[col] = pd.to_numeric(df_transformed[col], errors='coerce').fillna(0)
                     
-            # --- NOVO: Criar as colunas de TotalVda e TotalVdaRGB ---
+            # --- Criar as colunas de TotalVda e TotalVdaRGB ---
             df_transformed['TotalVda'] = df_transformed.get('QtdeVdaSemBonifTOTAL', 0) + df_transformed.get('BonRevenda', 0) + df_transformed.get('BonFabrica', 0)
             df_transformed['TotalVdaRGB'] = df_transformed.get('QtdeVdaSemBonRGB', 0) + df_transformed.get('BonRevRGB', 0) + df_transformed.get('BonFabRGB', 0)
             
-            # Adicionamos as novas colunas à lista para que sejam somadas no groupby
             cols_to_sum.extend(['TotalVda', 'TotalVdaRGB'])
 
-            # --- NOVO: Formatar RefMes para MM/YYYY ---
             if 'RefMes' in df_transformed.columns:
                 df_transformed['RefMes'] = pd.to_datetime(df_transformed['RefMes'], errors='coerce').dt.strftime('%m/%Y')
 
-            # --- Remover '2216-' das colunas Vend Cli (Cód) e Sup Cli (Cód) ---
             if 'Vend Cli (Cód)' in df_transformed.columns:
                 df_transformed['Vend Cli (Cód)'] = df_transformed['Vend Cli (Cód)'].astype(str).str.replace('2216-', '', regex=False)
             if 'Sup Cli (Cód)' in df_transformed.columns:
                 df_transformed['Sup Cli (Cód)'] = df_transformed['Sup Cli (Cód)'].astype(str).str.replace('2216-', '', regex=False)
                     
-            # Dicionário de Agrupamento
+            # =========================================================
+            # NOVO: AGRUPAMENTO DOS MESES (Coluna H = Índice 7, Coluna L = Índice 11)
+            # Salvando as colunas originais pelo índice da base que entrou na função
+            # =========================================================
+            pivot_meses = pd.DataFrame()
+            
+            if len(df.columns) > 11:
+                col_mes = df.columns[7]    # Coluna H original (Meses)
+                col_valor = df.columns[11] # Coluna L original (Valores)
+                
+                if col_mes in df_transformed.columns and col_valor in df_transformed.columns:
+                    df_transformed['TEMP_VALOR_L'] = df_transformed[col_valor].astype(str).str.replace(',', '.', regex=False).str.replace('-', '0')
+                    df_transformed['TEMP_VALOR_L'] = pd.to_numeric(df_transformed['TEMP_VALOR_L'], errors='coerce').fillna(0)
+                    
+                    pivot_meses = pd.pivot_table(
+                        df_transformed,
+                        values='TEMP_VALOR_L',
+                        index='CodCli',
+                        columns=col_mes,
+                        aggfunc='sum',
+                        fill_value=0
+                    ).reset_index()
+                    
+                    df_transformed.drop(columns=['TEMP_VALOR_L'], inplace=True)
+
+            # =========================================================
+            # AGRUPAMENTO ORIGINAL
+            # =========================================================
             agg_dict = {}
             for col in df_transformed.columns:
                 if col == 'CodCli':
@@ -1414,21 +1313,25 @@ def commercial_page():
                 elif col in cols_to_sum:
                     agg_dict[col] = 'sum'
                 elif col in ['ProdCod', 'ProdDesc']:
-                    # Junta com vírgula. Usei o unique() para o texto não ficar duplicado se o mesmo produto aparecer várias vezes
                     agg_dict[col] = lambda x: ', '.join(x.dropna().astype(str).unique())
                 else:
-                    # Para canal, vendedor, etc, a lógica pega sempre a primeira aparição, 
-                    # já que será igual para o mesmo CodCli
                     agg_dict[col] = 'first'
                     
-            # Agrupa os dados usando a biblioteca Pandas
             df_grouped = df_transformed.groupby('CodCli', as_index=False).agg(agg_dict)
+
+            # =========================================================
+            # MERGE: Anexar os Meses
+            # =========================================================
+            if not pivot_meses.empty:
+                df_grouped = pd.merge(df_grouped, pivot_meses, on='CodCli', how='left')
+                meses_adicionados = [c for c in pivot_meses.columns if c != 'CodCli']
+                df_grouped[meses_adicionados] = df_grouped[meses_adicionados].fillna(0)
+
             return df_grouped
 
         uploaded_com12 = st.file_uploader("Envie o arquivo COM12 (.xlsx ou .csv)", type=["xlsx", "csv"], key="com12_uploader")
         if uploaded_com12 is not None:
             try:
-                # O sistema aceita o envio de arquivo em XLSX e em CSV sem quebrar
                 if uploaded_com12.name.endswith('.csv'):
                     df_com12 = pd.read_csv(uploaded_com12)
                 else:
@@ -1456,8 +1359,9 @@ def commercial_page():
                 )
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo COM12: {e}")
+
 # ====================================================================
-# 8. SETOR DE ASSESSMENT
+# 7. SETOR DE ASSESSMENT
 # ====================================================================
 def assessment_page():
     st.title("Setor de Assessment")
@@ -1470,7 +1374,6 @@ def assessment_page():
 
     st.markdown("---")
     
-    # Adicionada a nova opção no menu
     script_choice = st.selectbox(
         "Selecione uma ferramenta:",
         ("Selecione...", "CMDT", "Controle MPVs"),
@@ -1495,12 +1398,10 @@ def assessment_page():
 
                 series_check = df[coluna_chave].astype(str).str.upper().str.strip()
 
-                # Chopeiras
                 termos_chopeira = ('CHOPEIRA', 'CHOP', 'CHOPE') 
                 mask_chopeira = series_check.str.startswith(termos_chopeira)
                 df_chopeiras = df[mask_chopeira].copy()
 
-                # Refrigeradores
                 termos_refri = ('REF', 'REFR', 'VISA', 'PIL')
                 mask_refri = series_check.str.startswith(termos_refri)
                 df_refrigeradores = df[mask_refri].copy()
@@ -1529,7 +1430,7 @@ def assessment_page():
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo: {e}")
 
-    # --- FERRAMENTA 2: CONTROLE MPVs (NOVA) ---
+    # --- FERRAMENTA 2: CONTROLE MPVs ---
     elif script_choice == "Controle MPVs":
         st.subheader("Controle MPVs")
         st.info("Colunas necessárias: **Estoque Atual**, **Estoque Saída**, **Prod (Cód-Descr)**")
@@ -1540,51 +1441,36 @@ def assessment_page():
             try:
                 df_mpv = pd.read_excel(uploaded_mpv)
                 
-                # Verifica colunas necessárias
                 required_cols = ['Estoque Atual', 'Estoque Saída', 'Prod (Cód-Descr)']
                 missing_cols = [col for col in required_cols if col not in df_mpv.columns]
                 
                 if missing_cols:
                     st.error(f"Erro: As seguintes colunas não foram encontradas: {', '.join(missing_cols)}")
                 else:
-                    # Totais antes do filtro para comparação
                     total_inicial = len(df_mpv)
                     
-                    # 1. Remover Estoque Atual Negativo (Mantém >= 0)
-                    # Convertemos para numérico para garantir, erros viram NaN
                     df_mpv['Estoque Atual'] = pd.to_numeric(df_mpv['Estoque Atual'], errors='coerce').fillna(0)
                     df_mpv = df_mpv[df_mpv['Estoque Atual'] >= 0]
                     
-                    # 2. Remover Estoque Saída Zerado (Mantém != 0)
                     df_mpv['Estoque Saída'] = pd.to_numeric(df_mpv['Estoque Saída'], errors='coerce').fillna(0)
                     df_mpv = df_mpv[df_mpv['Estoque Saída'] != 0]
                     
-                    # 3. Remover produtos com nomes proibidos
-                    # Lista de palavras para excluir
                     palavras_proibidas = [
                         "GARRAFA", "CAIXA", "MESA", "PALETE", "TV", "DIVOSAN", 
                         "REF", "REFR", "CHOPE", "CHOP", "CHOPEIRA"
                     ]
                     
-                    # Normaliza a coluna para maiúsculo e string
                     col_prod = df_mpv['Prod (Cód-Descr)'].astype(str).str.upper()
                     
-                    # Cria uma máscara: True onde encontrar qualquer palavra proibida
-                    # O join cria uma regex "GARRAFA|CAIXA|MESA..."
-                    padrao_regex = '|'.join(palavras_proibidas)
+                    padrao_regex = r'\b(' + '|'.join(palavras_proibidas) + r')\b'
                     mask_proibidos = col_prod.str.contains(padrao_regex, regex=True, na=False)
                     
-                    # Mantém apenas o que NÃO (~) for proibido
                     df_final_mpv = df_mpv[~mask_proibidos].copy()
-                    
                     total_final = len(df_final_mpv)
                     
                     st.success(f"Processamento concluído! Linhas restantes: **{total_final}** (de {total_inicial})")
-                    
-                    # Preview
                     st.dataframe(df_final_mpv.head(10))
                     
-                    # Botão de Download
                     output_mpv = io.BytesIO()
                     with pd.ExcelWriter(output_mpv, engine='xlsxwriter') as writer:
                         df_final_mpv.to_excel(writer, index=False)
@@ -1601,7 +1487,7 @@ def assessment_page():
                 st.error(f"Erro ao processar MPVs: {e}")
 
 # ====================================================================
-# 4. EXECUÇÃO PRINCIPAL
+# 8. EXECUÇÃO PRINCIPAL
 # ====================================================================
 
 if 'is_logged_in' not in st.session_state: st.session_state['is_logged_in'] = False
@@ -1609,15 +1495,13 @@ if 'current_page' not in st.session_state: st.session_state['current_page'] = 'l
 if 'LOGIN_INFO' not in st.session_state: st.session_state['LOGIN_INFO'] = {"admin": "Joao789", "amanda": "12345", "marcia": "54321", "gabi": "G12bi"}
 
 if st.session_state.get('is_logged_in', False):
-    # Adicione 'assessment': assessment_page no dicionário
     page_functions = {
         'home': main_page, 
         'logistics': logistics_page, 
         'commercial': commercial_page,
-        'assessment': assessment_page  # <--- NOVA LINHA AQUI
+        'assessment': assessment_page 
     }
     
-    # Carrega a página
     current = st.session_state.get('current_page', 'home')
     if current in page_functions:
         page_functions[current]()
@@ -1625,15 +1509,3 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
-
-
-
-
-
-
-
-
-
-
-
-
