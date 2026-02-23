@@ -1187,13 +1187,17 @@ def commercial_page():
                     
                     def process_cell(val):
                         s = str(val).strip()
+                        s_upper = s.upper()
                         
+                        # Verifica se a resposta é exatamente a palavra "TEM"
+                        if s_upper == "TEM":
+                            return 17
+                            
                         cell_match = cell_pattern.search(s)
                         if cell_match:
                             return int(cell_match.group(1))
                         
                         if default_points is not None:
-                            s_upper = s.upper()
                             palavras_chave = ["SIM", "PRESENÇA", "PRESENCA", "OK", "CONFORME", "VISIBILIDADE"]
                             if any(x in s_upper for x in palavras_chave):
                                 return default_points
@@ -1241,7 +1245,6 @@ def commercial_page():
             df_transformed.insert(1, '% de Pontuação', porcentagem)
             
             return df_transformed
-
         uploaded_file_2 = st.file_uploader("Envie o arquivo do Circuito (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
         if uploaded_file_2 is not None:
             try:
@@ -1594,6 +1597,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
