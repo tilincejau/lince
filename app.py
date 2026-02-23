@@ -1183,14 +1183,17 @@ def commercial_page():
                 
                 default_points = int(header_match.group(1)) if header_match else None
                 
-                if header_match or "PRECIFICADAS" in str_col.upper():
+                # Expandimos a verificação para garantir que TODAS as colunas de pesquisa sejam processadas
+                colunas_chave = ["PRECIFICADAS", "GELADAS", "PRESENÇA", "PRESENCA", "VISIBILIDADE", "POSICIONAMENTO"]
+                
+                if header_match or any(chave in str_col.upper() for chave in colunas_chave):
                     
                     def process_cell(val):
                         s = str(val).strip()
                         s_upper = s.upper()
                         
-                        # Verifica se a resposta é exatamente a palavra "TEM"
-                        if s_upper == "TEM":
+                        # Regra explícita: se a resposta contiver TEM (e não for "NÃO TEM"), vale 17
+                        if "TEM" in s_upper and "NÃO" not in s_upper and "NAO" not in s_upper:
                             return 17
                             
                         cell_match = cell_pattern.search(s)
@@ -1597,6 +1600,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
