@@ -1203,6 +1203,47 @@ def commercial_page():
 
                     df_transformed[col] = df_transformed[col].apply(process_cell)
             
+            # Soma das colunas base
+            cols_presenca = [c for c in df_transformed.columns if str(c).strip().upper().startswith("PRESENÇA")]
+            df_transformed["PRESENÇA"] = df_transformed[cols_presenca].apply(pd.to_numeric, errors='coerce').sum(axis=1)
+
+            cols_visibilidade = [c for c in df_transformed.columns if str(c).strip().upper().startswith("VISIBILIDADE")]
+            df_transformed["VISIBILIDADE"] = df_transformed[cols_visibilidade].apply(pd.to_numeric, errors='coerce').sum(axis=1)
+
+            cols_posicionamento = [c for c in df_transformed.columns if str(c).strip().upper().startswith("POSICIONAMENTO DE NOSSO PRODUTOS")]
+            df_transformed["POSICIONAMENTO DE NOSSO PRODUTOS"] = df_transformed[cols_posicionamento].apply(pd.to_numeric, errors='coerce').sum(axis=1)
+
+            cols_geladas = [c for c in df_transformed.columns if str(c).strip().upper().startswith("TEM NOSSAS CERVEJAS GELADAS")]
+            df_transformed["TEM NOSSAS CERVEJAS GELADAS"] = df_transformed[cols_geladas].apply(pd.to_numeric, errors='coerce').sum(axis=1)
+            
+            # Coluna de Precificadas
+            cols_precificadas = [c for c in df_transformed.columns if "PRECIFICADAS" in str(c).upper()]
+            if cols_precificadas:
+                df_transformed["TODAS AS NOSSAS CERVEJAS ESTÃO PRECIFICADAS"] = df_transformed[cols_precificadas].apply(pd.to_numeric, errors='coerce').sum(axis=1)
+            else:
+                df_transformed["TODAS AS NOSSAS CERVEJAS ESTÃO PRECIFICADAS"] = 0
+
+            # =======================================================
+            # CÁLCULO DA PORCENTAGEM (SOMATÓRIA / 400)
+            # =======================================================
+            pontuacao_total = (
+                df_transformed["PRESENÇA"] + 
+                df_transformed["VISIBILIDADE"] + 
+                df_transformed["POSICIONAMENTO DE NOSSO PRODUTOS"] + 
+                df_transformed["TEM NOSSAS CERVEJAS GELADAS"] +
+                df_transformed["TODAS AS NOSSAS CERVEJAS ESTÃO PRECIFICADAS"]
+            )
+            
+            # Se o máximo da pesquisa for 500 ao invés de 400, altere o valor abaixo
+            porcentagem = pontuacao_total / 400.0
+            
+            # Inserindo a coluna "% de Pontuação" na segunda posição (índice 1 - Coluna B no Excel)
+            df_transformed.insert(1, '% de Pontuação', porcentagem)
+            
+            return df_transformed
+
+                    df_transformed[col] = df_transformed[col].apply(process_cell)
+            
             cols_presenca = [c for c in df_transformed.columns if str(c).strip().upper().startswith("PRESENÇA")]
             df_transformed["PRESENÇA"] = df_transformed[cols_presenca].apply(pd.to_numeric, errors='coerce').sum(axis=1)
 
@@ -1569,6 +1610,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
