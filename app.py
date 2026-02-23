@@ -1174,6 +1174,11 @@ def commercial_page():
         def transform_points_columns(df):
             df_transformed = df.copy()
             
+            # Remove a coluna "Pontuação" original que vem no arquivo, se ela existir
+            colunas_remover = [col for col in df_transformed.columns if str(col).strip().upper() in ['PONTUAÇÃO', 'PONTUACAO']]
+            if colunas_remover:
+                df_transformed.drop(columns=colunas_remover, inplace=True, errors='ignore')
+
             header_pattern = re.compile(r"\(\s*(\d+)\s*Pontos\s*\)", re.IGNORECASE)
             cell_pattern = re.compile(r"\(\s*(\d+)\s*Pontos\s*\)", re.IGNORECASE)
 
@@ -1183,19 +1188,12 @@ def commercial_page():
                 
                 default_points = int(header_match.group(1)) if header_match else None
                 
-                # Expandimos a verificação para garantir que TODAS as colunas de pesquisa sejam processadas
-                colunas_chave = ["PRECIFICADAS", "GELADAS", "PRESENÇA", "PRESENCA", "VISIBILIDADE", "POSICIONAMENTO"]
-                
-                if header_match or any(chave in str_col.upper() for chave in colunas_chave):
+                if header_match or "PRECIFICADAS" in str_col.upper():
                     
                     def process_cell(val):
                         s = str(val).strip()
                         s_upper = s.upper()
                         
-                        # Regra explícita: se a resposta contiver TEM (e não for "NÃO TEM"), vale 17
-                        if "TEM" in s_upper and "NÃO" not in s_upper and "NAO" not in s_upper:
-                            return 17
-                            
                         cell_match = cell_pattern.search(s)
                         if cell_match:
                             return int(cell_match.group(1))
@@ -1600,6 +1598,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
