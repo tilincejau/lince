@@ -1184,6 +1184,7 @@ def commercial_page():
                 default_points = int(header_match.group(1)) if header_match else None
                 
                 if header_match or "PRECIFICADAS" in str_col.upper():
+                    
                     def process_cell(val):
                         s = str(val).strip()
                         
@@ -1234,27 +1235,10 @@ def commercial_page():
                 df_transformed["TODAS AS NOSSAS CERVEJAS ESTÃO PRECIFICADAS"]
             )
             
-            # Se o máximo da pesquisa for 500 ao invés de 400, altere o valor abaixo
             porcentagem = pontuacao_total / 400.0
             
             # Inserindo a coluna "% de Pontuação" na segunda posição (índice 1 - Coluna B no Excel)
             df_transformed.insert(1, '% de Pontuação', porcentagem)
-            
-            return df_transformed
-
-                    df_transformed[col] = df_transformed[col].apply(process_cell)
-            
-            cols_presenca = [c for c in df_transformed.columns if str(c).strip().upper().startswith("PRESENÇA")]
-            df_transformed["PRESENÇA"] = df_transformed[cols_presenca].apply(pd.to_numeric, errors='coerce').sum(axis=1)
-
-            cols_visibilidade = [c for c in df_transformed.columns if str(c).strip().upper().startswith("VISIBILIDADE")]
-            df_transformed["VISIBILIDADE"] = df_transformed[cols_visibilidade].apply(pd.to_numeric, errors='coerce').sum(axis=1)
-
-            cols_posicionamento = [c for c in df_transformed.columns if str(c).strip().upper().startswith("POSICIONAMENTO DE NOSSO PRODUTOS")]
-            df_transformed["POSICIONAMENTO DE NOSSO PRODUTOS"] = df_transformed[cols_posicionamento].apply(pd.to_numeric, errors='coerce').sum(axis=1)
-
-            cols_geladas = [c for c in df_transformed.columns if str(c).strip().upper().startswith("TEM NOSSAS CERVEJAS GELADAS")]
-            df_transformed["TEM NOSSAS CERVEJAS GELADAS"] = df_transformed[cols_geladas].apply(pd.to_numeric, errors='coerce').sum(axis=1)
             
             return df_transformed
 
@@ -1610,6 +1594,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
