@@ -1440,7 +1440,7 @@ def commercial_page():
     # NOVO SCRIPT 3: PLANEJAMENTO ESTRATÉGICO
     # =============================================================
     elif script_selection == "Planejamento Estratégico":
-        st.subheader("Planejamento Estratégico (Diamante e Ouro)")
+        st.subheader("Planejamento Estratégico (Diamante e Ouro & 50 VOLHNK)")
         st.info("O arquivo original deve conter as colunas: CodCli, Razão Social, RefMes, xPorte, QtdeSaidaHL, QtdSaidaHLRGB e ConsideraSKUTOTAL.")
         
         uploaded_pe = st.file_uploader("Envie o arquivo (.xlsx ou .csv)", type=["xlsx", "csv"], key="pe_uploader")
@@ -1455,27 +1455,32 @@ def commercial_page():
                 st.write("Visualização original (5 primeiras linhas):")
                 st.dataframe(df_pe.head())
                 
-                # 10. Filtrar xPorte (Excluir TUDO que não for 'O' e 'D')
-                if 'xPorte' in df_pe.columns:
-                    # Padroniza os textos (remove espaços falsos e deixa maiúsculo)
-                    df_pe['xPorte'] = df_pe['xPorte'].astype(str).str.strip().str.upper()
-                    # Exclui todos os clientes P, B, etc. Mantém apenas O e D.
-                    df_pe = df_pe[df_pe['xPorte'].isin(['O', 'D'])].copy()
-                else:
-                    st.warning("Coluna 'xPorte' não encontrada. O filtro 'O' e 'D' não será aplicado.")
-                
-                # Converter data e descobrir qual é o mês mais recente (mês atual)
+                # Tratar e converter data
                 df_pe['RefMes'] = pd.to_datetime(df_pe['RefMes'], errors='coerce')
                 mes_atual = df_pe['RefMes'].max()
                 
                 if pd.isna(mes_atual):
                     st.error("Erro ao identificar as datas na coluna 'RefMes'.")
                 else:
-                    # Definir os 3 meses exatamente anteriores
+                    # Descobrir qual o ano anterior e qual o mês atual no ano anterior (para a aba 50 VOLHNK)
+                    ano_anterior = mes_atual.year - 1
+                    mes_atual_ano_anterior = mes_atual - pd.DateOffset(years=1)
+                    
+                    # --------------------------------------------------------------------------------
+                    # LÓGICA DA ABA 1: DIAMANTE E OURO
+                    # --------------------------------------------------------------------------------
+                    df_diamante = df_pe.copy()
+                    
+                    if 'xPorte' in df_diamante.columns:
+                        df_diamante['xPorte'] = df_diamante['xPorte'].astype(str).str.strip().str.upper()
+                        df_diamante = df_diamante[df_diamante['xPorte'].isin(['O', 'D'])].copy()
+                    else:
+                        st.warning("Coluna 'xPorte' não encontrada na aba Diamante e Ouro. O filtro não será aplicado.")
+                    
                     meses_3m = [mes_atual - pd.DateOffset(months=i) for i in [1, 2, 3]]
                     
-                    # 1. Agrupar Somente o Mês Atual
-                    df_atual = df_pe[df_pe['RefMes'] == mes_atual].groupby('CodCli').agg({
+                    # Mês Atual Diamante
+                    df_atual_diamante = df_diamante[df_diamante['RefMes'] == mes_atual].groupby('CodCli').agg({
                         'QtdeSaidaHL': 'sum',
                         'QtdSaidaHLRGB': 'sum',
                         'ConsideraSKUTOTAL': 'sum'
@@ -1485,30 +1490,27 @@ def commercial_page():
                         'ConsideraSKUTOTAL': 'SKUS_ATUAL'
                     })
                     
-                    # 2. Agrupar e Calcular a Média dos 3 Meses Anteriores
-                    df_3m = df_pe[df_pe['RefMes'].isin(meses_3m)].groupby('CodCli').agg({
+                    # 3 Meses Anteriores Diamante
+                    df_3m = df_diamante[df_diamante['RefMes'].isin(meses_3m)].groupby('CodCli').agg({
                         'QtdeSaidaHL': 'sum',
                         'QtdSaidaHLRGB': 'sum',
                         'ConsideraSKUTOTAL': 'sum'
                     }).reset_index()
                     
-                    # Como são 3 meses, pegamos o valor total dos meses e dividimos por 3 para a média
                     df_3m['HL_3M'] = df_3m['QtdeSaidaHL'] / 3
                     df_3m['HLRGB_3M'] = df_3m['QtdSaidaHLRGB'] / 3
                     df_3m['SKUS_3M'] = df_3m['ConsideraSKUTOTAL'] / 3
                     df_3m.drop(columns=['QtdeSaidaHL', 'QtdSaidaHLRGB', 'ConsideraSKUTOTAL'], inplace=True)
                     
-                    # 3. Base de Clientes (Pegar colunas cadastrais) e Fazer Merge das informações
+                    # Base Diamante
                     cols_base = ['CodCli', 'Razão Social', 'SV Cód', 'VD Cód', 'xPorte']
-                    cols_base = [c for c in cols_base if c in df_pe.columns]
+                    cols_base = [c for c in cols_base if c in df_diamante.columns]
                     
-                    # Deixar 1 linha por CodCli (pegando os dados mais recentes de cadastro)
-                    df_base = df_pe.sort_values('RefMes').drop_duplicates('CodCli', keep='last')[cols_base]
+                    df_base_diamante = df_diamante.sort_values('RefMes').drop_duplicates('CodCli', keep='last')[cols_base]
                     
-                    # Juntar base com a média dos 3M e o mês atual. Quem não comprou fica com 0.
-                    df_final = df_base.merge(df_3m, on='CodCli', how='left').merge(df_atual, on='CodCli', how='left').fillna(0)
+                    # Final Diamante
+                    df_final_diamante = df_base_diamante.merge(df_3m, on='CodCli', how='left').merge(df_atual_diamante, on='CodCli', how='left').fillna(0)
                     
-                    # Lógica de Status
                     def get_status(atual, media):
                         if atual == 0 and media == 0:
                             return 'INTRODUZIR'
@@ -1517,11 +1519,10 @@ def commercial_page():
                         else:
                             return 'ATACAR'
                     
-                    df_final['STATUS HL'] = df_final.apply(lambda r: get_status(r['HL_ATUAL'], r['HL_3M']), axis=1)
-                    df_final['STATUS HLRGB'] = df_final.apply(lambda r: get_status(r['HLRGB_ATUAL'], r['HLRGB_3M']), axis=1)
-                    df_final['STATUS SKUS'] = df_final.apply(lambda r: get_status(r['SKUS_ATUAL'], r['SKUS_3M']), axis=1)
+                    df_final_diamante['STATUS_HL'] = df_final_diamante.apply(lambda r: get_status(r['HL_ATUAL'], r['HL_3M']), axis=1)
+                    df_final_diamante['STATUS_HLRGB'] = df_final_diamante.apply(lambda r: get_status(r['HLRGB_ATUAL'], r['HLRGB_3M']), axis=1)
+                    df_final_diamante['STATUS_SKUS'] = df_final_diamante.apply(lambda r: get_status(r['SKUS_ATUAL'], r['SKUS_3M']), axis=1)
                     
-                    # Lógica da Coluna AÇÃO (Baseado no HL)
                     def get_acao(atual, media):
                         if atual == 0:
                             return 'PDV SEM COBERTURA'
@@ -1530,38 +1531,102 @@ def commercial_page():
                         else:
                             return ''
                     
-                    df_final['AÇÃO'] = df_final.apply(lambda r: get_acao(r['HL_ATUAL'], r['HL_3M']), axis=1)
+                    df_final_diamante['AÇÃO'] = df_final_diamante.apply(lambda r: get_acao(r['HL_ATUAL'], r['HL_3M']), axis=1)
+                    df_final_diamante['Plano de Ação'] = ''
                     
-                    # Item 12: Plano de Ação
-                    df_final['Plano de Ação'] = ''
-                    
-                    # Reordenar colunas
-                    col_order = cols_base + [
-                        'HL_3M', 'HL_ATUAL', 'STATUS HL', 
-                        'HLRGB_3M', 'HLRGB_ATUAL', 'STATUS HLRGB', 
-                        'SKUS_3M', 'SKUS_ATUAL', 'STATUS SKUS', 
+                    col_order_diamante = cols_base + [
+                        'HL_3M', 'HL_ATUAL', 'STATUS_HL', 
+                        'HLRGB_3M', 'HLRGB_ATUAL', 'STATUS_HLRGB', 
+                        'SKUS_3M', 'SKUS_ATUAL', 'STATUS_SKUS', 
                         'AÇÃO', 'Plano de Ação'
                     ]
-                    df_final = df_final[col_order]
+                    df_final_diamante = df_final_diamante[col_order_diamante]
+
+                    # --------------------------------------------------------------------------------
+                    # LÓGICA DA ABA 2: 50 VOLHNK
+                    # --------------------------------------------------------------------------------
+                    df_50 = df_pe.copy() # Todos os clientes, sem filtro do 'O' e 'D'
                     
-                    st.success("Cálculos do Planejamento Estratégico concluídos!")
-                    st.dataframe(df_final.head(10))
+                    # 1. LY (Todo o ano anterior)
+                    df_ly = df_50[df_50['RefMes'].dt.year == ano_anterior].groupby('CodCli').agg({
+                        'QtdeSaidaHL': 'sum',
+                        'QtdSaidaHLRGB': 'sum'
+                    }).reset_index().rename(columns={
+                        'QtdeSaidaHL': 'SellOut_Total_LY',
+                        'QtdSaidaHLRGB': 'SellOut_RGB_LY'
+                    })
                     
-                    # Gerar arquivo em Excel e renomear aba
+                    # 2. Meta (Mês atual do ano anterior * 1.05)
+                    df_meta = df_50[df_50['RefMes'] == mes_atual_ano_anterior].groupby('CodCli').agg({
+                        'QtdeSaidaHL': 'sum',
+                        'QtdSaidaHLRGB': 'sum'
+                    }).reset_index()
+                    df_meta['Meta_SellOut_Total'] = df_meta['QtdeSaidaHL'] * 1.05
+                    df_meta['Meta_SellOut_RGB'] = df_meta['QtdSaidaHLRGB'] * 1.05
+                    df_meta.drop(columns=['QtdeSaidaHL', 'QtdSaidaHLRGB'], inplace=True)
+                    
+                    # 3. Atual (Mês atual)
+                    df_atual_50 = df_50[df_50['RefMes'] == mes_atual].groupby('CodCli').agg({
+                        'QtdeSaidaHL': 'sum',
+                        'QtdSaidaHLRGB': 'sum'
+                    }).reset_index().rename(columns={
+                        'QtdeSaidaHL': 'SellOut_Total_Atual',
+                        'QtdSaidaHLRGB': 'SellOut_RGB_Atual'
+                    })
+                    
+                    # Base 50 VOLHNK
+                    cols_base_50 = [c for c in cols_base if c in df_50.columns]
+                    df_base_50 = df_50.sort_values('RefMes').drop_duplicates('CodCli', keep='last')[cols_base_50]
+                    
+                    # Merge Final 50 VOLHNK
+                    df_final_50 = df_base_50.merge(df_ly, on='CodCli', how='left') \
+                                            .merge(df_meta, on='CodCli', how='left') \
+                                            .merge(df_atual_50, on='CodCli', how='left').fillna(0)
+                    
+                    # Porcentagem (%) Atual / Meta
+                    df_final_50['SellOut_Total_%'] = np.where(
+                        df_final_50['Meta_SellOut_Total'] > 0, 
+                        df_final_50['SellOut_Total_Atual'] / df_final_50['Meta_SellOut_Total'], 
+                        0
+                    )
+                    df_final_50['SellOut_RGB_%'] = np.where(
+                        df_final_50['Meta_SellOut_RGB'] > 0, 
+                        df_final_50['SellOut_RGB_Atual'] / df_final_50['Meta_SellOut_RGB'], 
+                        0
+                    )
+                    
+                    # Ordenar Colunas
+                    col_order_50 = cols_base_50 + [
+                        'SellOut_Total_LY', 'Meta_SellOut_Total', 'SellOut_Total_Atual', 'SellOut_Total_%',
+                        'SellOut_RGB_LY', 'Meta_SellOut_RGB', 'SellOut_RGB_Atual', 'SellOut_RGB_%'
+                    ]
+                    df_final_50 = df_final_50[col_order_50]
+
+                    # --------------------------------------------------------------------------------
+                    # GERAR ARQUIVO FINAL COM AS 2 ABAS
+                    # --------------------------------------------------------------------------------
+                    st.success("Cálculos do Planejamento Estratégico concluídos com sucesso!")
+                    
+                    st.write("**Resumo da Aba: DIAMANTE E OURO (xPorte O e D)**")
+                    st.dataframe(df_final_diamante.head())
+                    
+                    st.write("**Resumo da Aba: 50 VOLHNK (Geral)**")
+                    st.dataframe(df_final_50.head())
+                    
                     output_pe = io.BytesIO()
                     with pd.ExcelWriter(output_pe, engine="xlsxwriter") as writer:
-                        df_final.to_excel(writer, sheet_name="DIAMANTE E OURO", index=False)
+                        df_final_diamante.to_excel(writer, sheet_name="DIAMANTE E OURO", index=False)
+                        df_final_50.to_excel(writer, sheet_name="50 VOLHNK", index=False)
                     output_pe.seek(0)
                     
                     st.download_button(
-                        label="📥 Baixar Planejamento Estratégico",
+                        label="📥 Baixar Planejamento Estratégico Completo",
                         data=output_pe,
-                        file_name="Planejamento_Estrategico_Diamante_Ouro.xlsx",
+                        file_name="Planejamento_Estrategico_Completo.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Planejamento Estratégico: {e}")
-
 # ====================================================================
 # 7. SETOR DE ASSESSMENT
 # ====================================================================
@@ -1711,6 +1776,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
