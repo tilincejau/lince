@@ -1583,6 +1583,10 @@ def commercial_page():
                                             .merge(df_meta, on='CodCli', how='left') \
                                             .merge(df_atual_50, on='CodCli', how='left').fillna(0)
                     
+                    # REGRAS NOVAS: Se a Meta for 0 (cliente não comprou no mês do ano passado), a Meta vira 1
+                    df_final_50.loc[df_final_50['Meta_SellOut_Total'] == 0, 'Meta_SellOut_Total'] = 1
+                    df_final_50.loc[df_final_50['Meta_SellOut_RGB'] == 0, 'Meta_SellOut_RGB'] = 1
+                    
                     # Porcentagem (%) Atual / Meta
                     df_final_50['SellOut_Total_%'] = np.where(
                         df_final_50['Meta_SellOut_Total'] > 0, 
@@ -1776,6 +1780,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
