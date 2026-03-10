@@ -1436,7 +1436,7 @@ def commercial_page():
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo COM12: {e}")
 
-    # =============================================================
+   # =============================================================
     # NOVO SCRIPT 3: PLANEJAMENTO ESTRATÉGICO
     # =============================================================
     elif script_selection == "Planejamento Estratégico":
@@ -1455,9 +1455,12 @@ def commercial_page():
                 st.write("Visualização original (5 primeiras linhas):")
                 st.dataframe(df_pe.head())
                 
-                # 10. Filtrar xPorte (Manter somente 'O' e 'D')
+                # 10. Filtrar xPorte (Excluir TUDO que não for 'O' e 'D')
                 if 'xPorte' in df_pe.columns:
-                    df_pe = df_pe[df_pe['xPorte'].isin(['O', 'D'])]
+                    # Padroniza os textos (remove espaços falsos e deixa maiúsculo)
+                    df_pe['xPorte'] = df_pe['xPorte'].astype(str).str.strip().str.upper()
+                    # Exclui todos os clientes P, B, etc. Mantém apenas O e D.
+                    df_pe = df_pe[df_pe['xPorte'].isin(['O', 'D'])].copy()
                 else:
                     st.warning("Coluna 'xPorte' não encontrada. O filtro 'O' e 'D' não será aplicado.")
                 
@@ -1708,6 +1711,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
