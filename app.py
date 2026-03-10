@@ -1117,7 +1117,11 @@ def commercial_page():
             st.rerun()
 
     st.markdown("---")
-    script_selection = st.selectbox("Selecione o script:", ("Selecione...", "Troca de Canal", "Circuito Execução"), key="com_select")
+    script_selection = st.selectbox(
+        "Selecione o script:", 
+        ("Selecione...", "Troca de Canal", "Circuito Execução", "Planejamento Estratégico"), 
+        key="com_select"
+    )
 
     # --- SCRIPT 1: TROCA DE CANAL ---
     if script_selection == "Troca de Canal":
@@ -1246,6 +1250,7 @@ def commercial_page():
             df_transformed.insert(1, '% de Pontuação', porcentagem)
             
             return df_transformed
+
         uploaded_file_2 = st.file_uploader("Envie o arquivo do Circuito (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
         if uploaded_file_2 is not None:
             try:
@@ -1274,7 +1279,7 @@ def commercial_page():
                 st.error(f"Erro ao processar o arquivo de Circuito: {e}")
 
         # =============================================================
-        # FERRAMENTA 2: NOVO ARQUIVO (RESUMO COM12) - ATUALIZADA
+        # FERRAMENTA 2: NOVO ARQUIVO (RESUMO COM12)
         # =============================================================
         st.markdown("---")
         st.subheader("Transformação e Agrupamento COM12")
@@ -1308,7 +1313,7 @@ def commercial_page():
                 df_transformed['Sup Cli (Cód)'] = df_transformed['Sup Cli (Cód)'].astype(str).str.replace('2216-', '', regex=False)
                     
             # =========================================================
-            # NOVO: AGRUPAMENTO DOS MESES (H = 7, K = 10, L = 11)
+            # AGRUPAMENTO DOS MESES (H = 7, K = 10, L = 11)
             # =========================================================
             pivot_meses = pd.DataFrame()
             
@@ -1317,10 +1322,8 @@ def commercial_page():
                 col_sku = df.columns[10]   # Coluna K (consideraSkuTotal)
                 col_valor = df.columns[11] # Coluna L (Valores/HL)
                 
-                # Se a coluna de mês existe, faremos as duas tabelas dinâmicas
                 if col_mes in df_transformed.columns:
                     
-                    # 1. Prepara e cruza a Coluna L (Valor Principal -> HL)
                     if col_valor in df_transformed.columns:
                         df_transformed['TEMP_VALOR_L'] = df_transformed[col_valor].astype(str).str.replace(',', '.', regex=False).str.replace('-', '0')
                         df_transformed['TEMP_VALOR_L'] = pd.to_numeric(df_transformed['TEMP_VALOR_L'], errors='coerce').fillna(0)
@@ -1335,11 +1338,9 @@ def commercial_page():
                         aggfunc='sum',
                         fill_value=0
                     )
-                    # Coloca o sufixo (HL)
                     pivot_l.columns = [f"{str(c).strip()} (HL)" for c in pivot_l.columns]
                     pivot_l = pivot_l.reset_index()
 
-                    # 2. Prepara e cruza a Coluna K (SKU)
                     if col_sku in df_transformed.columns:
                         df_transformed['TEMP_VALOR_K'] = df_transformed[col_sku].astype(str).str.replace(',', '.', regex=False).str.replace('-', '0')
                         df_transformed['TEMP_VALOR_K'] = pd.to_numeric(df_transformed['TEMP_VALOR_K'], errors='coerce').fillna(0)
@@ -1354,39 +1355,32 @@ def commercial_page():
                         aggfunc='sum',
                         fill_value=0
                     )
-                    # Coloca o sufixo (SKU)
                     pivot_k.columns = [f"{str(c).strip()} (SKU)" for c in pivot_k.columns]
                     pivot_k = pivot_k.reset_index()
 
-                    # 3. Junta os dois pivôs (Meses HL + Meses SKU)
                     pivot_meses = pd.merge(pivot_l, pivot_k, on='CodCli', how='outer')
                     
-                    # 4. ORDENAÇÃO: Primeiro todos os SKUs, depois todos os HLs
                     meses_unicos = [str(m).strip() for m in df_transformed[col_mes].dropna().unique()]
                     
                     colunas_ordenadas = ['CodCli']
                     
-                    # Loop 1: Puxa apenas as colunas de SKU
                     for m in meses_unicos:
                         col_sku_str = f"{m} (SKU)"
                         if col_sku_str in pivot_meses.columns:
                             colunas_ordenadas.append(col_sku_str)
                             
-                    # Loop 2: Puxa apenas as colunas de HL
                     for m in meses_unicos:
                         col_hl = f"{m} (HL)"
                         if col_hl in pivot_meses.columns:
                             colunas_ordenadas.append(col_hl)
                     
-                    # Adiciona qualquer coluna extra que possa ter escapado da regra acima
                     cols_restantes = [c for c in pivot_meses.columns if c not in colunas_ordenadas]
                     pivot_meses = pivot_meses[colunas_ordenadas + cols_restantes]
 
-                    # Remove colunas temporárias
                     df_transformed.drop(columns=['TEMP_VALOR_L', 'TEMP_VALOR_K'], inplace=True, errors='ignore')
 
             # =========================================================
-            # AGRUPAMENTO ORIGINAL (Mantendo as outras colunas)
+            # AGRUPAMENTO ORIGINAL
             # =========================================================
             agg_dict = {}
             for col in df_transformed.columns:
@@ -1401,18 +1395,11 @@ def commercial_page():
                     
             df_grouped = df_transformed.groupby('CodCli', as_index=False).agg(agg_dict)
 
-            # =========================================================
-            # MERGE FINAL: Anexar todas as colunas de Meses ao arquivo final
-            # =========================================================
             if not pivot_meses.empty:
                 df_grouped = pd.merge(df_grouped, pivot_meses, on='CodCli', how='left')
                 meses_adicionados = [c for c in pivot_meses.columns if c != 'CodCli']
-                # Preenche com 0 quem não teve movimentação naqueles meses
                 df_grouped[meses_adicionados] = df_grouped[meses_adicionados].fillna(0)
 
-            # =========================================================
-            # REMOÇÃO DE COLUNAS INDESEJADAS (Adicionado RefMes)
-            # =========================================================
             colunas_para_remover = ['HL RGB', 'TotalVda', 'TotalVdaRGB', 'RefMes']
             df_grouped.drop(columns=[c for c in colunas_para_remover if c in df_grouped.columns], inplace=True)
 
@@ -1448,6 +1435,129 @@ def commercial_page():
                 )
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo COM12: {e}")
+
+    # =============================================================
+    # NOVO SCRIPT 3: PLANEJAMENTO ESTRATÉGICO
+    # =============================================================
+    elif script_selection == "Planejamento Estratégico":
+        st.subheader("Planejamento Estratégico (Diamante e Ouro)")
+        st.info("O arquivo original deve conter as colunas: CodCli, Razão Social, RefMes, xPorte, QtdeSaidaHL, QtdSaidaHLRGB e ConsideraSKUTOTAL.")
+        
+        uploaded_pe = st.file_uploader("Envie o arquivo (.xlsx ou .csv)", type=["xlsx", "csv"], key="pe_uploader")
+        
+        if uploaded_pe is not None:
+            try:
+                if uploaded_pe.name.endswith('.csv'):
+                    df_pe = pd.read_csv(uploaded_pe)
+                else:
+                    df_pe = pd.read_excel(uploaded_pe)
+                
+                st.write("Visualização original (5 primeiras linhas):")
+                st.dataframe(df_pe.head())
+                
+                # 10. Filtrar xPorte (Manter somente 'O' e 'D')
+                if 'xPorte' in df_pe.columns:
+                    df_pe = df_pe[df_pe['xPorte'].isin(['O', 'D'])]
+                else:
+                    st.warning("Coluna 'xPorte' não encontrada. O filtro 'O' e 'D' não será aplicado.")
+                
+                # Converter data e descobrir qual é o mês mais recente (mês atual)
+                df_pe['RefMes'] = pd.to_datetime(df_pe['RefMes'], errors='coerce')
+                mes_atual = df_pe['RefMes'].max()
+                
+                if pd.isna(mes_atual):
+                    st.error("Erro ao identificar as datas na coluna 'RefMes'.")
+                else:
+                    # Definir os 3 meses exatamente anteriores
+                    meses_3m = [mes_atual - pd.DateOffset(months=i) for i in [1, 2, 3]]
+                    
+                    # 1. Agrupar Somente o Mês Atual
+                    df_atual = df_pe[df_pe['RefMes'] == mes_atual].groupby('CodCli').agg({
+                        'QtdeSaidaHL': 'sum',
+                        'QtdSaidaHLRGB': 'sum',
+                        'ConsideraSKUTOTAL': 'sum'
+                    }).reset_index().rename(columns={
+                        'QtdeSaidaHL': 'HL_ATUAL',
+                        'QtdSaidaHLRGB': 'HLRGB_ATUAL',
+                        'ConsideraSKUTOTAL': 'SKUS_ATUAL'
+                    })
+                    
+                    # 2. Agrupar e Calcular a Média dos 3 Meses Anteriores
+                    df_3m = df_pe[df_pe['RefMes'].isin(meses_3m)].groupby('CodCli').agg({
+                        'QtdeSaidaHL': 'sum',
+                        'QtdSaidaHLRGB': 'sum',
+                        'ConsideraSKUTOTAL': 'sum'
+                    }).reset_index()
+                    
+                    # Como são 3 meses, pegamos o valor total dos meses e dividimos por 3 para a média
+                    df_3m['HL_3M'] = df_3m['QtdeSaidaHL'] / 3
+                    df_3m['HLRGB_3M'] = df_3m['QtdSaidaHLRGB'] / 3
+                    df_3m['SKUS_3M'] = df_3m['ConsideraSKUTOTAL'] / 3
+                    df_3m.drop(columns=['QtdeSaidaHL', 'QtdSaidaHLRGB', 'ConsideraSKUTOTAL'], inplace=True)
+                    
+                    # 3. Base de Clientes (Pegar colunas cadastrais) e Fazer Merge das informações
+                    cols_base = ['CodCli', 'Razão Social', 'SV Cód', 'VD Cód', 'xPorte']
+                    cols_base = [c for c in cols_base if c in df_pe.columns]
+                    
+                    # Deixar 1 linha por CodCli (pegando os dados mais recentes de cadastro)
+                    df_base = df_pe.sort_values('RefMes').drop_duplicates('CodCli', keep='last')[cols_base]
+                    
+                    # Juntar base com a média dos 3M e o mês atual. Quem não comprou fica com 0.
+                    df_final = df_base.merge(df_3m, on='CodCli', how='left').merge(df_atual, on='CodCli', how='left').fillna(0)
+                    
+                    # Lógica de Status
+                    def get_status(atual, media):
+                        if atual == 0 and media == 0:
+                            return 'INTRODUZIR'
+                        elif atual >= media:
+                            return 'PROTEGER'
+                        else:
+                            return 'ATACAR'
+                    
+                    df_final['STATUS HL'] = df_final.apply(lambda r: get_status(r['HL_ATUAL'], r['HL_3M']), axis=1)
+                    df_final['STATUS HLRGB'] = df_final.apply(lambda r: get_status(r['HLRGB_ATUAL'], r['HLRGB_3M']), axis=1)
+                    df_final['STATUS SKUS'] = df_final.apply(lambda r: get_status(r['SKUS_ATUAL'], r['SKUS_3M']), axis=1)
+                    
+                    # Lógica da Coluna AÇÃO (Baseado no HL)
+                    def get_acao(atual, media):
+                        if atual == 0:
+                            return 'PDV SEM COBERTURA'
+                        elif atual < media:
+                            return 'PDV EM QUEDA'
+                        else:
+                            return ''
+                    
+                    df_final['AÇÃO'] = df_final.apply(lambda r: get_acao(r['HL_ATUAL'], r['HL_3M']), axis=1)
+                    
+                    # Item 12: Plano de Ação
+                    df_final['Plano de Ação'] = ''
+                    
+                    # Reordenar colunas
+                    col_order = cols_base + [
+                        'HL_3M', 'HL_ATUAL', 'STATUS HL', 
+                        'HLRGB_3M', 'HLRGB_ATUAL', 'STATUS HLRGB', 
+                        'SKUS_3M', 'SKUS_ATUAL', 'STATUS SKUS', 
+                        'AÇÃO', 'Plano de Ação'
+                    ]
+                    df_final = df_final[col_order]
+                    
+                    st.success("Cálculos do Planejamento Estratégico concluídos!")
+                    st.dataframe(df_final.head(10))
+                    
+                    # Gerar arquivo em Excel e renomear aba
+                    output_pe = io.BytesIO()
+                    with pd.ExcelWriter(output_pe, engine="xlsxwriter") as writer:
+                        df_final.to_excel(writer, sheet_name="DIAMANTE E OURO", index=False)
+                    output_pe.seek(0)
+                    
+                    st.download_button(
+                        label="📥 Baixar Planejamento Estratégico",
+                        data=output_pe,
+                        file_name="Planejamento_Estrategico_Diamante_Ouro.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+            except Exception as e:
+                st.error(f"Erro ao processar o arquivo de Planejamento Estratégico: {e}")
 
 # ====================================================================
 # 7. SETOR DE ASSESSMENT
@@ -1598,6 +1708,7 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
+
 
 
 
