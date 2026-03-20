@@ -1118,10 +1118,10 @@ def commercial_page():
 
     st.markdown("---")
     script_selection = st.selectbox(
-        "Selecione o script:", 
-        ("Selecione...", "Troca de Canal", "Circuito Execução", "Planejamento Estratégico", "Limite de Credito"), 
-        key="com_select"
-    )
+        "Selecione o script:", 
+        ("Selecione...", "Troca de Canal", "Circuito Execução", "Planejamento Estratégico", "Limite de Credito"), 
+        key="com_select"
+    )
 
     # --- SCRIPT 1: TROCA DE CANAL ---
     if script_selection == "Troca de Canal":
@@ -1436,7 +1436,7 @@ def commercial_page():
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo COM12: {e}")
 
-   # =============================================================
+    # =============================================================
     # NOVO SCRIPT 3: PLANEJAMENTO ESTRATÉGICO
     # =============================================================
     elif script_selection == "Planejamento Estratégico":
@@ -1632,7 +1632,7 @@ def commercial_page():
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Planejamento Estratégico: {e}")
 
-# =============================================================
+    # =============================================================
     # NOVO SCRIPT 4: LIMITE DE CRÉDITO
     # =============================================================
     elif script_selection == "Limite de Credito":
@@ -1654,7 +1654,7 @@ def commercial_page():
                 
                 # 1. Garantir o formato correto da data e criar coluna de Mês/Ano (Ex: 01/2026)
                 df_lc['RefMes'] = pd.to_datetime(df_lc['RefMes'], errors='coerce')
-                # Formatando para exibição nas colunas (você pode mudar para '%b/%Y' se quiser 'jan/2026')
+                # Formatando para exibição nas colunas
                 df_lc['MesAno'] = df_lc['RefMes'].dt.strftime('%m/%Y') 
                 
                 # 2. Garantir que o Faturamento é numérico
@@ -1665,7 +1665,7 @@ def commercial_page():
                     st.stop()
                 
                 # 3. Identificar as colunas de cadastro do cliente dinamicamente
-                # Vamos usar as colunas comuns do seu arquivo como índice (linhas), ignorando as de data e valor
+                # Usamos as colunas comuns do arquivo como índice (linhas), ignorando as de data e valor
                 colunas_indice = ['CodCli', 'Fantasia', 'VD', 'SV', 'GerPedido']
                 # Filtra apenas as colunas que realmente existem no arquivo submetido
                 colunas_indice_existentes = [col for col in colunas_indice if col in df_lc.columns]
@@ -1707,7 +1707,8 @@ def commercial_page():
                 
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Limite de Crédito: {e}")
-    
+
+
 # ====================================================================
 # 7. SETOR DE ASSESSMENT
 # ====================================================================
@@ -1857,17 +1858,3 @@ if st.session_state.get('is_logged_in', False):
         main_page()
 else:
     login_form()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
