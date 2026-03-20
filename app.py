@@ -1637,7 +1637,7 @@ def commercial_page():
     # =============================================================
     elif script_selection == "Limite de Credito":
         st.subheader("Análise para Limite de Crédito (Faturamento por Mês)")
-        st.info("O arquivo deve conter as colunas: CodCli, Fantasia, RefMes e Faturamento. Os meses serão transformados em colunas.")
+        st.info("O arquivo deve conter as colunas: CodCli, Fantasia, RefMes, Faturamento e xPorte.")
         
         uploaded_lc = st.file_uploader("Envie o arquivo de Vendas (.xlsx ou .csv)", type=["xlsx", "csv"], key="lc_uploader")
         
@@ -1649,12 +1649,8 @@ def commercial_page():
                 else:
                     df_lc = pd.read_excel(uploaded_lc)
                 
-                st.write("Visualização original (5 primeiras linhas):")
-                st.dataframe(df_lc.head())
-                
-                # 1. Garantir o formato correto da data e criar coluna de Mês/Ano (Ex: 01/2026)
+                # 1. Garantir o formato correto da data
                 df_lc['RefMes'] = pd.to_datetime(df_lc['RefMes'], errors='coerce')
-                # Formatando para exibição nas colunas
                 df_lc['MesAno'] = df_lc['RefMes'].dt.strftime('%m/%Y') 
                 
                 # 2. Garantir que o Faturamento é numérico
@@ -1664,17 +1660,22 @@ def commercial_page():
                     st.error("A coluna 'Faturamento' não foi encontrada no arquivo!")
                     st.stop()
                 
-                # 3. Identificar as colunas de cadastro do cliente dinamicamente
-                # Usamos as colunas comuns do arquivo como índice (linhas), ignorando as de data e valor
-                colunas_indice = ['CodCli', 'Fantasia', 'VD', 'SV', 'GerPedido']
-                # Filtra apenas as colunas que realmente existem no arquivo submetido
+                # 3. Tratamento xPorte 
+                if 'xPorte' in df_lc.columns:
+                    df_lc['xPorte'] = df_lc['xPorte'].astype(str).str.strip().str.upper()
+                    df_lc = df_lc[~df_lc['xPorte'].isin(['P', 'B'])]
+                    
+                    map_porte = {'O': 'OURO', 'D': 'DIAMANTE'}
+                    df_lc['xPorte'] = df_lc['xPorte'].map(map_porte).fillna(df_lc['xPorte'])
+                
+                # 4. Colunas da Pivot Table
+                colunas_indice = ['CodCli', 'Fantasia', 'VD', 'SV', 'GerPedido', 'xPorte']
                 colunas_indice_existentes = [col for col in colunas_indice if col in df_lc.columns]
                 
                 if not colunas_indice_existentes:
                      st.error("Nenhuma coluna de identificação do cliente (ex: CodCli) encontrada.")
                      st.stop()
 
-                # 4. Criar a Pivot Table
                 df_pivot_lc = pd.pivot_table(
                     df_lc,
                     values='Faturamento',
@@ -1684,15 +1685,38 @@ def commercial_page():
                     fill_value=0
                 ).reset_index()
                 
-                # Opcional: Criar uma coluna de "Faturamento Total" somando os meses
                 meses_cols = [col for col in df_pivot_lc.columns if col not in colunas_indice_existentes]
-                df_pivot_lc['Faturamento Total'] = df_pivot_lc[meses_cols].sum(axis=1)
                 
-                st.success("Tabela pivotada com sucesso!")
-                st.write("**Resumo - Faturamento por Mês:**")
+                # 5. Descobrir as colunas de datas para base de 3 meses
+                meses_ordenados = sorted(meses_cols, key=lambda x: datetime.strptime(x, '%m/%Y'))
+                ultimos_3_meses = meses_ordenados[-3:] if len(meses_ordenados) >= 3 else meses_ordenados
+                
+                # Média dos últimos 3 meses presentes no arquivo
+                df_pivot_lc['Media 3 Meses'] = df_pivot_lc[ultimos_3_meses].sum(axis=1) / 3.0
+                
+                # 6. Cálculo de Limite
+                def calcular_limite(row):
+                    porte = str(row.get('xPorte', '')).strip().upper()
+                    media = row['Media 3 Meses']
+                    
+                    if porte == 'DIAMANTE':
+                        return max(media * 1.50, 1000.0)
+                    elif porte == 'OURO':
+                        return max(media * 1.40, 600.0)
+                    else:
+                        return 0.0
+                        
+                df_pivot_lc['Limite de Credito'] = df_pivot_lc.apply(calcular_limite, axis=1)
+                
+                # 7. Resumo Adicional
+                df_pivot_lc['Faturamento Total'] = df_pivot_lc[meses_cols].sum(axis=1)
+                cols_finais = colunas_indice_existentes + meses_ordenados + ['Faturamento Total', 'Media 3 Meses', 'Limite de Credito']
+                df_pivot_lc = df_pivot_lc[cols_finais]
+                
+                st.success("Tabela processada com sucesso!")
+                st.write("**Resumo - Limite de Crédito:**")
                 st.dataframe(df_pivot_lc.head(15))
                 
-                # 5. Disponibilizar para download
                 output_lc = io.BytesIO()
                 with pd.ExcelWriter(output_lc, engine="xlsxwriter") as writer:
                     df_pivot_lc.to_excel(writer, sheet_name="Limite de Credito", index=False)
@@ -1701,13 +1725,12 @@ def commercial_page():
                 st.download_button(
                     label="📥 Baixar Análise de Limite de Crédito",
                     data=output_lc,
-                    file_name="Limite_Credito_Faturamento_Mensal.xlsx",
+                    file_name="Limite_Credito_Analisado.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Limite de Crédito: {e}")
-
 
 # ====================================================================
 # 7. SETOR DE ASSESSMENT
