@@ -1667,6 +1667,7 @@ def commercial_page():
                     map_porte = {'O': 'OURO', 'D': 'DIAMANTE', 'P': 'PRATA', 'B': 'BRONZE'}
                     df_lc['xPorte'] = df_lc['xPorte'].map(map_porte).fillna(df_lc['xPorte'])
                 
+                
                 # 4. Obter dados cadastrais únicos (evita duplicidade se o cliente trocou de VD, SV ou xPorte)
                 colunas_indice = ['CodCli', 'Fantasia', 'VD', 'SV', 'GerPedido', 'xPorte']
                 colunas_indice_existentes = [col for col in colunas_indice if col in df_lc.columns]
@@ -1691,8 +1692,10 @@ def commercial_page():
                 meses_ordenados = sorted(meses_cols, key=lambda x: datetime.strptime(x, '%m/%Y'))
                 ultimos_3_meses = meses_ordenados[-3:] if len(meses_ordenados) >= 3 else meses_ordenados
                 
-                # Média dos últimos 3 meses presentes no arquivo
-                df_pivot_lc['Media 3 Meses'] = df_pivot_lc[ultimos_3_meses].sum(axis=1) / 3.0
+                # CORREÇÃO: Usar a quantidade exata de meses disponíveis na planilha para a média, 
+                # evitando dividir por 3 se o arquivo tiver apenas 1 ou 2 meses de dados.
+                num_meses = len(ultimos_3_meses)
+                df_pivot_lc['Media 3 Meses'] = (df_pivot_lc[ultimos_3_meses].sum(axis=1) / num_meses) if num_meses > 0 else 0
                 
                 # 7. Cálculo de Limite
                 def calcular_limite(row):
@@ -1710,10 +1713,11 @@ def commercial_page():
                     else:
                         return 0.0
                         
-                df_pivot_lc['Limite de Credito'] = df_pivot_lc.apply(calcular_limite, axis=1)
+                df_pivot_lc['Limite de Credito'] = df_pivot_lc.apply(calcular_limite, axis=1).round(2)
+                df_pivot_lc['Media 3 Meses'] = df_pivot_lc['Media 3 Meses'].round(2)
                 
                 # 8. Resumo Adicional
-                df_pivot_lc['Faturamento Total'] = df_pivot_lc[meses_cols].sum(axis=1)
+                df_pivot_lc['Faturamento Total'] = df_pivot_lc[meses_cols].sum(axis=1).round(2)
                 cols_finais = colunas_indice_existentes + meses_ordenados + ['Faturamento Total', 'Media 3 Meses', 'Limite de Credito']
                 df_pivot_lc = df_pivot_lc[cols_finais]
                 
@@ -1732,7 +1736,6 @@ def commercial_page():
                     file_name="Limite_Credito_Analisado.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-                
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Limite de Crédito: {e}")
 
