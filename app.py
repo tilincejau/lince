@@ -1667,33 +1667,34 @@ def commercial_page():
                     map_porte = {'O': 'OURO', 'D': 'DIAMANTE', 'P': 'PRATA', 'B': 'BRONZE'}
                     df_lc['xPorte'] = df_lc['xPorte'].map(map_porte).fillna(df_lc['xPorte'])
                 
-                # 4. Colunas da Pivot Table
+                # 4. Obter dados cadastrais únicos (evita duplicidade se o cliente trocou de VD, SV ou xPorte)
                 colunas_indice = ['CodCli', 'Fantasia', 'VD', 'SV', 'GerPedido', 'xPorte']
                 colunas_indice_existentes = [col for col in colunas_indice if col in df_lc.columns]
                 
-                if not colunas_indice_existentes:
-                     st.error("Nenhuma coluna de identificação do cliente (ex: CodCli) encontrada.")
+                if not colunas_indice_existentes or 'CodCli' not in colunas_indice_existentes:
+                     st.error("A coluna 'CodCli' não foi encontrada para identificação do cliente.")
                      st.stop()
 
-                df_pivot_lc = pd.pivot_table(
-                    df_lc,
-                    values='Faturamento',
-                    index=colunas_indice_existentes,
-                    columns='MesAno',
-                    aggfunc='sum',
-                    fill_value=0
-                ).reset_index()
+                # Pegamos a última informação de cadastro de cada cliente para garantir linha única
+                df_cadastral = df_lc[colunas_indice_existentes].drop_duplicates(subset=['CodCli'], keep='last')
+
+                # 5. Criar a Pivot Table apenas com CodCli e MesAno para garantir 1 linha por cliente
+                df_faturamento = df_lc.groupby(['CodCli', 'MesAno'])['Faturamento'].sum().reset_index()
+                df_pivot_valores = df_faturamento.pivot(index='CodCli', columns='MesAno', values='Faturamento').fillna(0).reset_index()
                 
-                meses_cols = [col for col in df_pivot_lc.columns if col not in colunas_indice_existentes]
+                # Junta o cadastro limpo com os valores pivotados
+                df_pivot_lc = pd.merge(df_cadastral, df_pivot_valores, on='CodCli', how='left')
                 
-                # 5. Descobrir as colunas de datas para base de 3 meses
+                meses_cols = [col for col in df_pivot_valores.columns if col != 'CodCli']
+                
+                # 6. Descobrir as colunas de datas para base de 3 meses
                 meses_ordenados = sorted(meses_cols, key=lambda x: datetime.strptime(x, '%m/%Y'))
                 ultimos_3_meses = meses_ordenados[-3:] if len(meses_ordenados) >= 3 else meses_ordenados
                 
                 # Média dos últimos 3 meses presentes no arquivo
                 df_pivot_lc['Media 3 Meses'] = df_pivot_lc[ultimos_3_meses].sum(axis=1) / 3.0
                 
-                # 6. Cálculo de Limite
+                # 7. Cálculo de Limite
                 def calcular_limite(row):
                     porte = str(row.get('xPorte', '')).strip().upper()
                     media = row['Media 3 Meses']
@@ -1711,7 +1712,7 @@ def commercial_page():
                         
                 df_pivot_lc['Limite de Credito'] = df_pivot_lc.apply(calcular_limite, axis=1)
                 
-                # 7. Resumo Adicional
+                # 8. Resumo Adicional
                 df_pivot_lc['Faturamento Total'] = df_pivot_lc[meses_cols].sum(axis=1)
                 cols_finais = colunas_indice_existentes + meses_ordenados + ['Faturamento Total', 'Media 3 Meses', 'Limite de Credito']
                 df_pivot_lc = df_pivot_lc[cols_finais]
