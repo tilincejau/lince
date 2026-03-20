@@ -1118,10 +1118,10 @@ def commercial_page():
 
     st.markdown("---")
     script_selection = st.selectbox(
-        "Selecione o script:", 
-        ("Selecione...", "Troca de Canal", "Circuito Execução", "Planejamento Estratégico"), 
-        key="com_select"
-    )
+        "Selecione o script:", 
+        ("Selecione...", "Troca de Canal", "Circuito Execução", "Planejamento Estratégico", "Limite de Credito"), 
+        key="com_select"
+    )
 
     # --- SCRIPT 1: TROCA DE CANAL ---
     if script_selection == "Troca de Canal":
@@ -1631,6 +1631,83 @@ def commercial_page():
                     )
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Planejamento Estratégico: {e}")
+
+# =============================================================
+    # NOVO SCRIPT 4: LIMITE DE CRÉDITO
+    # =============================================================
+    elif script_selection == "Limite de Credito":
+        st.subheader("Análise para Limite de Crédito (Faturamento por Mês)")
+        st.info("O arquivo deve conter as colunas: CodCli, Fantasia, RefMes e Faturamento. Os meses serão transformados em colunas.")
+        
+        uploaded_lc = st.file_uploader("Envie o arquivo de Vendas (.xlsx ou .csv)", type=["xlsx", "csv"], key="lc_uploader")
+        
+        if uploaded_lc is not None:
+            try:
+                st.info("Lendo e processando os dados...")
+                if uploaded_lc.name.endswith('.csv'):
+                    df_lc = pd.read_csv(uploaded_lc)
+                else:
+                    df_lc = pd.read_excel(uploaded_lc)
+                
+                st.write("Visualização original (5 primeiras linhas):")
+                st.dataframe(df_lc.head())
+                
+                # 1. Garantir o formato correto da data e criar coluna de Mês/Ano (Ex: 01/2026)
+                df_lc['RefMes'] = pd.to_datetime(df_lc['RefMes'], errors='coerce')
+                # Formatando para exibição nas colunas (você pode mudar para '%b/%Y' se quiser 'jan/2026')
+                df_lc['MesAno'] = df_lc['RefMes'].dt.strftime('%m/%Y') 
+                
+                # 2. Garantir que o Faturamento é numérico
+                if 'Faturamento' in df_lc.columns:
+                    df_lc['Faturamento'] = pd.to_numeric(df_lc['Faturamento'], errors='coerce').fillna(0)
+                else:
+                    st.error("A coluna 'Faturamento' não foi encontrada no arquivo!")
+                    st.stop()
+                
+                # 3. Identificar as colunas de cadastro do cliente dinamicamente
+                # Vamos usar as colunas comuns do seu arquivo como índice (linhas), ignorando as de data e valor
+                colunas_indice = ['CodCli', 'Fantasia', 'VD', 'SV', 'GerPedido']
+                # Filtra apenas as colunas que realmente existem no arquivo submetido
+                colunas_indice_existentes = [col for col in colunas_indice if col in df_lc.columns]
+                
+                if not colunas_indice_existentes:
+                     st.error("Nenhuma coluna de identificação do cliente (ex: CodCli) encontrada.")
+                     st.stop()
+
+                # 4. Criar a Pivot Table
+                df_pivot_lc = pd.pivot_table(
+                    df_lc,
+                    values='Faturamento',
+                    index=colunas_indice_existentes,
+                    columns='MesAno',
+                    aggfunc='sum',
+                    fill_value=0
+                ).reset_index()
+                
+                # Opcional: Criar uma coluna de "Faturamento Total" somando os meses
+                meses_cols = [col for col in df_pivot_lc.columns if col not in colunas_indice_existentes]
+                df_pivot_lc['Faturamento Total'] = df_pivot_lc[meses_cols].sum(axis=1)
+                
+                st.success("Tabela pivotada com sucesso!")
+                st.write("**Resumo - Faturamento por Mês:**")
+                st.dataframe(df_pivot_lc.head(15))
+                
+                # 5. Disponibilizar para download
+                output_lc = io.BytesIO()
+                with pd.ExcelWriter(output_lc, engine="xlsxwriter") as writer:
+                    df_pivot_lc.to_excel(writer, sheet_name="Limite de Credito", index=False)
+                output_lc.seek(0)
+                
+                st.download_button(
+                    label="📥 Baixar Análise de Limite de Crédito",
+                    data=output_lc,
+                    file_name="Limite_Credito_Faturamento_Mensal.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                
+            except Exception as e:
+                st.error(f"Erro ao processar o arquivo de Limite de Crédito: {e}")
+    
 # ====================================================================
 # 7. SETOR DE ASSESSMENT
 # ====================================================================
