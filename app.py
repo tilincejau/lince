@@ -1663,9 +1663,8 @@ def commercial_page():
                 # 3. Tratamento xPorte 
                 if 'xPorte' in df_lc.columns:
                     df_lc['xPorte'] = df_lc['xPorte'].astype(str).str.strip().str.upper()
-                    df_lc = df_lc[~df_lc['xPorte'].isin(['P', 'B'])]
                     
-                    map_porte = {'O': 'OURO', 'D': 'DIAMANTE'}
+                    map_porte = {'O': 'OURO', 'D': 'DIAMANTE', 'P': 'PRATA', 'B': 'BRONZE'}
                     df_lc['xPorte'] = df_lc['xPorte'].map(map_porte).fillna(df_lc['xPorte'])
                 
                 # 4. Colunas da Pivot Table
@@ -1703,6 +1702,10 @@ def commercial_page():
                         return max(media * 1.50, 1000.0)
                     elif porte == 'OURO':
                         return max(media * 1.40, 600.0)
+                    elif porte == 'PRATA':
+                        return max(media * 1.30, 400.0)
+                    elif porte == 'BRONZE':
+                        return max(media * 1.20, 200.0)
                     else:
                         return 0.0
                         
