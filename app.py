@@ -1686,31 +1686,40 @@ def commercial_page():
         
         if uploaded_ms is not None:
             try:
-                st.info("Lendo e processando os dados...")
+                st.info("A ler e processar os dados...")
                 if uploaded_ms.name.endswith('.csv'):
                     df_ms = pd.read_csv(uploaded_ms)
                 else:
                     df_ms = pd.read_excel(uploaded_ms)
                 
+                # 1. Tratamento da coluna de Data (RefMes)
                 if 'RefMes' not in df_ms.columns:
                     st.error("A coluna 'RefMes' não foi encontrada no arquivo!")
                     st.stop()
                     
                 df_ms['RefMes'] = pd.to_datetime(df_ms['RefMes'], errors='coerce')
                 
+                # Mapeamento para nome do mês abreviado
                 meses_pt = {1: 'jan', 2: 'fev', 3: 'mar', 4: 'abr', 5: 'mai', 6: 'jun', 
                             7: 'jul', 8: 'ago', 9: 'set', 10: 'out', 11: 'nov', 12: 'dez'}
                 
+                # Cria a coluna com o formato 'jan/26'
                 df_ms['MesFormatado'] = df_ms['RefMes'].dt.month.map(meses_pt) + '/' + df_ms['RefMes'].dt.strftime('%y')
                 
+                # 2. Obter a ordem cronológica correta dos meses ANTES de pivotar
+                df_meses_unicos = df_ms[['RefMes', 'MesFormatado']].dropna(subset=['RefMes']).drop_duplicates().sort_values('RefMes')
+                meses_cronologicos = df_meses_unicos['MesFormatado'].tolist()
+                
+                # 3. Garantir que as métricas são numéricas e limpar
                 colunas_metricas = ['RGB', 'MAINSTREAM', 'PREMIUM']
                 for col in colunas_metricas:
                     if col in df_ms.columns:
                         df_ms[col] = df_ms[col].astype(str).str.replace(',', '.', regex=False)
                         df_ms[col] = pd.to_numeric(df_ms[col], errors='coerce').fillna(0)
                     else:
-                        df_ms[col] = 0.0 
+                        df_ms[col] = 0.0 # Cria a coluna zerada caso não exista
                 
+                # 4. Separar as informações cadastrais únicas do cliente
                 colunas_cadastrais = ['CodCli', 'VendCliCod', 'SupCliCod', 'RazaoSocial', 'Fantasia', 
                                       'CNPJ Cli', 'Cidade', 'CanalCod', 'Canal', 'Porte', 'PastaCliCod', 'Pasta Cli']
                 
@@ -1722,6 +1731,7 @@ def commercial_page():
                 
                 df_cadastral = df_ms[colunas_cadastrais_existentes].drop_duplicates(subset=['CodCli'], keep='last')
                 
+                # 5. Pivotar as métricas para transformar meses em colunas
                 df_pivot = df_ms.pivot_table(
                     index='CodCli', 
                     columns='MesFormatado', 
@@ -1730,24 +1740,36 @@ def commercial_page():
                     fill_value=0
                 )
                 
-                novas_colunas = []
+                # 6. Achatar e Reordenar as colunas
+                # Primeiro, definimos a ordem exata que queremos: Mês 1 (RGB, Mainstream, Premium), Mês 2...
+                colunas_ordenadas = []
+                for mes in meses_cronologicos:
+                    for metrica in ['RGB', 'MAINSTREAM', 'PREMIUM']:
+                        if (metrica, mes) in df_pivot.columns:
+                            nome_metrica = 'RGB' if metrica == 'RGB' else metrica.title()
+                            colunas_ordenadas.append(f"{mes} ({nome_metrica})")
+                
+                # Mudamos os nomes das colunas geradas pelo Pivot (que vêm como tuplas)
+                colunas_achatadas = []
                 for metrica, mes in df_pivot.columns:
-                    if metrica.upper() == 'RGB':
-                        nome_metrica = 'RGB'
-                    else:
-                        nome_metrica = metrica.title()
-                        
-                    novas_colunas.append(f"{mes} ({nome_metrica})")
+                    nome_metrica = 'RGB' if metrica == 'RGB' else metrica.title()
+                    colunas_achatadas.append(f"{mes} ({nome_metrica})")
                 
-                df_pivot.columns = novas_colunas
-                df_pivot = df_pivot.reset_index()
+                df_pivot.columns = colunas_achatadas
                 
+                # Aplicamos a ordem cronológica perfeita!
+                # Utilizamos as colunas que efetivamente existem no df_pivot para evitar erros
+                colunas_ordenadas_reais = [col for col in colunas_ordenadas if col in df_pivot.columns]
+                df_pivot = df_pivot[colunas_ordenadas_reais].reset_index()
+                
+                # 7. Unir o cadastro único com as colunas dos meses
                 df_final = pd.merge(df_cadastral, df_pivot, on='CodCli', how='left')
                 
                 st.success("Plano de Market Share processado com sucesso!")
                 st.write("**Resumo - 5 primeiras linhas:**")
                 st.dataframe(df_final.head())
                 
+                # 8. Botão de Download
                 output_ms = io.BytesIO()
                 with pd.ExcelWriter(output_ms, engine="xlsxwriter") as writer:
                     df_final.to_excel(writer, sheet_name="Market Share", index=False)
@@ -1761,7 +1783,7 @@ def commercial_page():
                 )
                 
             except Exception as e:
-                st.error(f"Erro ao processar o arquivo de Market Share: {e}")
+                st.error(f"Erro ao processar o ficheiro de Market Share: {e}")
                 
 # ====================================================================
 # 7. SETOR DE ASSESSMENT
