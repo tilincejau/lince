@@ -1734,6 +1734,106 @@ def commercial_page():
                 )
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Limite de Crédito: {e}")
+elif script_selection == "Plano de Market Share":
+        st.subheader("Plano de Market Share (Abertura Mensal)")
+        st.info("O arquivo deve conter as colunas: CodCli, RefMes, RGB, MAINSTREAM e PREMIUM.")
+        
+        uploaded_ms = st.file_uploader("Envie a base de clientes (.xlsx ou .csv)", type=["xlsx", "csv"], key="ms_uploader")
+        
+        if uploaded_ms is not None:
+            try:
+                st.info("Lendo e processando os dados...")
+                if uploaded_ms.name.endswith('.csv'):
+                    df_ms = pd.read_csv(uploaded_ms)
+                else:
+                    df_ms = pd.read_excel(uploaded_ms)
+                
+                # 1. Tratamento da coluna de Data (RefMes)
+                if 'RefMes' not in df_ms.columns:
+                    st.error("A coluna 'RefMes' não foi encontrada no arquivo!")
+                    st.stop()
+                    
+                df_ms['RefMes'] = pd.to_datetime(df_ms['RefMes'], errors='coerce')
+                
+                # Mapeamento para nome do mês em português (abreviado)
+                meses_pt = {1: 'jan', 2: 'fev', 3: 'mar', 4: 'abr', 5: 'mai', 6: 'jun', 
+                            7: 'jul', 8: 'ago', 9: 'set', 10: 'out', 11: 'nov', 12: 'dez'}
+                
+                # Cria a coluna com o formato 'jan/26'
+                df_ms['MesFormatado'] = df_ms['RefMes'].dt.month.map(meses_pt) + '/' + df_ms['RefMes'].dt.strftime('%y')
+                
+                # 2. Garantir que as métricas são numéricas e limpar
+                colunas_metricas = ['RGB', 'MAINSTREAM', 'PREMIUM']
+                for col in colunas_metricas:
+                    if col in df_ms.columns:
+                        df_ms[col] = df_ms[col].astype(str).str.replace(',', '.', regex=False)
+                        df_ms[col] = pd.to_numeric(df_ms[col], errors='coerce').fillna(0)
+                    else:
+                        df_ms[col] = 0.0 # Cria a coluna zerada caso não exista
+                
+                # 3. Separar as informações cadastrais únicas do cliente (para não perder na pivotagem)
+                # Pega as colunas que estão ANTES das métricas de volume/valor
+                colunas_cadastrais = ['CodCli', 'VendCliCod', 'SupCliCod', 'RazaoSocial', 'Fantasia', 
+                                      'CNPJ Cli', 'Cidade', 'CanalCod', 'Canal', 'Porte', 'PastaCliCod', 'Pasta Cli']
+                
+                colunas_cadastrais_existentes = [col for col in colunas_cadastrais if col in df_ms.columns]
+                
+                if 'CodCli' not in colunas_cadastrais_existentes:
+                    st.error("A coluna 'CodCli' é obrigatória para agrupar os clientes.")
+                    st.stop()
+                
+                df_cadastral = df_ms[colunas_cadastrais_existentes].drop_duplicates(subset=['CodCli'], keep='last')
+                
+                # 4. Pivotar as métricas para transformar meses em colunas
+                df_pivot = df_ms.pivot_table(
+                    index='CodCli', 
+                    columns='MesFormatado', 
+                    values=['RGB', 'MAINSTREAM', 'PREMIUM'], 
+                    aggfunc='sum', 
+                    fill_value=0
+                )
+                
+                # 5. Achatar e renomear as colunas criadas no Pivot (MultiIndex para Nomes Simples)
+                # O pivot cria colunas como ('MAINSTREAM', 'jan/26'). Vamos transformar em 'jan/26 (Mainstream)'
+                novas_colunas = []
+                for metrica, mes in df_pivot.columns:
+                    # Ajusta a capitalização para o nome ficar bonito (RGB, Mainstream, Premium)
+                    if metrica.upper() == 'RGB':
+                        nome_metrica = 'RGB'
+                    else:
+                        nome_metrica = metrica.title()
+                        
+                    novas_colunas.append(f"{mes} ({nome_metrica})")
+                
+                df_pivot.columns = novas_colunas
+                df_pivot = df_pivot.reset_index()
+                
+                # Ordenar as colunas geradas temporalmente (opcional, mas ajuda na visualização)
+                # Como criamos as colunas com texto, o merge já vai jogar elas pro final.
+                
+                # 6. Unir o cadastro único com as colunas dos meses
+                df_final = pd.merge(df_cadastral, df_pivot, on='CodCli', how='left')
+                
+                st.success("Plano de Market Share processado com sucesso!")
+                st.write("**Resumo - 5 primeiras linhas:**")
+                st.dataframe(df_final.head())
+                
+                # 7. Botão de Download
+                output_ms = io.BytesIO()
+                with pd.ExcelWriter(output_ms, engine="xlsxwriter") as writer:
+                    df_final.to_excel(writer, sheet_name="Market Share", index=False)
+                output_ms.seek(0)
+                
+                st.download_button(
+                    label="📥 Baixar Plano de Market Share",
+                    data=output_ms,
+                    file_name="Plano_Market_Share_Processado.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                
+            except Exception as e:
+                st.error(f"Erro ao processar o arquivo de Market Share: {e}")
+
 
 # ====================================================================
 # 7. SETOR DE ASSESSMENT
