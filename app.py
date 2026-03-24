@@ -1679,111 +1679,179 @@ def commercial_page():
     # NOVO SCRIPT 5: PLANO DE MARKET SHARE
     # =============================================================
     elif script_selection == "Plano de Market Share":
-        st.subheader("Plano de Market Share (Abertura Mensal)")
+        st.subheader("Plano de Market Share (Abertura Mensal e Metas por Categoria)")
         st.info("O arquivo deve conter as colunas: CodCli, RefMes, RGB, MAINSTREAM e PREMIUM.")
         
         uploaded_ms = st.file_uploader("Envie a base de clientes (.xlsx ou .csv)", type=["xlsx", "csv"], key="ms_uploader")
         
         if uploaded_ms is not None:
             try:
-                st.info("A ler e processar os dados...")
+                st.info("Lendo e processando os dados...")
                 if uploaded_ms.name.endswith('.csv'):
                     df_ms = pd.read_csv(uploaded_ms)
                 else:
                     df_ms = pd.read_excel(uploaded_ms)
                 
-                # 1. Tratamento da coluna de Data (RefMes)
                 if 'RefMes' not in df_ms.columns:
                     st.error("A coluna 'RefMes' não foi encontrada no arquivo!")
                     st.stop()
                     
                 df_ms['RefMes'] = pd.to_datetime(df_ms['RefMes'], errors='coerce')
                 
-                # Mapeamento para nome do mês abreviado
+                # Mapeamento de meses
                 meses_pt = {1: 'jan', 2: 'fev', 3: 'mar', 4: 'abr', 5: 'mai', 6: 'jun', 
                             7: 'jul', 8: 'ago', 9: 'set', 10: 'out', 11: 'nov', 12: 'dez'}
                 
-                # Cria a coluna com o formato 'jan/26'
                 df_ms['MesFormatado'] = df_ms['RefMes'].dt.month.map(meses_pt) + '/' + df_ms['RefMes'].dt.strftime('%y')
+                df_ms['Trimestre'] = df_ms['RefMes'].dt.quarter
+                df_ms['Ano'] = df_ms['RefMes'].dt.year
                 
-                # 2. Obter a ordem cronológica correta dos meses ANTES de pivotar
-                df_meses_unicos = df_ms[['RefMes', 'MesFormatado']].dropna(subset=['RefMes']).drop_duplicates().sort_values('RefMes')
-                meses_cronologicos = df_meses_unicos['MesFormatado'].tolist()
-                
-                # 3. Garantir que as métricas são numéricas e limpar
+                # Garantir que as métricas são numéricas e limpar
                 colunas_metricas = ['RGB', 'MAINSTREAM', 'PREMIUM']
                 for col in colunas_metricas:
                     if col in df_ms.columns:
                         df_ms[col] = df_ms[col].astype(str).str.replace(',', '.', regex=False)
                         df_ms[col] = pd.to_numeric(df_ms[col], errors='coerce').fillna(0)
                     else:
-                        df_ms[col] = 0.0 # Cria a coluna zerada caso não exista
+                        df_ms[col] = 0.0
                 
-                # 4. Separar as informações cadastrais únicas do cliente
+                # Separar as informações cadastrais únicas
                 colunas_cadastrais = ['CodCli', 'VendCliCod', 'SupCliCod', 'RazaoSocial', 'Fantasia', 
                                       'CNPJ Cli', 'Cidade', 'CanalCod', 'Canal', 'Porte', 'PastaCliCod', 'Pasta Cli']
-                
                 colunas_cadastrais_existentes = [col for col in colunas_cadastrais if col in df_ms.columns]
                 
                 if 'CodCli' not in colunas_cadastrais_existentes:
-                    st.error("A coluna 'CodCli' é obrigatória para agrupar os clientes.")
+                    st.error("A coluna 'CodCli' é obrigatória.")
                     st.stop()
                 
                 df_cadastral = df_ms[colunas_cadastrais_existentes].drop_duplicates(subset=['CodCli'], keep='last')
                 
-                # 5. Pivotar as métricas para transformar meses em colunas
+                # ==============================================================
+                # 1. CÁLCULO DE METAS 2026 (BASE 2025 ESPELHADA POR CATEGORIA)
+                # ==============================================================
+                df_2025 = df_ms[df_ms['Ano'] == 2025].copy()
+                df_metas = pd.DataFrame({'CodCli': df_cadastral['CodCli'].unique()})
+                
+                if not df_2025.empty:
+                    # Fazer o pivot para ter CodCli nas linhas e (Métrica, Trimestre) nas colunas
+                    df_tri_25 = df_2025.groupby(['CodCli', 'Trimestre'])[colunas_metricas].sum().unstack(fill_value=0)
+                    # Achatar multi-index: ex: ('RGB', 1) -> 'Q1_RGB'
+                    df_tri_25.columns = [f"Q{q}_{met}" for met, q in df_tri_25.columns]
+                    df_tri_25 = df_tri_25.reset_index()
+                    
+                    # Garantir que todas as colunas possíveis existem
+                    for met in colunas_metricas:
+                        for q in [1, 2, 3, 4]:
+                            if f"Q{q}_{met}" not in df_tri_25.columns:
+                                df_tri_25[f"Q{q}_{met}"] = 0.0
+                                
+                    # Função para espelhar trimestre vazio e aplicar +10%
+                    def calcular_meta_por_categoria(row, met):
+                        q1, q2, q3, q4 = row[f'Q1_{met}'], row[f'Q2_{met}'], row[f'Q3_{met}'], row[f'Q4_{met}']
+                        ultimo = q4 if q4 > 0 else (q3 if q3 > 0 else (q2 if q2 > 0 else (q1 if q1 > 0 else 0)))
+                        
+                        b1 = q1 if q1 > 0 else ultimo
+                        b2 = q2 if q2 > 0 else b1
+                        b3 = q3 if q3 > 0 else b2
+                        b4 = q4 if q4 > 0 else b3
+                        
+                        return pd.Series([b1*1.10, b2*1.10, b3*1.10, b4*1.10])
+
+                    for met in colunas_metricas:
+                        col_metas = [f'Meta 1° Tri ({met})', f'Meta 2° Tri ({met})', f'Meta 3° Tri ({met})', f'Meta 4° Tri ({met})']
+                        df_tri_25[col_metas] = df_tri_25.apply(lambda r: calcular_meta_por_categoria(r, met), axis=1)
+                        
+                    # Unir metas calculadas ao df base
+                    cols_to_merge = ['CodCli'] + [f'Meta {q}° Tri ({met})' for met in colunas_metricas for q in [1, 2, 3, 4]]
+                    df_metas = pd.merge(df_metas, df_tri_25[cols_to_merge], on='CodCli', how='left').fillna(0)
+                else:
+                    # Se não houver 2025, criar colunas de meta zeradas
+                    for met in colunas_metricas:
+                        for q in [1, 2, 3, 4]:
+                            df_metas[f'Meta {q}° Tri ({met})'] = 0.0
+
+                # ==============================================================
+                # 2. PIVOTAR MESES TOTAIS
+                # ==============================================================
                 df_pivot = df_ms.pivot_table(
                     index='CodCli', 
                     columns='MesFormatado', 
-                    values=['RGB', 'MAINSTREAM', 'PREMIUM'], 
+                    values=colunas_metricas, 
                     aggfunc='sum', 
                     fill_value=0
                 )
                 
-                # 6. Achatar e Reordenar as colunas
-                # Primeiro, definimos a ordem exata que queremos: Mês 1 (RGB, Mainstream, Premium), Mês 2...
-                colunas_ordenadas = []
-                for mes in meses_cronologicos:
-                    for metrica in ['RGB', 'MAINSTREAM', 'PREMIUM']:
-                        if (metrica, mes) in df_pivot.columns:
-                            nome_metrica = 'RGB' if metrica == 'RGB' else metrica.title()
-                            colunas_ordenadas.append(f"{mes} ({nome_metrica})")
-                
-                # Mudamos os nomes das colunas geradas pelo Pivot (que vêm como tuplas)
+                # Transformar nomes das colunas: ex: ('MAINSTREAM', 'jan/26') -> 'jan/26 (MAINSTREAM)'
                 colunas_achatadas = []
-                for metrica, mes in df_pivot.columns:
-                    nome_metrica = 'RGB' if metrica == 'RGB' else metrica.title()
-                    colunas_achatadas.append(f"{mes} ({nome_metrica})")
+                for met, mes in df_pivot.columns:
+                    colunas_achatadas.append(f"{mes} ({met})")
                 
                 df_pivot.columns = colunas_achatadas
+                df_pivot = df_pivot.reset_index()
                 
-                # Aplicamos a ordem cronológica perfeita!
-                # Utilizamos as colunas que efetivamente existem no df_pivot para evitar erros
-                colunas_ordenadas_reais = [col for col in colunas_ordenadas if col in df_pivot.columns]
-                df_pivot = df_pivot[colunas_ordenadas_reais].reset_index()
+                # Juntar cadastro + meses + metas
+                df_final = pd.merge(df_cadastral, df_pivot, on='CodCli', how='left').fillna(0)
+                df_final = pd.merge(df_final, df_metas, on='CodCli', how='left').fillna(0)
+
+                # ==============================================================
+                # 3. CALCULAR 'REAL' E ORDENAR COLUNAS (O SEGREDO ESTÁ AQUI)
+                # ==============================================================
+                # Mapeamento do Trimestre de 2026 para os meses exatos
+                meses_por_tri_26 = {
+                    1: ['jan/26', 'fev/26', 'mar/26'],
+                    2: ['abr/26', 'mai/26', 'jun/26'],
+                    3: ['jul/26', 'ago/26', 'set/26'],
+                    4: ['out/26', 'nov/26', 'dez/26']
+                }
                 
-                # 7. Unir o cadastro único com as colunas dos meses
-                df_final = pd.merge(df_cadastral, df_pivot, on='CodCli', how='left')
+                # Lista final onde vamos guardar a ordem perfeita das colunas
+                colunas_finais_ordenadas = colunas_cadastrais_existentes.copy()
                 
-                st.success("Plano de Market Share processado com sucesso!")
-                st.write("**Resumo - 5 primeiras linhas:**")
+                for met in colunas_metricas: # Vai fazer tudo pro RGB, depois Mainstream, depois Premium
+                    for q in [1, 2, 3, 4]: # Tri 1, Tri 2...
+                        # 1. Puxa os meses (Ex: jan/26 (RGB), fev/26 (RGB)...)
+                        cols_meses_atual = [f"{m} ({met})" for m in meses_por_tri_26[q]]
+                        
+                        # Adiciona os meses que existirem na base final
+                        for col_m in cols_meses_atual:
+                            if col_m in df_final.columns:
+                                colunas_finais_ordenadas.append(col_m)
+                            else:
+                                df_final[col_m] = 0.0 # Cria vazio para a fórmula não quebrar
+                                colunas_finais_ordenadas.append(col_m)
+                                
+                        # 2. Adiciona a Meta
+                        nome_meta = f'Meta {q}° Tri ({met})'
+                        df_final[nome_meta] = df_final[nome_meta].round(2)
+                        colunas_finais_ordenadas.append(nome_meta)
+                        
+                        # 3. Calcula e adiciona o Realizado
+                        nome_real = f'Real {q}° Tri ({met})'
+                        df_final[nome_real] = df_final[cols_meses_atual].sum(axis=1).round(2)
+                        colunas_finais_ordenadas.append(nome_real)
+
+                # Aplicar a ordem final estruturada
+                df_final = df_final[colunas_finais_ordenadas]
+                
+                st.success("Plano de Market Share processado e estruturado com sucesso!")
+                st.write("**Resumo da Estruturação - 5 primeiras linhas:**")
                 st.dataframe(df_final.head())
                 
-                # 8. Botão de Download
+                # Botão de Download
                 output_ms = io.BytesIO()
                 with pd.ExcelWriter(output_ms, engine="xlsxwriter") as writer:
-                    df_final.to_excel(writer, sheet_name="Market Share", index=False)
+                    df_final.to_excel(writer, sheet_name="Metas e Realizado MS", index=False)
                 output_ms.seek(0)
                 
                 st.download_button(
                     label="📥 Baixar Plano de Market Share",
                     data=output_ms,
-                    file_name="Plano_Market_Share_Processado.xlsx",
+                    file_name="Market_Share_Analitico_2026.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 
             except Exception as e:
-                st.error(f"Erro ao processar o ficheiro de Market Share: {e}")
+                st.error(f"Erro ao processar o arquivo de Market Share: {e}")
                 
 # ====================================================================
 # 7. SETOR DE ASSESSMENT
