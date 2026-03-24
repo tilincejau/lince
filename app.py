@@ -1777,7 +1777,6 @@ def commercial_page():
                 
                 colunas_achatadas = []
                 for met, mes in df_pivot.columns:
-                    # Garantir a grafia exata das métricas
                     nome_metrica = 'RGB' if met.upper() == 'RGB' else met.upper()
                     colunas_achatadas.append(f"{mes} ({nome_metrica})")
                 
@@ -1793,47 +1792,52 @@ def commercial_page():
                 anos_unicos = sorted(df_ms['Ano'].dropna().unique())
                 colunas_finais_ordenadas = colunas_cadastrais_existentes.copy()
                 
+                # Descobrir quais meses de 2026 existem na base
+                meses_2026_presentes = df_ms[df_ms['Ano'] == 2026]['RefMes'].dt.month.unique() if 2026 in anos_unicos else []
+                
                 for met in colunas_metricas:
                     nome_metrica = 'RGB' if met.upper() == 'RGB' else met.upper()
                     
                     for ano in anos_unicos:
                         ano_str = str(ano)[-2:] # '25' ou '26'
                         
-                        # Se for histórico (ex: 2025), apenas mostra os meses que existirem na base
                         if ano < 2026:
                             for mes_num in range(1, 13):
                                 col_m = f"{meses_pt[mes_num]}/{ano_str} ({nome_metrica})"
                                 if col_m in df_final.columns:
                                     colunas_finais_ordenadas.append(col_m)
                                     
-                        # Se for 2026 (Ano da Meta), agrupa por trimestre
                         elif ano == 2026:
                             for q in [1, 2, 3, 4]:
                                 meses_do_tri = [(q-1)*3 + 1, (q-1)*3 + 2, (q-1)*3 + 3]
-                                cols_meses_atual = []
                                 
-                                for m_num in meses_do_tri:
-                                    col_m = f"{meses_pt[m_num]}/{ano_str} ({nome_metrica})"
-                                    cols_meses_atual.append(col_m)
-                                    # Se o mês ainda não tiver vendas, criar zerado para não quebrar a soma
-                                    if col_m not in df_final.columns:
-                                        df_final[col_m] = 0.0
-                                    colunas_finais_ordenadas.append(col_m)
+                                # Verifica se este trimestre já começou (tem algum mês na base)
+                                if any(m in meses_2026_presentes for m in meses_do_tri):
+                                    cols_meses_atual = []
                                     
-                                # Adiciona a Meta do Tri
-                                nome_meta = f'Meta {q}° Tri ({nome_metrica})'
-                                if nome_meta not in df_final.columns:
-                                    df_final[nome_meta] = 0.0
-                                df_final[nome_meta] = df_final[nome_meta].round(2)
-                                colunas_finais_ordenadas.append(nome_meta)
-                                
-                                # Calcula e adiciona o Real do Tri
-                                nome_real = f'Real {q}° Tri ({nome_metrica})'
-                                df_final[nome_real] = df_final[cols_meses_atual].sum(axis=1).round(2)
-                                colunas_finais_ordenadas.append(nome_real)
+                                    for m_num in meses_do_tri:
+                                        col_m = f"{meses_pt[m_num]}/{ano_str} ({nome_metrica})"
+                                        # Só adiciona a coluna do mês se ela existir nos dados
+                                        if col_m in df_final.columns:
+                                            colunas_finais_ordenadas.append(col_m)
+                                            cols_meses_atual.append(col_m)
+                                            
+                                    # Adiciona a Meta do Tri
+                                    nome_meta = f'Meta {q}° Tri ({nome_metrica})'
+                                    if nome_meta not in df_final.columns:
+                                        df_final[nome_meta] = 0.0
+                                    df_final[nome_meta] = df_final[nome_meta].round(2)
+                                    colunas_finais_ordenadas.append(nome_meta)
+                                    
+                                    # Calcula e adiciona o Real do Tri apenas com os meses que já passaram
+                                    nome_real = f'Real {q}° Tri ({nome_metrica})'
+                                    if cols_meses_atual:
+                                        df_final[nome_real] = df_final[cols_meses_atual].sum(axis=1).round(2)
+                                    else:
+                                        df_final[nome_real] = 0.0
+                                    colunas_finais_ordenadas.append(nome_real)
 
                 # Filtrar a base final apenas com as colunas construídas
-                # Para evitar erros caso alguma coluna não exista
                 colunas_finais_validas = [col for col in colunas_finais_ordenadas if col in df_final.columns]
                 df_final = df_final[colunas_finais_validas]
                 
