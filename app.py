@@ -1734,6 +1734,9 @@ def commercial_page():
                 )
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Limite de Crédito: {e}")
+# =============================================================
+# NOVO SCRIPT 5: PLANO DE MARKET SHARE
+# =============================================================
 elif script_selection == "Plano de Market Share":
         st.subheader("Plano de Market Share (Abertura Mensal)")
         st.info("O arquivo deve conter as colunas: CodCli, RefMes, RGB, MAINSTREAM e PREMIUM.")
