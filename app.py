@@ -1733,19 +1733,15 @@ def commercial_page():
                 df_metas = pd.DataFrame({'CodCli': df_cadastral['CodCli'].unique()})
                 
                 if not df_2025.empty:
-                    # Fazer o pivot para ter CodCli nas linhas e (Métrica, Trimestre) nas colunas
                     df_tri_25 = df_2025.groupby(['CodCli', 'Trimestre'])[colunas_metricas].sum().unstack(fill_value=0)
-                    # Achatar multi-index: ex: ('RGB', 1) -> 'Q1_RGB'
                     df_tri_25.columns = [f"Q{q}_{met}" for met, q in df_tri_25.columns]
                     df_tri_25 = df_tri_25.reset_index()
                     
-                    # Garantir que todas as colunas possíveis existem
                     for met in colunas_metricas:
                         for q in [1, 2, 3, 4]:
                             if f"Q{q}_{met}" not in df_tri_25.columns:
                                 df_tri_25[f"Q{q}_{met}"] = 0.0
                                 
-                    # Função para espelhar trimestre vazio e aplicar +10%
                     def calcular_meta_por_categoria(row, met):
                         q1, q2, q3, q4 = row[f'Q1_{met}'], row[f'Q2_{met}'], row[f'Q3_{met}'], row[f'Q4_{met}']
                         ultimo = q4 if q4 > 0 else (q3 if q3 > 0 else (q2 if q2 > 0 else (q1 if q1 > 0 else 0)))
@@ -1761,11 +1757,9 @@ def commercial_page():
                         col_metas = [f'Meta 1° Tri ({met})', f'Meta 2° Tri ({met})', f'Meta 3° Tri ({met})', f'Meta 4° Tri ({met})']
                         df_tri_25[col_metas] = df_tri_25.apply(lambda r: calcular_meta_por_categoria(r, met), axis=1)
                         
-                    # Unir metas calculadas ao df base
                     cols_to_merge = ['CodCli'] + [f'Meta {q}° Tri ({met})' for met in colunas_metricas for q in [1, 2, 3, 4]]
                     df_metas = pd.merge(df_metas, df_tri_25[cols_to_merge], on='CodCli', how='left').fillna(0)
                 else:
-                    # Se não houver 2025, criar colunas de meta zeradas
                     for met in colunas_metricas:
                         for q in [1, 2, 3, 4]:
                             df_metas[f'Meta {q}° Tri ({met})'] = 0.0
@@ -1781,59 +1775,69 @@ def commercial_page():
                     fill_value=0
                 )
                 
-                # Transformar nomes das colunas: ex: ('MAINSTREAM', 'jan/26') -> 'jan/26 (MAINSTREAM)'
                 colunas_achatadas = []
                 for met, mes in df_pivot.columns:
-                    colunas_achatadas.append(f"{mes} ({met})")
+                    # Garantir a grafia exata das métricas
+                    nome_metrica = 'RGB' if met.upper() == 'RGB' else met.upper()
+                    colunas_achatadas.append(f"{mes} ({nome_metrica})")
                 
                 df_pivot.columns = colunas_achatadas
                 df_pivot = df_pivot.reset_index()
                 
-                # Juntar cadastro + meses + metas
                 df_final = pd.merge(df_cadastral, df_pivot, on='CodCli', how='left').fillna(0)
                 df_final = pd.merge(df_final, df_metas, on='CodCli', how='left').fillna(0)
 
                 # ==============================================================
-                # 3. CALCULAR 'REAL' E ORDENAR COLUNAS (O SEGREDO ESTÁ AQUI)
+                # 3. CALCULAR 'REAL' E ORDENAR COLUNAS DINAMICAMENTE
                 # ==============================================================
-                # Mapeamento do Trimestre de 2026 para os meses exatos
-                meses_por_tri_26 = {
-                    1: ['jan/26', 'fev/26', 'mar/26'],
-                    2: ['abr/26', 'mai/26', 'jun/26'],
-                    3: ['jul/26', 'ago/26', 'set/26'],
-                    4: ['out/26', 'nov/26', 'dez/26']
-                }
-                
-                # Lista final onde vamos guardar a ordem perfeita das colunas
+                anos_unicos = sorted(df_ms['Ano'].dropna().unique())
                 colunas_finais_ordenadas = colunas_cadastrais_existentes.copy()
                 
-                for met in colunas_metricas: # Vai fazer tudo pro RGB, depois Mainstream, depois Premium
-                    for q in [1, 2, 3, 4]: # Tri 1, Tri 2...
-                        # 1. Puxa os meses (Ex: jan/26 (RGB), fev/26 (RGB)...)
-                        cols_meses_atual = [f"{m} ({met})" for m in meses_por_tri_26[q]]
+                for met in colunas_metricas:
+                    nome_metrica = 'RGB' if met.upper() == 'RGB' else met.upper()
+                    
+                    for ano in anos_unicos:
+                        ano_str = str(ano)[-2:] # '25' ou '26'
                         
-                        # Adiciona os meses que existirem na base final
-                        for col_m in cols_meses_atual:
-                            if col_m in df_final.columns:
-                                colunas_finais_ordenadas.append(col_m)
-                            else:
-                                df_final[col_m] = 0.0 # Cria vazio para a fórmula não quebrar
-                                colunas_finais_ordenadas.append(col_m)
+                        # Se for histórico (ex: 2025), apenas mostra os meses que existirem na base
+                        if ano < 2026:
+                            for mes_num in range(1, 13):
+                                col_m = f"{meses_pt[mes_num]}/{ano_str} ({nome_metrica})"
+                                if col_m in df_final.columns:
+                                    colunas_finais_ordenadas.append(col_m)
+                                    
+                        # Se for 2026 (Ano da Meta), agrupa por trimestre
+                        elif ano == 2026:
+                            for q in [1, 2, 3, 4]:
+                                meses_do_tri = [(q-1)*3 + 1, (q-1)*3 + 2, (q-1)*3 + 3]
+                                cols_meses_atual = []
                                 
-                        # 2. Adiciona a Meta
-                        nome_meta = f'Meta {q}° Tri ({met})'
-                        df_final[nome_meta] = df_final[nome_meta].round(2)
-                        colunas_finais_ordenadas.append(nome_meta)
-                        
-                        # 3. Calcula e adiciona o Realizado
-                        nome_real = f'Real {q}° Tri ({met})'
-                        df_final[nome_real] = df_final[cols_meses_atual].sum(axis=1).round(2)
-                        colunas_finais_ordenadas.append(nome_real)
+                                for m_num in meses_do_tri:
+                                    col_m = f"{meses_pt[m_num]}/{ano_str} ({nome_metrica})"
+                                    cols_meses_atual.append(col_m)
+                                    # Se o mês ainda não tiver vendas, criar zerado para não quebrar a soma
+                                    if col_m not in df_final.columns:
+                                        df_final[col_m] = 0.0
+                                    colunas_finais_ordenadas.append(col_m)
+                                    
+                                # Adiciona a Meta do Tri
+                                nome_meta = f'Meta {q}° Tri ({nome_metrica})'
+                                if nome_meta not in df_final.columns:
+                                    df_final[nome_meta] = 0.0
+                                df_final[nome_meta] = df_final[nome_meta].round(2)
+                                colunas_finais_ordenadas.append(nome_meta)
+                                
+                                # Calcula e adiciona o Real do Tri
+                                nome_real = f'Real {q}° Tri ({nome_metrica})'
+                                df_final[nome_real] = df_final[cols_meses_atual].sum(axis=1).round(2)
+                                colunas_finais_ordenadas.append(nome_real)
 
-                # Aplicar a ordem final estruturada
-                df_final = df_final[colunas_finais_ordenadas]
+                # Filtrar a base final apenas com as colunas construídas
+                # Para evitar erros caso alguma coluna não exista
+                colunas_finais_validas = [col for col in colunas_finais_ordenadas if col in df_final.columns]
+                df_final = df_final[colunas_finais_validas]
                 
-                st.success("Plano de Market Share processado e estruturado com sucesso!")
+                st.success("Plano de Market Share estruturado com sucesso!")
                 st.write("**Resumo da Estruturação - 5 primeiras linhas:**")
                 st.dataframe(df_final.head())
                 
