@@ -1119,7 +1119,7 @@ def commercial_page():
     st.markdown("---")
     script_selection = st.selectbox(
         "Selecione o script:", 
-        ("Selecione...", "Troca de Canal", "Circuito Execução", "Planejamento Estratégico", "Limite de Credito"), 
+        ("Selecione...", "Troca de Canal", "Circuito Execução", "Planejamento Estratégico", "Limite de Credito", "Plano de Market Share"), 
         key="com_select"
     )
 
@@ -1172,13 +1172,9 @@ def commercial_page():
     elif script_selection == "Circuito Execução":
         st.subheader("Circuito Execução")
 
-        # =============================================================
-        # FERRAMENTA 1: CIRCUITO DE EXECUÇÃO ORIGINAL
-        # =============================================================
         def transform_points_columns(df):
             df_transformed = df.copy()
             
-            # Remove a coluna "Pontuação" original que vem no arquivo, se ela existir
             colunas_remover = [col for col in df_transformed.columns if str(col).strip().upper() in ['PONTUAÇÃO', 'PONTUACAO']]
             if colunas_remover:
                 df_transformed.drop(columns=colunas_remover, inplace=True, errors='ignore')
@@ -1213,7 +1209,6 @@ def commercial_page():
 
                     df_transformed[col] = df_transformed[col].apply(process_cell)
             
-            # Soma das colunas base
             cols_presenca = [c for c in df_transformed.columns if str(c).strip().upper().startswith("PRESENÇA")]
             df_transformed["PRESENÇA"] = df_transformed[cols_presenca].apply(pd.to_numeric, errors='coerce').sum(axis=1)
 
@@ -1226,16 +1221,12 @@ def commercial_page():
             cols_geladas = [c for c in df_transformed.columns if str(c).strip().upper().startswith("TEM NOSSAS CERVEJAS GELADAS")]
             df_transformed["TEM NOSSAS CERVEJAS GELADAS"] = df_transformed[cols_geladas].apply(pd.to_numeric, errors='coerce').sum(axis=1)
             
-            # Coluna de Precificadas
             cols_precificadas = [c for c in df_transformed.columns if "PRECIFICADAS" in str(c).upper()]
             if cols_precificadas:
                 df_transformed["TODAS AS NOSSAS CERVEJAS ESTÃO PRECIFICADAS"] = df_transformed[cols_precificadas].apply(pd.to_numeric, errors='coerce').sum(axis=1)
             else:
                 df_transformed["TODAS AS NOSSAS CERVEJAS ESTÃO PRECIFICADAS"] = 0
 
-            # =======================================================
-            # CÁLCULO DA PORCENTAGEM (SOMATÓRIA / 400)
-            # =======================================================
             pontuacao_total = (
                 df_transformed["PRESENÇA"] + 
                 df_transformed["VISIBILIDADE"] + 
@@ -1246,7 +1237,6 @@ def commercial_page():
             
             porcentagem = pontuacao_total / 400.0
             
-            # Inserindo a coluna "% de Pontuação" na segunda posição (índice 1 - Coluna B no Excel)
             df_transformed.insert(1, '% de Pontuação', porcentagem)
             
             return df_transformed
@@ -1278,9 +1268,6 @@ def commercial_page():
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Circuito: {e}")
 
-        # =============================================================
-        # FERRAMENTA 2: NOVO ARQUIVO (RESUMO COM12)
-        # =============================================================
         st.markdown("---")
         st.subheader("Transformação e Agrupamento COM12")
         st.info("Deixa apenas 1 linha por **CodCli**, somando as métricas, adicionando colunas (primeiro SKUs, depois HLs) e removendo colunas indesejadas.")
@@ -1288,17 +1275,14 @@ def commercial_page():
         def transform_com12_data(df):
             df_transformed = df.copy()
             
-            # Definindo as colunas numéricas iniciais que devem ser tratadas
             cols_to_sum = ['QtdeVdaSemBonifTOTAL', 'BonRevenda', 'BonFabrica', 'QtdeVdaSemBonRGB', 'BonRevRGB', 'BonFabRGB', 'consideraSkuTotal', 'HL', 'HL RGB']
             
-            # Tratamento: remover espaços, trocar vírgula por ponto e tratar o traço '-' como 0
             for col in cols_to_sum:
                 if col in df_transformed.columns:
                     df_transformed[col] = df_transformed[col].astype(str).str.replace(',', '.', regex=False).str.strip()
                     df_transformed[col] = df_transformed[col].replace(['-', ''], '0')
                     df_transformed[col] = pd.to_numeric(df_transformed[col], errors='coerce').fillna(0)
                     
-            # --- Criar as colunas de TotalVda e TotalVdaRGB ---
             df_transformed['TotalVda'] = df_transformed.get('QtdeVdaSemBonifTOTAL', 0) + df_transformed.get('BonRevenda', 0) + df_transformed.get('BonFabrica', 0)
             df_transformed['TotalVdaRGB'] = df_transformed.get('QtdeVdaSemBonRGB', 0) + df_transformed.get('BonRevRGB', 0) + df_transformed.get('BonFabRGB', 0)
             
@@ -1312,18 +1296,14 @@ def commercial_page():
             if 'Sup Cli (Cód)' in df_transformed.columns:
                 df_transformed['Sup Cli (Cód)'] = df_transformed['Sup Cli (Cód)'].astype(str).str.replace('2216-', '', regex=False)
                     
-            # =========================================================
-            # AGRUPAMENTO DOS MESES (H = 7, K = 10, L = 11)
-            # =========================================================
             pivot_meses = pd.DataFrame()
             
             if len(df.columns) > 11:
-                col_mes = df.columns[7]    # Coluna H (Meses)
-                col_sku = df.columns[10]   # Coluna K (consideraSkuTotal)
-                col_valor = df.columns[11] # Coluna L (Valores/HL)
+                col_mes = df.columns[7]
+                col_sku = df.columns[10]
+                col_valor = df.columns[11]
                 
                 if col_mes in df_transformed.columns:
-                    
                     if col_valor in df_transformed.columns:
                         df_transformed['TEMP_VALOR_L'] = df_transformed[col_valor].astype(str).str.replace(',', '.', regex=False).str.replace('-', '0')
                         df_transformed['TEMP_VALOR_L'] = pd.to_numeric(df_transformed['TEMP_VALOR_L'], errors='coerce').fillna(0)
@@ -1379,9 +1359,6 @@ def commercial_page():
 
                     df_transformed.drop(columns=['TEMP_VALOR_L', 'TEMP_VALOR_K'], inplace=True, errors='ignore')
 
-            # =========================================================
-            # AGRUPAMENTO ORIGINAL
-            # =========================================================
             agg_dict = {}
             for col in df_transformed.columns:
                 if col == 'CodCli':
@@ -1436,9 +1413,7 @@ def commercial_page():
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo COM12: {e}")
 
-    # =============================================================
-    # NOVO SCRIPT 3: PLANEJAMENTO ESTRATÉGICO
-    # =============================================================
+    # --- SCRIPT 3: PLANEJAMENTO ESTRATÉGICO ---
     elif script_selection == "Planejamento Estratégico":
         st.subheader("Planejamento Estratégico (Diamante e Ouro & 50 VOLHNK)")
         st.info("O arquivo original deve conter as colunas: CodCli, Razão Social, RefMes, xPorte, QtdeSaidaHL, QtdSaidaHLRGB e ConsideraSKUTOTAL.")
@@ -1455,20 +1430,15 @@ def commercial_page():
                 st.write("Visualização original (5 primeiras linhas):")
                 st.dataframe(df_pe.head())
                 
-                # Tratar e converter data
                 df_pe['RefMes'] = pd.to_datetime(df_pe['RefMes'], errors='coerce')
                 mes_atual = df_pe['RefMes'].max()
                 
                 if pd.isna(mes_atual):
                     st.error("Erro ao identificar as datas na coluna 'RefMes'.")
                 else:
-                    # Descobrir qual o ano anterior e qual o mês atual no ano anterior (para a aba 50 VOLHNK)
                     ano_anterior = mes_atual.year - 1
                     mes_atual_ano_anterior = mes_atual - pd.DateOffset(years=1)
                     
-                    # --------------------------------------------------------------------------------
-                    # LÓGICA DA ABA 1: DIAMANTE E OURO
-                    # --------------------------------------------------------------------------------
                     df_diamante = df_pe.copy()
                     
                     if 'xPorte' in df_diamante.columns:
@@ -1479,7 +1449,6 @@ def commercial_page():
                     
                     meses_3m = [mes_atual - pd.DateOffset(months=i) for i in [1, 2, 3]]
                     
-                    # Mês Atual Diamante
                     df_atual_diamante = df_diamante[df_diamante['RefMes'] == mes_atual].groupby('CodCli').agg({
                         'QtdeSaidaHL': 'sum',
                         'QtdSaidaHLRGB': 'sum',
@@ -1490,7 +1459,6 @@ def commercial_page():
                         'ConsideraSKUTOTAL': 'SKUS_ATUAL'
                     })
                     
-                    # 3 Meses Anteriores Diamante
                     df_3m = df_diamante[df_diamante['RefMes'].isin(meses_3m)].groupby('CodCli').agg({
                         'QtdeSaidaHL': 'sum',
                         'QtdSaidaHLRGB': 'sum',
@@ -1502,13 +1470,11 @@ def commercial_page():
                     df_3m['SKUS_3M'] = df_3m['ConsideraSKUTOTAL'] / 3
                     df_3m.drop(columns=['QtdeSaidaHL', 'QtdSaidaHLRGB', 'ConsideraSKUTOTAL'], inplace=True)
                     
-                    # Base Diamante
                     cols_base = ['CodCli', 'Razão Social', 'SV Cód', 'VD Cód', 'xPorte']
                     cols_base = [c for c in cols_base if c in df_diamante.columns]
                     
                     df_base_diamante = df_diamante.sort_values('RefMes').drop_duplicates('CodCli', keep='last')[cols_base]
                     
-                    # Final Diamante
                     df_final_diamante = df_base_diamante.merge(df_3m, on='CodCli', how='left').merge(df_atual_diamante, on='CodCli', how='left').fillna(0)
                     
                     def get_status(atual, media):
@@ -1542,12 +1508,8 @@ def commercial_page():
                     ]
                     df_final_diamante = df_final_diamante[col_order_diamante]
 
-                    # --------------------------------------------------------------------------------
-                    # LÓGICA DA ABA 2: 50 VOLHNK
-                    # --------------------------------------------------------------------------------
-                    df_50 = df_pe.copy() # Todos os clientes, sem filtro do 'O' e 'D'
+                    df_50 = df_pe.copy()
                     
-                    # 1. LY (Todo o ano anterior)
                     df_ly = df_50[df_50['RefMes'].dt.year == ano_anterior].groupby('CodCli').agg({
                         'QtdeSaidaHL': 'sum',
                         'QtdSaidaHLRGB': 'sum'
@@ -1556,7 +1518,6 @@ def commercial_page():
                         'QtdSaidaHLRGB': 'SellOut_RGB_LY'
                     })
                     
-                    # 2. Meta (Mês atual do ano anterior * 1.05)
                     df_meta = df_50[df_50['RefMes'] == mes_atual_ano_anterior].groupby('CodCli').agg({
                         'QtdeSaidaHL': 'sum',
                         'QtdSaidaHLRGB': 'sum'
@@ -1565,7 +1526,6 @@ def commercial_page():
                     df_meta['Meta_SellOut_RGB'] = df_meta['QtdSaidaHLRGB'] * 1.05
                     df_meta.drop(columns=['QtdeSaidaHL', 'QtdSaidaHLRGB'], inplace=True)
                     
-                    # 3. Atual (Mês atual)
                     df_atual_50 = df_50[df_50['RefMes'] == mes_atual].groupby('CodCli').agg({
                         'QtdeSaidaHL': 'sum',
                         'QtdSaidaHLRGB': 'sum'
@@ -1574,20 +1534,16 @@ def commercial_page():
                         'QtdSaidaHLRGB': 'SellOut_RGB_Atual'
                     })
                     
-                    # Base 50 VOLHNK
                     cols_base_50 = [c for c in cols_base if c in df_50.columns]
                     df_base_50 = df_50.sort_values('RefMes').drop_duplicates('CodCli', keep='last')[cols_base_50]
                     
-                    # Merge Final 50 VOLHNK
                     df_final_50 = df_base_50.merge(df_ly, on='CodCli', how='left') \
                                             .merge(df_meta, on='CodCli', how='left') \
                                             .merge(df_atual_50, on='CodCli', how='left').fillna(0)
                     
-                    # REGRAS NOVAS: Se a Meta for 0 (cliente não comprou no mês do ano passado), a Meta vira 1
                     df_final_50.loc[df_final_50['Meta_SellOut_Total'] == 0, 'Meta_SellOut_Total'] = 1
                     df_final_50.loc[df_final_50['Meta_SellOut_RGB'] == 0, 'Meta_SellOut_RGB'] = 1
                     
-                    # Porcentagem (%) Atual / Meta
                     df_final_50['SellOut_Total_%'] = np.where(
                         df_final_50['Meta_SellOut_Total'] > 0, 
                         df_final_50['SellOut_Total_Atual'] / df_final_50['Meta_SellOut_Total'], 
@@ -1599,16 +1555,12 @@ def commercial_page():
                         0
                     )
                     
-                    # Ordenar Colunas
                     col_order_50 = cols_base_50 + [
                         'SellOut_Total_LY', 'Meta_SellOut_Total', 'SellOut_Total_Atual', 'SellOut_Total_%',
                         'SellOut_RGB_LY', 'Meta_SellOut_RGB', 'SellOut_RGB_Atual', 'SellOut_RGB_%'
                     ]
                     df_final_50 = df_final_50[col_order_50]
 
-                    # --------------------------------------------------------------------------------
-                    # GERAR ARQUIVO FINAL COM AS 2 ABAS
-                    # --------------------------------------------------------------------------------
                     st.success("Cálculos do Planejamento Estratégico concluídos com sucesso!")
                     
                     st.write("**Resumo da Aba: DIAMANTE E OURO (xPorte O e D)**")
@@ -1632,9 +1584,7 @@ def commercial_page():
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Planejamento Estratégico: {e}")
 
-    # =============================================================
-    # NOVO SCRIPT 4: LIMITE DE CRÉDITO
-    # =============================================================
+    # --- SCRIPT 4: LIMITE DE CRÉDITO ---
     elif script_selection == "Limite de Credito":
         st.subheader("Análise para Limite de Crédito (Faturamento por Mês)")
         st.info("O arquivo deve conter as colunas: CodCli, Fantasia, RefMes, Faturamento e xPorte.")
@@ -1649,25 +1599,20 @@ def commercial_page():
                 else:
                     df_lc = pd.read_excel(uploaded_lc)
                 
-                # 1. Garantir o formato correto da data
                 df_lc['RefMes'] = pd.to_datetime(df_lc['RefMes'], errors='coerce')
                 df_lc['MesAno'] = df_lc['RefMes'].dt.strftime('%m/%Y') 
                 
-                # 2. Garantir que o Faturamento é numérico
                 if 'Faturamento' in df_lc.columns:
                     df_lc['Faturamento'] = pd.to_numeric(df_lc['Faturamento'], errors='coerce').fillna(0)
                 else:
                     st.error("A coluna 'Faturamento' não foi encontrada no arquivo!")
                     st.stop()
                 
-                # 3. Tratamento xPorte 
-                # 3. Tratamento xPorte (Garantir que a nomenclatura apareça por extenso)
                 if 'xPorte' in df_lc.columns:
                     df_lc['xPorte'] = df_lc['xPorte'].astype(str).str.strip().str.upper()
                     map_porte = {'O': 'OURO', 'D': 'DIAMANTE', 'P': 'PRATA', 'B': 'BRONZE'}
                     df_lc['xPorte'] = df_lc['xPorte'].map(map_porte).fillna(df_lc['xPorte'])
                 
-                # 4. Obter dados cadastrais únicos (evita duplicidade de linhas)
                 colunas_indice = ['CodCli', 'Fantasia', 'VD', 'SV', 'GerPedido', 'xPorte']
                 colunas_indice_existentes = [col for col in colunas_indice if col in df_lc.columns]
                 
@@ -1677,7 +1622,6 @@ def commercial_page():
 
                 df_cadastral = df_lc[colunas_indice_existentes].drop_duplicates(subset=['CodCli'], keep='last')
 
-                # 5. Criar a Pivot Table apenas com CodCli e MesAno
                 df_faturamento = df_lc.groupby(['CodCli', 'MesAno'])['Faturamento'].sum().reset_index()
                 df_pivot_valores = df_faturamento.pivot(index='CodCli', columns='MesAno', values='Faturamento').fillna(0).reset_index()
                 
@@ -1685,15 +1629,12 @@ def commercial_page():
                 
                 meses_cols = [col for col in df_pivot_valores.columns if col != 'CodCli']
                 
-                # 6. Descobrir as colunas de datas para base de 3 meses
                 meses_ordenados = sorted(meses_cols, key=lambda x: datetime.strptime(x, '%m/%Y'))
                 ultimos_3_meses = meses_ordenados[-3:] if len(meses_ordenados) >= 3 else meses_ordenados
                 
-                # Usa o número real de meses do arquivo (evita dividir por 3 se o arquivo tiver apenas 1 ou 2 meses)
                 num_meses = len(ultimos_3_meses)
                 df_pivot_lc['Media 3 Meses'] = (df_pivot_lc[ultimos_3_meses].sum(axis=1) / num_meses) if num_meses > 0 else 0
                 
-                # 7. Cálculo de Limite
                 def calcular_limite(row):
                     porte = str(row.get('xPorte', '')).strip().upper()
                     media = row['Media 3 Meses']
@@ -1712,7 +1653,6 @@ def commercial_page():
                 df_pivot_lc['Limite de Credito'] = df_pivot_lc.apply(calcular_limite, axis=1).round(2)
                 df_pivot_lc['Media 3 Meses'] = df_pivot_lc['Media 3 Meses'].round(2)
                 
-                # 8. Resumo Adicional
                 df_pivot_lc['Faturamento Total'] = df_pivot_lc[meses_cols].sum(axis=1).round(2)
                 cols_finais = colunas_indice_existentes + meses_ordenados + ['Faturamento Total', 'Media 3 Meses', 'Limite de Credito']
                 df_pivot_lc = df_pivot_lc[cols_finais]
@@ -1734,10 +1674,11 @@ def commercial_page():
                 )
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Limite de Crédito: {e}")
-# =============================================================
-# NOVO SCRIPT 5: PLANO DE MARKET SHARE
-# =============================================================
-elif script_selection == "Plano de Market Share":
+
+    # =============================================================
+    # NOVO SCRIPT 5: PLANO DE MARKET SHARE
+    # =============================================================
+    elif script_selection == "Plano de Market Share":
         st.subheader("Plano de Market Share (Abertura Mensal)")
         st.info("O arquivo deve conter as colunas: CodCli, RefMes, RGB, MAINSTREAM e PREMIUM.")
         
@@ -1751,31 +1692,25 @@ elif script_selection == "Plano de Market Share":
                 else:
                     df_ms = pd.read_excel(uploaded_ms)
                 
-                # 1. Tratamento da coluna de Data (RefMes)
                 if 'RefMes' not in df_ms.columns:
                     st.error("A coluna 'RefMes' não foi encontrada no arquivo!")
                     st.stop()
                     
                 df_ms['RefMes'] = pd.to_datetime(df_ms['RefMes'], errors='coerce')
                 
-                # Mapeamento para nome do mês em português (abreviado)
                 meses_pt = {1: 'jan', 2: 'fev', 3: 'mar', 4: 'abr', 5: 'mai', 6: 'jun', 
                             7: 'jul', 8: 'ago', 9: 'set', 10: 'out', 11: 'nov', 12: 'dez'}
                 
-                # Cria a coluna com o formato 'jan/26'
                 df_ms['MesFormatado'] = df_ms['RefMes'].dt.month.map(meses_pt) + '/' + df_ms['RefMes'].dt.strftime('%y')
                 
-                # 2. Garantir que as métricas são numéricas e limpar
                 colunas_metricas = ['RGB', 'MAINSTREAM', 'PREMIUM']
                 for col in colunas_metricas:
                     if col in df_ms.columns:
                         df_ms[col] = df_ms[col].astype(str).str.replace(',', '.', regex=False)
                         df_ms[col] = pd.to_numeric(df_ms[col], errors='coerce').fillna(0)
                     else:
-                        df_ms[col] = 0.0 # Cria a coluna zerada caso não exista
+                        df_ms[col] = 0.0 
                 
-                # 3. Separar as informações cadastrais únicas do cliente (para não perder na pivotagem)
-                # Pega as colunas que estão ANTES das métricas de volume/valor
                 colunas_cadastrais = ['CodCli', 'VendCliCod', 'SupCliCod', 'RazaoSocial', 'Fantasia', 
                                       'CNPJ Cli', 'Cidade', 'CanalCod', 'Canal', 'Porte', 'PastaCliCod', 'Pasta Cli']
                 
@@ -1787,7 +1722,6 @@ elif script_selection == "Plano de Market Share":
                 
                 df_cadastral = df_ms[colunas_cadastrais_existentes].drop_duplicates(subset=['CodCli'], keep='last')
                 
-                # 4. Pivotar as métricas para transformar meses em colunas
                 df_pivot = df_ms.pivot_table(
                     index='CodCli', 
                     columns='MesFormatado', 
@@ -1796,11 +1730,8 @@ elif script_selection == "Plano de Market Share":
                     fill_value=0
                 )
                 
-                # 5. Achatar e renomear as colunas criadas no Pivot (MultiIndex para Nomes Simples)
-                # O pivot cria colunas como ('MAINSTREAM', 'jan/26'). Vamos transformar em 'jan/26 (Mainstream)'
                 novas_colunas = []
                 for metrica, mes in df_pivot.columns:
-                    # Ajusta a capitalização para o nome ficar bonito (RGB, Mainstream, Premium)
                     if metrica.upper() == 'RGB':
                         nome_metrica = 'RGB'
                     else:
@@ -1811,17 +1742,12 @@ elif script_selection == "Plano de Market Share":
                 df_pivot.columns = novas_colunas
                 df_pivot = df_pivot.reset_index()
                 
-                # Ordenar as colunas geradas temporalmente (opcional, mas ajuda na visualização)
-                # Como criamos as colunas com texto, o merge já vai jogar elas pro final.
-                
-                # 6. Unir o cadastro único com as colunas dos meses
                 df_final = pd.merge(df_cadastral, df_pivot, on='CodCli', how='left')
                 
                 st.success("Plano de Market Share processado com sucesso!")
                 st.write("**Resumo - 5 primeiras linhas:**")
                 st.dataframe(df_final.head())
                 
-                # 7. Botão de Download
                 output_ms = io.BytesIO()
                 with pd.ExcelWriter(output_ms, engine="xlsxwriter") as writer:
                     df_final.to_excel(writer, sheet_name="Market Share", index=False)
@@ -1836,8 +1762,7 @@ elif script_selection == "Plano de Market Share":
                 
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Market Share: {e}")
-
-
+                
 # ====================================================================
 # 7. SETOR DE ASSESSMENT
 # ====================================================================
