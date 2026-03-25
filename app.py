@@ -1676,213 +1676,267 @@ def commercial_page():
                 st.error(f"Erro ao processar o arquivo de Limite de Crédito: {e}")
 
     # =============================================================
-    # NOVO SCRIPT 5: PLANO DE MARKET SHARE
+    # NOVO SCRIPT 5: PLANO DE MARKET SHARE (VOLUME & EXECUÇÃO SEPARADOS)
     # =============================================================
     elif script_selection == "Plano de Market Share":
-        st.subheader("Plano de Market Share (Volume e Execução Integrados)")
-        st.info("Envie o arquivo de Volume e/ou o de Execução. O sistema irá uni-los na mesma aba (aba única).")
+        st.subheader("Plano de Market Share (Arquivos Independentes)")
+        st.info("Pode enviar a base de Volume, a base de Execução, ou ambas. O sistema irá gerar ficheiros Excel separados para cada uma.")
         
         col1, col2 = st.columns(2)
         with col1:
-            uploaded_ms = st.file_uploader("1. Base de Volume (RGB, MAINSTREAM...)", type=["xlsx", "csv"], key="ms_up")
+            uploaded_ms = st.file_uploader("1. Envie a base de Volume (RGB, MAINSTREAM...)", type=["xlsx", "csv"], key="ms_uploader")
         with col2:
-            uploaded_exec = st.file_uploader("2. Base de Execução (SKU, mixRGB...)", type=["xlsx", "csv"], key="ex_up")
-            
-        if uploaded_ms is not None or uploaded_exec is not None:
+            uploaded_exec = st.file_uploader("2. Envie a base de Execução (SKU, mixRGB, Drop)", type=["xlsx", "csv"], key="exec_uploader")
+        
+        meses_pt = {1: 'jan', 2: 'fev', 3: 'mar', 4: 'abr', 5: 'mai', 6: 'jun', 
+                    7: 'jul', 8: 'ago', 9: 'set', 10: 'out', 11: 'nov', 12: 'dez'}
+        
+        colunas_cadastrais = ['VendCliCod', 'SupCliCod', 'RazaoSocial', 'Fantasia', 
+                              'CNPJ Cli', 'Cidade', 'CanalCod', 'Canal', 'Porte', 'PastaCliCod', 'Pasta Cli']
+
+        # ==============================================================
+        # PROCESSAMENTO 1: VOLUME (RGB, MAINSTREAM, PREMIUM)
+        # ==============================================================
+        if uploaded_ms is not None:
             try:
-                st.info("Lendo, unificando e processando os dados...")
+                st.markdown("### 📊 Processamento de Volume")
+                df_vol = pd.read_csv(uploaded_ms) if uploaded_ms.name.endswith('.csv') else pd.read_excel(uploaded_ms)
                 
-                df_vol = pd.DataFrame()
-                df_exe = pd.DataFrame()
-                
-                # 1. LER OS ARQUIVOS E UNIFICAR NOMES
-                if uploaded_ms is not None:
-                    df_vol = pd.read_csv(uploaded_ms) if uploaded_ms.name.endswith('.csv') else pd.read_excel(uploaded_ms)
-                
-                if uploaded_exec is not None:
-                    df_exe = pd.read_csv(uploaded_exec) if uploaded_exec.name.endswith('.csv') else pd.read_excel(uploaded_exec)
-                    # Renomear as colunas da Execução para o nosso padrão
-                    mapa_nomes = {'consideraSkuTotal': 'Skus', 'Drop Por Pdv': 'Drop'}
-                    df_exe = df_exe.rename(columns=mapa_nomes)
-                
-                # Empilhar os dois DataFrames
-                df_concat = pd.concat([df_vol, df_exe], ignore_index=True)
-                
-                if 'RefMes' not in df_concat.columns:
-                    st.error("A coluna 'RefMes' não foi encontrada!")
-                    st.stop()
-                    
-                df_concat['RefMes'] = pd.to_datetime(df_concat['RefMes'], errors='coerce')
-                df_concat = df_concat.dropna(subset=['RefMes'])
-                
-                meses_pt = {1: 'jan', 2: 'fev', 3: 'mar', 4: 'abr', 5: 'mai', 6: 'jun', 
-                            7: 'jul', 8: 'ago', 9: 'set', 10: 'out', 11: 'nov', 12: 'dez'}
-                
-                df_concat['MesFormatado'] = df_concat['RefMes'].dt.month.map(meses_pt) + '/' + df_concat['RefMes'].dt.strftime('%y')
-                df_concat['Trimestre'] = df_concat['RefMes'].dt.quarter
-                df_concat['Ano'] = df_concat['RefMes'].dt.year
-                
-                # Definir quais métricas vamos processar dependendo dos arquivos enviados
-                todas_metricas = []
-                if uploaded_ms is not None: todas_metricas.extend(['RGB', 'MAINSTREAM', 'PREMIUM'])
-                if uploaded_exec is not None: todas_metricas.extend(['Skus', 'mixRGB', 'Drop'])
-                
-                # Garantir que as métricas são números
-                for col in todas_metricas:
-                    if col in df_concat.columns:
-                        df_concat[col] = df_concat[col].astype(str).str.replace(',', '.', regex=False)
-                        df_concat[col] = pd.to_numeric(df_concat[col], errors='coerce').fillna(0)
-                    else:
-                        df_concat[col] = 0.0
-                        
-                # 2. FUNDIR AS LINHAS (Mesmo Cliente e Mesmo Mês viram 1 linha só)
-                colunas_cadastrais = ['VendCliCod', 'SupCliCod', 'RazaoSocial', 'Fantasia', 
-                                      'CNPJ Cli', 'Cidade', 'CanalCod', 'Canal', 'Porte', 'PastaCliCod', 'Pasta Cli']
-                                      
-                colunas_cadastrais_exist = [c for c in colunas_cadastrais if c in df_concat.columns]
-                if 'CodCli' not in df_concat.columns:
-                    st.error("A coluna 'CodCli' é obrigatória.")
-                    st.stop()
-                    
-                agg_dict = {met: 'sum' for met in todas_metricas}
-                for c in colunas_cadastrais_exist: agg_dict[c] = 'first'
-                
-                df_base = df_concat.groupby(['CodCli', 'RefMes', 'MesFormatado', 'Trimestre', 'Ano'], as_index=False).agg(agg_dict)
-                df_cadastral = df_base[['CodCli'] + colunas_cadastrais_exist].drop_duplicates(subset=['CodCli'], keep='last')
-                
-                # ==============================================================
-                # 3. CÁLCULO DE METAS 2026
-                # ==============================================================
-                df_2025 = df_base[df_base['Ano'] == 2025].copy()
-                df_metas = pd.DataFrame({'CodCli': df_cadastral['CodCli'].unique()})
-                
-                if not df_2025.empty:
-                    df_tri_25 = df_2025.groupby(['CodCli', 'Trimestre'])[todas_metricas].sum().unstack(fill_value=0)
-                    df_tri_25.columns = [f"Q{q}_{met}" for met, q in df_tri_25.columns]
-                    df_tri_25 = df_tri_25.reset_index()
-                    
-                    for met in todas_metricas:
-                        for q in [1, 2, 3, 4]:
-                            if f"Q{q}_{met}" not in df_tri_25.columns: df_tri_25[f"Q{q}_{met}"] = 0.0
-                                
-                    def calcular_meta_dinamica(row, met):
-                        q1, q2, q3, q4 = row[f'Q1_{met}'], row[f'Q2_{met}'], row[f'Q3_{met}'], row[f'Q4_{met}']
-                        ultimo = q4 if q4 > 0 else (q3 if q3 > 0 else (q2 if q2 > 0 else (q1 if q1 > 0 else 0)))
-                        
-                        b1 = q1 if q1 > 0 else ultimo
-                        b2 = q2 if q2 > 0 else b1
-                        b3 = q3 if q3 > 0 else b2
-                        b4 = q4 if q4 > 0 else b3
-                        
-                        if met in ['Skus', 'mixRGB']:
-                            # Regra: Base do ano passado + 1 (Mínimo 1)
-                            return pd.Series([
-                                b1 + 1 if b1 > 0 else 1,
-                                b2 + 1 if b2 > 0 else 1,
-                                b3 + 1 if b3 > 0 else 1,
-                                b4 + 1 if b4 > 0 else 1
-                            ])
-                        else:
-                            # Regra: Base do ano passado + 10% (Volume e Drop)
-                            return pd.Series([b1*1.10, b2*1.10, b3*1.10, b4*1.10])
-
-                    for met in todas_metricas:
-                        col_metas = [f'Meta {q}° Tri ({met})' for q in [1, 2, 3, 4]]
-                        df_tri_25[col_metas] = df_tri_25.apply(lambda r: calcular_meta_dinamica(r, met), axis=1)
-                        
-                    cols_to_merge = ['CodCli'] + [f'Meta {q}° Tri ({met})' for met in todas_metricas for q in [1, 2, 3, 4]]
-                    df_metas = pd.merge(df_metas, df_tri_25[cols_to_merge], on='CodCli', how='left').fillna(0)
+                if 'RefMes' not in df_vol.columns or 'CodCli' not in df_vol.columns:
+                    st.error("As colunas 'RefMes' e 'CodCli' são obrigatórias na base de Volume.")
                 else:
-                    for met in todas_metricas:
-                        for q in [1, 2, 3, 4]: df_metas[f'Meta {q}° Tri ({met})'] = 0.0
-
-                # ==============================================================
-                # 4. PIVOTAR MESES
-                # ==============================================================
-                df_pivot = df_base.pivot_table(index='CodCli', columns='MesFormatado', values=todas_metricas, aggfunc='sum', fill_value=0)
-                # Preservar os nomes corretos (ex: jan/26 (Skus))
-                df_pivot.columns = [f"{mes} ({met})" for met, mes in df_pivot.columns]
-                df_pivot = df_pivot.reset_index()
-                
-                df_final = pd.merge(df_cadastral, df_pivot, on='CodCli', how='left').fillna(0)
-                df_final = pd.merge(df_final, df_metas, on='CodCli', how='left').fillna(0)
-
-                # ==============================================================
-                # 5. ORDENAR COLUNAS, CALCULAR REALIZADO E %
-                # ==============================================================
-                anos_unicos = sorted(df_base['Ano'].dropna().unique())
-                colunas_finais_ordenadas = colunas_cadastrais_exist.copy()
-                colunas_finais_ordenadas.insert(0, 'CodCli')
-                
-                meses_2026_presentes = df_base[df_base['Ano'] == 2026]['RefMes'].dt.month.unique() if 2026 in anos_unicos else []
-                
-                # A mágica da ordenação horizontal acontece aqui:
-                for met in todas_metricas:
-                    for ano in anos_unicos:
-                        ano_str = str(ano)[-2:] 
-                        
-                        if ano < 2026:
-                            for mes_num in range(1, 13):
-                                col_m = f"{meses_pt[mes_num]}/{ano_str} ({met})"
-                                if col_m in df_final.columns:
-                                    colunas_finais_ordenadas.append(col_m)
-                                    
-                        elif ano == 2026:
+                    df_vol['RefMes'] = pd.to_datetime(df_vol['RefMes'], errors='coerce')
+                    df_vol = df_vol.dropna(subset=['RefMes'])
+                    df_vol['MesFormatado'] = df_vol['RefMes'].dt.month.map(meses_pt) + '/' + df_vol['RefMes'].dt.strftime('%y')
+                    df_vol['Trimestre'] = df_vol['RefMes'].dt.quarter
+                    df_vol['Ano'] = df_vol['RefMes'].dt.year
+                    
+                    metricas_vol = ['RGB', 'MAINSTREAM', 'PREMIUM']
+                    for col in metricas_vol:
+                        if col in df_vol.columns:
+                            df_vol[col] = df_vol[col].astype(str).str.replace(',', '.', regex=False)
+                            df_vol[col] = pd.to_numeric(df_vol[col], errors='coerce').fillna(0)
+                        else:
+                            df_vol[col] = 0.0
+                            
+                    col_cad_exist_vol = [c for c in colunas_cadastrais if c in df_vol.columns]
+                    df_cad_vol = df_vol[['CodCli'] + col_cad_exist_vol].drop_duplicates(subset=['CodCli'], keep='last')
+                    
+                    # Metas 2025 -> 2026
+                    df_2025_vol = df_vol[df_vol['Ano'] == 2025].copy()
+                    df_metas_vol = pd.DataFrame({'CodCli': df_cad_vol['CodCli'].unique()})
+                    
+                    if not df_2025_vol.empty:
+                        df_tri_25 = df_2025_vol.groupby(['CodCli', 'Trimestre'])[metricas_vol].sum().unstack(fill_value=0)
+                        df_tri_25.columns = [f"Q{q}_{met}" for met, q in df_tri_25.columns]
+                        df_tri_25 = df_tri_25.reset_index()
+                        for met in metricas_vol:
                             for q in [1, 2, 3, 4]:
-                                meses_do_tri = [(q-1)*3 + 1, (q-1)*3 + 2, (q-1)*3 + 3]
-                                
-                                if any(m in meses_2026_presentes for m in meses_do_tri):
-                                    cols_meses_atual = []
+                                if f"Q{q}_{met}" not in df_tri_25.columns: df_tri_25[f"Q{q}_{met}"] = 0.0
                                     
-                                    # 1. Colunas dos Meses
-                                    for m_num in meses_do_tri:
-                                        col_m = f"{meses_pt[m_num]}/{ano_str} ({met})"
-                                        if col_m in df_final.columns:
-                                            colunas_finais_ordenadas.append(col_m)
-                                            cols_meses_atual.append(col_m)
-                                            
-                                    # 2. Meta
-                                    nome_meta = f'Meta {q}° Tri ({met})'
-                                    if nome_meta not in df_final.columns: df_final[nome_meta] = 0.0
-                                    df_final[nome_meta] = df_final[nome_meta].round(2)
-                                    colunas_finais_ordenadas.append(nome_meta)
-                                    
-                                    # 3. Realizado
-                                    nome_real = f'Real {q}° Tri ({met})'
-                                    if cols_meses_atual:
-                                        df_final[nome_real] = df_final[cols_meses_atual].sum(axis=1).round(2)
-                                    else:
-                                        df_final[nome_real] = 0.0
-                                    colunas_finais_ordenadas.append(nome_real)
+                        def calc_meta_vol(row, met):
+                            q1, q2, q3, q4 = row[f'Q1_{met}'], row[f'Q2_{met}'], row[f'Q3_{met}'], row[f'Q4_{met}']
+                            ultimo = q4 if q4 > 0 else (q3 if q3 > 0 else (q2 if q2 > 0 else (q1 if q1 > 0 else 0)))
+                            b1 = q1 if q1 > 0 else ultimo
+                            b2 = q2 if q2 > 0 else b1
+                            b3 = q3 if q3 > 0 else b2
+                            b4 = q4 if q4 > 0 else b3
+                            return pd.Series([b1*1.10, b2*1.10, b3*1.10, b4*1.10])
+                            
+                        for met in metricas_vol:
+                            cols = [f'Meta {q}° Tri ({met})' for q in [1, 2, 3, 4]]
+                            df_tri_25[cols] = df_tri_25.apply(lambda r: calc_meta_vol(r, met), axis=1)
+                            
+                        cols_merge = ['CodCli'] + [f'Meta {q}° Tri ({met})' for met in metricas_vol for q in [1, 2, 3, 4]]
+                        df_metas_vol = pd.merge(df_metas_vol, df_tri_25[cols_merge], on='CodCli', how='left').fillna(0)
+                    else:
+                        for met in metricas_vol:
+                            for q in [1, 2, 3, 4]: df_metas_vol[f'Meta {q}° Tri ({met})'] = 0.0
 
-                                    # 4. Porcentagem Realizado
-                                    nome_pct = f'% Realizado {q}° Tri ({met})'
-                                    df_final[nome_pct] = np.where(df_final[nome_meta] > 0, (df_final[nome_real] / df_final[nome_meta]), 0.0)
-                                    df_final[nome_pct] = df_final[nome_pct].round(4) 
-                                    colunas_finais_ordenadas.append(nome_pct)
+                    # Pivot
+                    df_pivot_vol = df_vol.pivot_table(index='CodCli', columns='MesFormatado', values=metricas_vol, aggfunc='sum', fill_value=0)
+                    df_pivot_vol.columns = [f"{mes} ({'RGB' if met.upper()=='RGB' else met.upper()})" for met, mes in df_pivot_vol.columns]
+                    df_pivot_vol = df_pivot_vol.reset_index()
+                    
+                    df_final_vol = pd.merge(df_cad_vol, df_pivot_vol, on='CodCli', how='left').fillna(0)
+                    df_final_vol = pd.merge(df_final_vol, df_metas_vol, on='CodCli', how='left').fillna(0)
 
-                # Mantém apenas as colunas criadas e válidas
-                colunas_finais_validas = [col for col in colunas_finais_ordenadas if col in df_final.columns]
-                df_final = df_final[colunas_finais_validas]
-                
-                st.success("Arquivos integrados e estruturados com sucesso na mesma aba!")
-                st.write("**Resumo da Tabela Mestre - 5 primeiras linhas:**")
-                st.dataframe(df_final.head())
-                
-                output_ms = io.BytesIO()
-                with pd.ExcelWriter(output_ms, engine="xlsxwriter") as writer:
-                    df_final.to_excel(writer, sheet_name="Market Share Integrado", index=False)
-                output_ms.seek(0)
-                
-                st.download_button(
-                    label="📥 Baixar Painel Completo (Volume + Execução)",
-                    data=output_ms,
-                    file_name="Painel_Integrado_MarketShare_2026.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-                
+                    # Ordenação e Realizado
+                    anos_unicos = sorted(df_vol['Ano'].unique())
+                    meses_26_pres = df_vol[df_vol['Ano'] == 2026]['RefMes'].dt.month.unique() if 2026 in anos_unicos else []
+                    cols_finais = ['CodCli'] + col_cad_exist_vol
+                    
+                    for met in metricas_vol:
+                        nome_met = 'RGB' if met.upper() == 'RGB' else met.upper()
+                        for ano in anos_unicos:
+                            ano_str = str(ano)[-2:]
+                            if ano < 2026:
+                                for m_num in range(1, 13):
+                                    col_m = f"{meses_pt[m_num]}/{ano_str} ({nome_met})"
+                                    if col_m in df_final_vol.columns: cols_finais.append(col_m)
+                            elif ano == 2026:
+                                for q in [1, 2, 3, 4]:
+                                    meses_tri = [(q-1)*3 + 1, (q-1)*3 + 2, (q-1)*3 + 3]
+                                    if any(m in meses_26_pres for m in meses_tri):
+                                        cols_meses_atual = []
+                                        for m_num in meses_tri:
+                                            col_m = f"{meses_pt[m_num]}/{ano_str} ({nome_met})"
+                                            if col_m in df_final_vol.columns:
+                                                cols_finais.append(col_m)
+                                                cols_meses_atual.append(col_m)
+                                        
+                                        nome_meta = f'Meta {q}° Tri ({nome_met})'
+                                        df_final_vol[nome_meta] = df_final_vol.get(nome_meta, 0.0).round(2)
+                                        cols_finais.append(nome_meta)
+                                        
+                                        nome_real = f'Real {q}° Tri ({nome_met})'
+                                        df_final_vol[nome_real] = df_final_vol[cols_meses_atual].sum(axis=1).round(2) if cols_meses_atual else 0.0
+                                        cols_finais.append(nome_real)
+
+                                        nome_pct = f'% Realizado {q}° Tri ({nome_met})'
+                                        df_final_vol[nome_pct] = np.where(df_final_vol[nome_meta] > 0, (df_final_vol[nome_real] / df_final_vol[nome_meta]), 0.0)
+                                        df_final_vol[nome_pct] = df_final_vol[nome_pct].round(4)
+                                        cols_finais.append(nome_pct)
+
+                    df_final_vol = df_final_vol[[c for c in cols_finais if c in df_final_vol.columns]]
+                    
+                    st.success("Volume processado com sucesso!")
+                    st.dataframe(df_final_vol.head())
+                    
+                    out_vol = io.BytesIO()
+                    with pd.ExcelWriter(out_vol, engine="xlsxwriter") as writer:
+                        df_final_vol.to_excel(writer, sheet_name="Metas Volume MS", index=False)
+                    out_vol.seek(0)
+                    st.download_button("📥 Baixar Planilha de Volume", data=out_vol, file_name="Market_Share_Volume.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    st.write("---")
             except Exception as e:
-                st.error(f"Erro ao processar os arquivos: {e}")
+                st.error(f"Erro no processamento de Volume: {e}")
+
+        # ==============================================================
+        # PROCESSAMENTO 2: EXECUÇÃO (SKUs, mixRGB, Drop)
+        # ==============================================================
+        if uploaded_exec is not None:
+            try:
+                st.markdown("### 📋 Processamento de Execução")
+                df_ex = pd.read_csv(uploaded_exec) if uploaded_exec.name.endswith('.csv') else pd.read_excel(uploaded_exec)
+                
+                # Renomear as colunas para o padrão
+                mapa_nomes = {'consideraSkuTotal': 'Skus', 'mixRGB': 'mixRGB', 'Drop Por Pdv': 'Drop'}
+                df_ex = df_ex.rename(columns=mapa_nomes)
+                
+                if 'RefMes' not in df_ex.columns or 'CodCli' not in df_ex.columns:
+                    st.error("As colunas 'RefMes' e 'CodCli' são obrigatórias na base de Execução.")
+                else:
+                    df_ex['RefMes'] = pd.to_datetime(df_ex['RefMes'], errors='coerce')
+                    df_ex = df_ex.dropna(subset=['RefMes'])
+                    df_ex['MesFormatado'] = df_ex['RefMes'].dt.month.map(meses_pt) + '/' + df_ex['RefMes'].dt.strftime('%y')
+                    df_ex['Trimestre'] = df_ex['RefMes'].dt.quarter
+                    df_ex['Ano'] = df_ex['RefMes'].dt.year
+                    
+                    metricas_ex = ['Skus', 'mixRGB', 'Drop']
+                    for col in metricas_ex:
+                        if col in df_ex.columns:
+                            df_ex[col] = df_ex[col].astype(str).str.replace(',', '.', regex=False)
+                            df_ex[col] = pd.to_numeric(df_ex[col], errors='coerce').fillna(0)
+                        else:
+                            df_ex[col] = 0.0
+                            
+                    col_cad_exist_ex = [c for c in colunas_cadastrais if c in df_ex.columns]
+                    df_cad_ex = df_ex[['CodCli'] + col_cad_exist_ex].drop_duplicates(subset=['CodCli'], keep='last')
+                    
+                    # Metas 2025 -> 2026 (Regras Específicas de Execução)
+                    df_2025_ex = df_ex[df_ex['Ano'] == 2025].copy()
+                    df_metas_ex = pd.DataFrame({'CodCli': df_cad_ex['CodCli'].unique()})
+                    
+                    if not df_2025_ex.empty:
+                        df_tri_25_ex = df_2025_ex.groupby(['CodCli', 'Trimestre'])[metricas_ex].sum().unstack(fill_value=0)
+                        df_tri_25_ex.columns = [f"Q{q}_{met}" for met, q in df_tri_25_ex.columns]
+                        df_tri_25_ex = df_tri_25_ex.reset_index()
+                        for met in metricas_ex:
+                            for q in [1, 2, 3, 4]:
+                                if f"Q{q}_{met}" not in df_tri_25_ex.columns: df_tri_25_ex[f"Q{q}_{met}"] = 0.0
+                                    
+                        def calc_meta_ex(row, met):
+                            q1, q2, q3, q4 = row[f'Q1_{met}'], row[f'Q2_{met}'], row[f'Q3_{met}'], row[f'Q4_{met}']
+                            ultimo = q4 if q4 > 0 else (q3 if q3 > 0 else (q2 if q2 > 0 else (q1 if q1 > 0 else 0)))
+                            b1 = q1 if q1 > 0 else ultimo
+                            b2 = q2 if q2 > 0 else b1
+                            b3 = q3 if q3 > 0 else b2
+                            b4 = q4 if q4 > 0 else b3
+                            
+                            # +1 para Skus e mixRGB, +10% para Drop
+                            if met in ['Skus', 'mixRGB']:
+                                return pd.Series([b1+1 if b1>0 else 1, b2+1 if b2>0 else 1, b3+1 if b3>0 else 1, b4+1 if b4>0 else 1])
+                            else:
+                                return pd.Series([b1*1.10, b2*1.10, b3*1.10, b4*1.10])
+                            
+                        for met in metricas_ex:
+                            cols = [f'Meta {q}° Tri ({met})' for q in [1, 2, 3, 4]]
+                            df_tri_25_ex[cols] = df_tri_25_ex.apply(lambda r: calc_meta_ex(r, met), axis=1)
+                            
+                        cols_merge = ['CodCli'] + [f'Meta {q}° Tri ({met})' for met in metricas_ex for q in [1, 2, 3, 4]]
+                        df_metas_ex = pd.merge(df_metas_ex, df_tri_25_ex[cols_merge], on='CodCli', how='left').fillna(0)
+                    else:
+                        for met in metricas_ex:
+                            for q in [1, 2, 3, 4]: df_metas_ex[f'Meta {q}° Tri ({met})'] = 0.0
+
+                    # Pivot
+                    df_pivot_ex = df_ex.pivot_table(index='CodCli', columns='MesFormatado', values=metricas_ex, aggfunc='sum', fill_value=0)
+                    df_pivot_ex.columns = [f"{mes} ({met})" for met, mes in df_pivot_ex.columns]
+                    df_pivot_ex = df_pivot_ex.reset_index()
+                    
+                    df_final_ex = pd.merge(df_cad_ex, df_pivot_ex, on='CodCli', how='left').fillna(0)
+                    df_final_ex = pd.merge(df_final_ex, df_metas_ex, on='CodCli', how='left').fillna(0)
+
+                    # Ordenação e Realizado
+                    anos_unicos_ex = sorted(df_ex['Ano'].unique())
+                    meses_26_pres_ex = df_ex[df_ex['Ano'] == 2026]['RefMes'].dt.month.unique() if 2026 in anos_unicos_ex else []
+                    cols_finais_ex = ['CodCli'] + col_cad_exist_ex
+                    
+                    for met in metricas_ex:
+                        for ano in anos_unicos_ex:
+                            ano_str = str(ano)[-2:]
+                            if ano < 2026:
+                                for m_num in range(1, 13):
+                                    col_m = f"{meses_pt[m_num]}/{ano_str} ({met})"
+                                    if col_m in df_final_ex.columns: cols_finais_ex.append(col_m)
+                            elif ano == 2026:
+                                for q in [1, 2, 3, 4]:
+                                    meses_tri = [(q-1)*3 + 1, (q-1)*3 + 2, (q-1)*3 + 3]
+                                    if any(m in meses_26_pres_ex for m in meses_tri):
+                                        cols_meses_atual = []
+                                        for m_num in meses_tri:
+                                            col_m = f"{meses_pt[m_num]}/{ano_str} ({met})"
+                                            if col_m in df_final_ex.columns:
+                                                cols_finais_ex.append(col_m)
+                                                cols_meses_atual.append(col_m)
+                                        
+                                        nome_meta = f'Meta {q}° Tri ({met})'
+                                        df_final_ex[nome_meta] = df_final_ex.get(nome_meta, 0.0).round(2)
+                                        cols_finais_ex.append(nome_meta)
+                                        
+                                        nome_real = f'Real {q}° Tri ({met})'
+                                        df_final_ex[nome_real] = df_final_ex[cols_meses_atual].sum(axis=1).round(2) if cols_meses_atual else 0.0
+                                        cols_finais_ex.append(nome_real)
+
+                                        nome_pct = f'% Realizado {q}° Tri ({met})'
+                                        df_final_ex[nome_pct] = np.where(df_final_ex[nome_meta] > 0, (df_final_ex[nome_real] / df_final_ex[nome_meta]), 0.0)
+                                        df_final_ex[nome_pct] = df_final_ex[nome_pct].round(4)
+                                        cols_finais_ex.append(nome_pct)
+
+                    df_final_ex = df_final_ex[[c for c in cols_finais_ex if c in df_final_ex.columns]]
+                    
+                    st.success("Execução processada com sucesso!")
+                    st.dataframe(df_final_ex.head())
+                    
+                    out_ex = io.BytesIO()
+                    with pd.ExcelWriter(out_ex, engine="xlsxwriter") as writer:
+                        df_final_ex.to_excel(writer, sheet_name="Metas Execução", index=False)
+                    out_ex.seek(0)
+                    st.download_button("📥 Baixar Planilha de Execução", data=out_ex, file_name="Market_Share_Execucao.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            
+            except Exception as e:
+                st.error(f"Erro no processamento de Execução: {e}")
                 
 # ====================================================================
 # 7. SETOR DE ASSESSMENT
