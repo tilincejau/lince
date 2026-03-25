@@ -1787,7 +1787,7 @@ def commercial_page():
                 df_final = pd.merge(df_final, df_metas, on='CodCli', how='left').fillna(0)
 
                 # ==============================================================
-                # 3. CALCULAR 'REAL' E ORDENAR COLUNAS DINAMICAMENTE
+                # 3. CALCULAR 'REAL' E '% REALIZADO', E ORDENAR DINAMICAMENTE
                 # ==============================================================
                 anos_unicos = sorted(df_ms['Ano'].dropna().unique())
                 colunas_finais_ordenadas = colunas_cadastrais_existentes.copy()
@@ -1811,13 +1811,12 @@ def commercial_page():
                             for q in [1, 2, 3, 4]:
                                 meses_do_tri = [(q-1)*3 + 1, (q-1)*3 + 2, (q-1)*3 + 3]
                                 
-                                # Verifica se este trimestre já começou (tem algum mês na base)
+                                # Verifica se este trimestre já começou
                                 if any(m in meses_2026_presentes for m in meses_do_tri):
                                     cols_meses_atual = []
                                     
                                     for m_num in meses_do_tri:
                                         col_m = f"{meses_pt[m_num]}/{ano_str} ({nome_metrica})"
-                                        # Só adiciona a coluna do mês se ela existir nos dados
                                         if col_m in df_final.columns:
                                             colunas_finais_ordenadas.append(col_m)
                                             cols_meses_atual.append(col_m)
@@ -1829,13 +1828,26 @@ def commercial_page():
                                     df_final[nome_meta] = df_final[nome_meta].round(2)
                                     colunas_finais_ordenadas.append(nome_meta)
                                     
-                                    # Calcula e adiciona o Real do Tri apenas com os meses que já passaram
+                                    # Calcula e adiciona o Real do Tri
                                     nome_real = f'Real {q}° Tri ({nome_metrica})'
                                     if cols_meses_atual:
                                         df_final[nome_real] = df_final[cols_meses_atual].sum(axis=1).round(2)
                                     else:
                                         df_final[nome_real] = 0.0
                                     colunas_finais_ordenadas.append(nome_real)
+
+                                    # ==================================================
+                                    # NOVO: Calcula a % de Realizado sobre a Meta
+                                    # ==================================================
+                                    nome_pct = f'% Realizado {q}° Tri ({nome_metrica})'
+                                    df_final[nome_pct] = np.where(
+                                        df_final[nome_meta] > 0,
+                                        (df_final[nome_real] / df_final[nome_meta]),
+                                        0.0
+                                    )
+                                    # Arredondado a 4 casas (ex: 0.8542) para que no Excel seja fácil formatar como 85.42%
+                                    df_final[nome_pct] = df_final[nome_pct].round(4) 
+                                    colunas_finais_ordenadas.append(nome_pct)
 
                 # Filtrar a base final apenas com as colunas construídas
                 colunas_finais_validas = [col for col in colunas_finais_ordenadas if col in df_final.columns]
