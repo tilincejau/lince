@@ -1691,7 +1691,7 @@ def commercial_page():
         meses_pt = {1: 'jan', 2: 'fev', 3: 'mar', 4: 'abr', 5: 'mai', 6: 'jun', 
                     7: 'jul', 8: 'ago', 9: 'set', 10: 'out', 11: 'nov', 12: 'dez'}
         
-        # LISTA ATUALIZADA: Cobre todas as variações de nomenclatura dos sistemas
+        # LISTA ATUALIZADA: Define a ORDEM EXATA em que as colunas vão aparecer no Excel final
         colunas_cadastrais = [
             'VendCliCod', 'Vend Cli (Cód)', 
             'SupCliCod', 'Sup Cli (Cód)', 
@@ -1827,7 +1827,6 @@ def commercial_page():
                 st.markdown("### 📋 Processamento de Execução")
                 df_ex = pd.read_csv(uploaded_exec) if uploaded_exec.name.endswith('.csv') else pd.read_excel(uploaded_exec)
                 
-                # MAPA ATUALIZADO: Cobre todas as variações de "Drop"
                 mapa_nomes = {
                     'consideraSkuTotal': 'Skus', 
                     'mixRGB': 'mixRGB', 
@@ -1877,6 +1876,7 @@ def commercial_page():
                             b3 = q3 if q3 > 0 else b2
                             b4 = q4 if q4 > 0 else b3
                             
+                            # +1 para Skus e mixRGB, +10% para Drop
                             if met in ['Skus', 'mixRGB']:
                                 return pd.Series([b1+1 if b1>0 else 1, b2+1 if b2>0 else 1, b3+1 if b3>0 else 1, b4+1 if b4>0 else 1])
                             else:
