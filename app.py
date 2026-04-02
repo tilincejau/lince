@@ -198,7 +198,7 @@ def logistics_page():
     
     script_choice = st.selectbox(
         "Selecione uma ferramenta:",
-        ("Selecione...", "Acurácia", "Validade", "Vasilhames", "Abastecimento"),
+        ("Selecione...", "Acurácia", "Validade", "Vasilhames", "Abastecimento", "Manutenção Veículos"),
         key="log_select" 
     )
     
@@ -1103,6 +1103,117 @@ def logistics_page():
 
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
+# --- SCRIPT MANUTENÇÃO VEÍCULOS ---
+    elif script_choice == "Manutenção Veículos":
+        st.subheader("Manutenção de Veículos (FleetCom)")
+        st.info("Envie o relatório de manutenções em PDF para convertê-lo em planilha estruturada.")
+
+        uploaded_manut_pdf = st.file_uploader("Envie o arquivo PDF (Manutenção)", type=["pdf"], key="manutencao_uploader")
+
+        if uploaded_manut_pdf is not None:
+            try:
+                with st.spinner("Processando o PDF... Isso pode demorar alguns instantes."):
+                    pdf_reader = PyPDF2.PdfReader(io.BytesIO(uploaded_manut_pdf.getvalue()))
+                    text = ""
+                    for page in pdf_reader.pages:
+                        text += page.extract_text() + "\n"
+
+                    parsed_data = []
+
+                    # Regex para identificar o cabeçalho do veículo
+                    # Ex: FCT1J98 ATRON 1719 FCT1J98 257.911,0 2014
+                    veiculo_pattern = re.compile(r'([A-Z]{3}[A-Z0-9]{4})\s+(.+?)(?:\s+[A-Z]{3}[A-Z0-9]{4})?\s+([\d\.]+,\d+)\s+(\d{4})')
+                    data_pattern = re.compile(r'(\d{2}/\d{2}/\d{4})')
+
+                    matches_veiculos = list(veiculo_pattern.finditer(text))
+
+                    for i in range(len(matches_veiculos)):
+                        match = matches_veiculos[i]
+                        placa = match.group(1)
+                        modelo = match.group(2).replace(placa, '').strip()
+                        km_atual = match.group(3)
+
+                        # Isola o bloco de texto deste veículo até o próximo
+                        start_idx = match.end()
+                        end_idx = matches_veiculos[i+1].start() if i + 1 < len(matches_veiculos) else len(text)
+                        bloco = text[start_idx:end_idx]
+
+                        # Extrai as datas do início do bloco (Data Exec., Data Inicio, Data Fim)
+                        datas = data_pattern.findall(text[match.start():start_idx + 100])
+                        data_inicio = datas[0] if len(datas) > 0 else ""
+                        data_fim = datas[-1] if len(datas) > 0 else ""
+
+                        # Procuramos valores (R$) e Fornecedores no bloco isolado
+                        linhas_bloco = bloco.split('\n')
+                        for idx_linha, linha in enumerate(linhas_bloco):
+                            # Só processa a linha se for um custo real (ignora R$ 0,00 e Totalizadores)
+                            if 'R$' in linha and '0,00' not in linha and 'Total' not in linha:
+                                valor_match = re.search(r'R\$\s*([\d\.]+,\d+)', linha)
+                                if valor_match:
+                                    valor = valor_match.group(1)
+
+                                    # Qt Código (Geralmente um número solto no início da linha)
+                                    qt_match = re.search(r'^(\d+)\s', linha.strip())
+                                    qt = qt_match.group(1) if qt_match else "1"
+
+                                    # A descrição da manutenção ou peça
+                                    # Limpa o valor da linha para tentar pegar o nome da peça/serviço
+                                    desc = re.sub(r'R\$\s*[\d\.]+,\d+', '', linha).strip()
+                                    
+                                    # Se a descrição ficou vazia, ela provavelmente estava na linha anterior
+                                    if len(desc) < 4 and idx_linha > 0:
+                                        desc = linhas_bloco[idx_linha-1].strip()
+
+                                    # Heurística para N° da NF
+                                    nf_match = re.search(r'(?:N\.\s*NF|N\.\s*NE|NF)\s*(\d+)', bloco, re.IGNORECASE)
+                                    nf = nf_match.group(1) if nf_match else ""
+
+                                    # Heurística para Fornecedor
+                                    fornecedor = ""
+                                    fornec_match = re.search(r'(?:Fornecedor de Mão-de-Obra|Fornecedor)\s*\n(.*?)\s*\n', bloco, re.IGNORECASE)
+                                    if fornec_match:
+                                        fornecedor = fornec_match.group(1).strip()
+                                    else:
+                                        # Alternativa: O fornecedor às vezes fica na mesma linha logo após o R$
+                                        fornecedor_na_linha = re.search(r'R\$\s*[\d\.]+,\d+\s+([A-Za-z0-9\s]+)', linha)
+                                        if fornecedor_na_linha:
+                                            fornecedor = fornecedor_na_linha.group(1).strip()
+
+                                    parsed_data.append({
+                                        'PLACA': placa,
+                                        'MODELO': modelo,
+                                        'KM ATUAL': km_atual,
+                                        'DESCRIÇÃO DA MANUTENÇÃO': desc,
+                                        'QUANTIDADE': qt,
+                                        'PERIODO DO INICIO DO SERVIÇO': data_inicio,
+                                        'PERIODO DO FIM DO SERVIÇO': data_fim,
+                                        'VALOR': valor,
+                                        'FORNECEDOR': fornecedor,
+                                        'N° DA NOTA': nf
+                                    })
+
+                    if parsed_data:
+                        df_resultado = pd.DataFrame(parsed_data)
+                        st.success(f"Tabela gerada com sucesso! ({len(df_resultado)} registros encontrados)")
+                        st.dataframe(df_resultado)
+
+                        # Prepara o arquivo Excel para Download
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                            df_resultado.to_excel(writer, index=False, sheet_name="Manutencao_Extrato")
+                        output.seek(0)
+
+                        st.download_button(
+                            label="📥 Baixar Planilha Final (Excel)",
+                            data=output,
+                            file_name="Manutencao_Veiculos_Processado.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    else:
+                        st.warning("Não foi possível localizar os registros de manutenção. O formato do PDF pode estar diferente do esperado.")
+
+            except Exception as e:
+                st.error(f"Erro ao processar o arquivo: {e}")
 
 # ====================================================================
 # 6. SETOR COMERCIAL
