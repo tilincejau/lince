@@ -181,7 +181,6 @@ def main_page():
         st.session_state.pop('username', None)
         st.session_state.pop('current_page', None)
         st.rerun()
-
 # ====================================================================
 # 5. SETOR DE LOGÍSTICA
 # ====================================================================
@@ -1031,6 +1030,7 @@ def logistics_page():
                 except Exception as e:
                     st.error(f"Ocorreu um erro durante o processamento: {e}")
 
+    # --- SCRIPT ABASTECIMENTO ---
     elif script_choice == "Abastecimento":
         st.subheader("Análise de Abastecimento")
         uploaded_file = st.file_uploader("Envie o arquivo de abastecimento (.xlsx ou .csv)", type=["xlsx", "csv"], key="abastec_uploader") 
@@ -1103,7 +1103,8 @@ def logistics_page():
 
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
-# --- SCRIPT MANUTENÇÃO VEÍCULOS ---
+
+    # --- SCRIPT MANUTENÇÃO VEÍCULOS ---
     elif script_choice == "Manutenção Veículos":
         st.subheader("Manutenção de Veículos (FleetCom)")
         st.info("Envie o relatório de manutenções em PDF para convertê-lo em planilha estruturada.")
@@ -1121,7 +1122,6 @@ def logistics_page():
                     parsed_data = []
 
                     # Regex para identificar o cabeçalho do veículo
-                    # Ex: FCT1J98 ATRON 1719 FCT1J98 257.911,0 2014
                     veiculo_pattern = re.compile(r'([A-Z]{3}[A-Z0-9]{4})\s+(.+?)(?:\s+[A-Z]{3}[A-Z0-9]{4})?\s+([\d\.]+,\d+)\s+(\d{4})')
                     data_pattern = re.compile(r'(\d{2}/\d{2}/\d{4})')
 
