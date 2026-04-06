@@ -1123,12 +1123,11 @@ def logistics_page():
             for page in pdf_reader.pages:
                 text += page.extract_text() + "\n"
 
-            # 1. LIMPEZA DO ARTEFATO CSV INVISÍVEL DO FLEETCOM
-            # Remove aspas e vírgulas que o gerador de PDF insere nas colunas
-            text = re.sub(r'\"\s*,\s*\"', ' ', text)
+            # 1. LAVAGEM DE ARTEFATOS: Remove aspas e vírgulas invisíveis que quebram a leitura de Carros e Motos
             text = text.replace('"', '')
+            text = re.sub(r'^\s*,\s*', '', text, flags=re.MULTILINE)
 
-            # 2. GUILHOTINA ABSOLUTA: Corta o Resumo Final para não gerar lixo
+            # 2. GUILHOTINA ABSOLUTA: Corta o Resumo Final para não gerar lixo na última placa
             marcadores_resumo = [
                 "N. DE VEÍCULOS ATENDIDOS", "NO. DE IM'S PREVENTIVAS", "RESUMO POR PLACA", 
                 "CUSTO IM'S PREVENTIVAS", "CUSTO IM'S CORRETIVAS"
@@ -1141,19 +1140,19 @@ def logistics_page():
             parsed_data = []
 
             # 3. EXPRESSÃO UNIFICADA ANCORADA (A prova de falhas)
-            # Busca a assinatura completa de 10 pontos da linha do veículo
+            # Busca a assinatura completa do veículo descendo até o Hodômetro (flexível com o Total M-O)
             veiculo_pattern = re.compile(
                 r'\b([A-Z]{3}-?\d[A-Z0-9]\d{2})\b\s+'   # 1. Placa
-                r'(.+?)\s+'                             # 2. Modelo
+                r'((?:(?!\b[A-Z]{3}-?\d[A-Z0-9]\d{2}\b).){1,100}?)\s+' # 2. Modelo
                 r'(?:[A-Z]{3}-?\d[A-Z0-9]\d{2}\b\s+)?'  # Placa repetida opcional
-                r'([\d\.,]+)\s+'                        # 3. Km Atual
-                r'(\d{4})\s+'                           # 4. Ano Fabr.
-                r'(\d{2}/\d{2}/\d{4})\s+'               # 5. Data Exec
-                r'(\d{2}/\d{2}/\d{4})\s+'               # 6. Data Inicio
-                r'(\d{2}/\d{2}/\d{4})\s+'               # 7. Data Fim
+                r'([\d\.,]+)\s+'                        # 3. Km
+                r'(\d{4})\s+'                           # 4. Ano
+                r'(\d{2}/\d{2}/\d{4})\s+'               # 5. Data 1
+                r'(\d{2}/\d{2}/\d{4})\s+'               # 6. Data 2
+                r'(\d{2}/\d{2}/\d{4})\s+'               # 7. Data 3
                 r'(\d{2,5}:\d{2})\s+'                   # 8. Tempo Parado
-                r'([\d\.,]+)\s+'                        # 9. Hodômetro
-                r'(R\$\s*[\d\.,]+)',                    # 10. Total M-O
+                r'([\d\.,]+)\s*'                        # 9. Hodometro
+                r'(?:R\$\s*([\d\.,]+))?',               # 10. Total M-O Opcional
                 re.DOTALL
             )
             
@@ -1173,7 +1172,8 @@ def logistics_page():
                 data_fim = match.group(7)
                 tempo_parado = match.group(8)
                 hodometro = match.group(9)
-                total_mo = match.group(10).replace('R$', '').strip()
+                total_mo = match.group(10) if match.group(10) else "0,00"
+                total_mo = total_mo.strip()
 
                 start_idx = match.end()
                 end_idx = matches_veiculos[i+1].start() if i + 1 < len(matches_veiculos) else len(text)
@@ -1299,6 +1299,7 @@ def logistics_page():
                         desc = re.sub(r'\s+[\d\.,]+\s+[A-Z0-9\-]+\s+[\d\.,]+.*$', '', desc).strip()
                         desc = re.sub(r'\s+\d{2}/\d{2}/\d{4}.*$', '', desc).strip()
                         if re.fullmatch(r'[\d,]+', desc): desc = "Mão de Obra / Serviço"
+                        if not desc: desc = "Mão de Obra / Serviço"
 
                         nf = nf_extraido
                         desconto = "0,00"
