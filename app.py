@@ -1104,7 +1104,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-   # --- SCRIPT MANUTENÇÃO VEÍCULOS ---
+  # --- SCRIPT MANUTENÇÃO VEÍCULOS ---
     elif script_choice == "Manutenção Veículos":
         st.subheader("Manutenção de Veículos (FleetCom)")
         st.info("Envie os relatórios em PDF. O sistema irá consolidar tudo em um único arquivo Excel com abas separadas.")
@@ -1125,13 +1125,20 @@ def logistics_page():
 
             parsed_data = []
 
-            # 1. EXPRESSÃO UNIFICADA: Encontra veículos em qualquer layout (com ou sem placa repetida)
+            # EXPRESSÃO UNIFICADA ANCORADA (A prova de falhas para Carros, Motos e Caminhões)
+            # Busca a assinatura completa do veículo descendo até o Total M-O
             veiculo_pattern = re.compile(
-                r'\b([A-Z]{3}-?\d[A-Z0-9]\d{2})\b\s+'
-                r'((?:(?!\b[A-Z]{3}-?\d[A-Z0-9]\d{2}\b).){1,150}?)\s+'
-                r'(?:[A-Z]{3}-?\d[A-Z0-9]\d{2}\s*)?'
-                r'([\d\.,]+)\s+'
-                r'(\d{4})\b', 
+                r'\b([A-Z]{3}-?\d[A-Z0-9]\d{2})\b\s+'   # 1. Placa
+                r'(.+?)\s+'                             # 2. Modelo
+                r'(?:[A-Z]{3}-?\d[A-Z0-9]\d{2}\b\s+)?'  # Opcional Placa repetida
+                r'([\d\.,]+)\s+'                        # 3. Km Atual
+                r'(\d{4})\s+'                           # 4. Ano Fabr.
+                r'(\d{2}/\d{2}/\d{4})\s+'               # 5. Data Exec
+                r'(\d{2}/\d{2}/\d{4})\s+'               # 6. Data Inicio
+                r'(\d{2}/\d{2}/\d{4})\s+'               # 7. Data Fim
+                r'(\d{2,5}:\d{2})\s+'                   # 8. Tempo Parado
+                r'([\d\.,]+)\s+'                        # 9. Hodômetro
+                r'(R\$\s*[\d\.,]+)',                    # 10. Total M-O
                 re.DOTALL
             )
             matches_veiculos = list(veiculo_pattern.finditer(text))
@@ -1142,30 +1149,28 @@ def logistics_page():
                 # -- CABEÇALHO DO VEÍCULO --
                 placa = match.group(1).replace('-', '')
                 n_veiculo = placa 
+                
                 modelo = match.group(2).strip().replace('\n', ' ')
+                if modelo.endswith(placa): 
+                    modelo = modelo[:-len(placa)].strip()
+                    
                 km_atual = match.group(3)
                 ano_fabr = match.group(4)
+                data_exec = match.group(5)
+                data_inicio = match.group(6)
+                data_fim = match.group(7)
+                tempo_parado = match.group(8)
+                hodometro = match.group(9)
+                total_mo = match.group(10)
 
                 start_idx = match.end()
                 end_idx = matches_veiculos[i+1].start() if i + 1 < len(matches_veiculos) else len(text)
                 bloco = text[start_idx:end_idx]
 
-                # GUILHOTINA: Corta o Resumo Final com segurança máxima
-                idx_resumo = re.search(r'\b(N\. DE VEÍCULOS ATENDIDOS|NO\. DE IM\'S PREVENTIVAS)\b', bloco.upper())
+                # GUILHOTINA: Corta qualquer resumo final que apareça na última página
+                idx_resumo = re.search(r'\b(N\. DE VEÍCULOS ATENDIDOS|NO\. DE IM\'S PREVENTIVAS|RESUMO POR PLACA)\b', bloco.upper())
                 if idx_resumo:
                     bloco = bloco[:idx_resumo.start()]
-
-                # Extrair informações da linha de datas do veículo
-                header_dados_pattern = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})\s+([\d\.,]+)\s+(R\$\s*[\d\.,]+)', bloco)
-                
-                data_exec = data_inicio = data_fim = tempo_parado = hodometro = total_mo = ""
-                if header_dados_pattern:
-                    data_exec = header_dados_pattern.group(1)
-                    data_inicio = header_dados_pattern.group(2)
-                    data_fim = header_dados_pattern.group(3)
-                    tempo_parado = header_dados_pattern.group(4)
-                    hodometro = header_dados_pattern.group(5)
-                    total_mo = header_dados_pattern.group(6)
 
                 linhas_bloco = bloco.split('\n')
                 buffer_servico = [] 
@@ -1191,7 +1196,7 @@ def logistics_page():
                     if re.search(r'\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}', linha_limpa):
                         continue
 
-                    # Identifica Serviço (Impede que 'R$ 0,00' isolado do cabeçalho vire serviço)
+                    # Identifica Serviço Válido
                     match_valor = re.search(r'(R\$\s*[\d\.]+,\d{2})', linha_limpa)
                     if match_valor and not linha_upper.startswith("DESCONTOS"):
                         valor_str = match_valor.group(1)
@@ -1214,7 +1219,6 @@ def logistics_page():
 
                         candidatos_desc = buffer_servico + [antes_rs]
                         
-                        # NOVO: Encontra onde começa a Quantidade (Mesmo que seja um "1" isolado na linha)
                         start_idx_desc = 0
                         for idx in range(len(candidatos_desc)-1, -1, -1):
                             c_up = candidatos_desc[idx].strip().upper()
@@ -1233,7 +1237,7 @@ def logistics_page():
                             if any(cab in c_up for cab in cabecalhos_invalidos): continue
                             if re.match(r'^\d{1,3}\.\d{3}\s+[A-Z0-9\.\-]+\s+[\d\.,]+\s+\d{4}', c_up): continue
                             if fornecedor_extraido and c_up == fornecedor_extraido.upper(): continue
-                            if re.fullmatch(r'[\d\.,]{6,}', c_up): continue # Ignora Hódomeros perdidos
+                            if re.fullmatch(r'[\d\.,]{5,}', c_up): continue # Ignora Hódomeros perdidos no texto
                             valid_parts.append(c)
 
                         final_desc_parts = []
