@@ -1365,7 +1365,11 @@ def logistics_page():
                             worksheet = writer.sheets[nome_aba]
                             
                             for idx, col in enumerate(df_sheet.columns):
-                                max_len = max(df_sheet[col].astype(str).map(len).max(), len(col)) + 2
+                                # Cálculo 100% seguro contra DataFrames vazios e formato Arrow
+                                tamanho_dados = df_sheet[col].astype(str).str.len().max()
+                                tamanho_dados = int(tamanho_dados) if pd.notna(tamanho_dados) else 0
+                                max_len = max(tamanho_dados, len(str(col))) + 2
+                                
                                 if col in ['Total M-O', 'Total Fornecedor', 'Descontos']:
                                     worksheet.set_column(idx, idx, 15, formato_moeda)
                                 else:
