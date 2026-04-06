@@ -1136,7 +1136,6 @@ def logistics_page():
                         
                         # -- CABEÇALHO DO VEÍCULO --
                         placa = match.group(1).replace('-', '')
-                        n_veiculo = placa 
                         if len(match.groups()) == 4:
                             modelo = match.group(2).strip().replace('\n', ' ')
                             km_atual = match.group(3)
@@ -1144,7 +1143,7 @@ def logistics_page():
                         else:
                             modelo = match.group(2).strip().replace('\n', ' ')
                             km_atual = match.group(3)
-                            ano_fabr = match.group(4) # no fallback, os indices caem 1
+                            ano_fabr = match.group(4)
 
                         # Isolar as linhas de serviço pertinentes APENAS a este veículo
                         start_idx = match.end()
@@ -1166,7 +1165,6 @@ def logistics_page():
                         linhas_bloco = bloco.split('\n')
                         valid_lines_buffer = [] 
                         
-                        # Palavras que sabemos que NUNCA são descrições de serviço
                         junk_exact = [
                             "PR.TOT FORNECEDOR", "FORNECEDOR DE MÃO-DE-OBRA", "FORNECEDOR",
                             "DESCRIÇÃO", "QT CÓDIGO", "TEMPO PARADO", "HODÔMETRO", "TOTAL M-O",
@@ -1196,26 +1194,41 @@ def logistics_page():
                                 desc_raw = partes[0].strip()
                                 resto = partes[1].strip() if len(partes) > 1 else ""
                                 
-                                # Se a descrição da linha estiver vazia, puxamos do buffer a última linha válida!
+                                # NOVO: TRATAR FORNECEDOR E NF QUE FICARAM ANTES DO R$ (Ex: "PARDAL 2164 R$ 150,00")
+                                nf_extraido = ""
+                                fornecedor_extraido = ""
+                                
+                                if desc_raw and not re.match(r'^[\d,]+\s', desc_raw):
+                                    m_nf_antes = re.search(r'\b(\d{3,9})$', desc_raw.strip())
+                                    if m_nf_antes:
+                                        forn_cand = desc_raw[:m_nf_antes.start()].strip()
+                                        if len(forn_cand) < 30: # É um fornecedor
+                                            nf_extraido = m_nf_antes.group(1)
+                                            fornecedor_extraido = forn_cand
+                                            desc_raw = "" # Força buscar a descrição no buffer
+                                    elif len(desc_raw) < 25 and not any(x in desc_raw.upper() for x in ["M-O", "SERVIÇO", "MANUTENÇÃO", "TROCA"]):
+                                        fornecedor_extraido = desc_raw
+                                        desc_raw = ""
+
+                                # Resgatar a verdadeira descrição do buffer se a atual estiver vazia
                                 if not desc_raw or desc_raw.upper() in junk_exact:
                                     for prev in reversed(valid_lines_buffer):
-                                        prev_upper = prev.upper().strip()
-                                        # Condições para ser uma descrição limpa
+                                        prev_limpo = prev.strip()
+                                        prev_upper = prev_limpo.upper()
                                         if prev_upper not in junk_exact and not re.match(r'^\d{2}/\d{2}/\d{4}', prev_upper):
-                                            # Também ignora aquela linha cheia de códigos internos: "13.180 PFH4049 333.967,0 2022"
                                             if not re.match(r'^\d{1,3}\.\d{3}\s+[A-Z0-9\.\-]+\s+[\d\.,]+\s+\d{4}', prev_upper):
-                                                desc_raw = prev
+                                                desc_raw = prev_limpo
                                                 break
                                 
-                                # Processar Qt, Código e Descrição
-                                desc = re.sub(r'^(Qt Código|Descrição)\s*', '', desc_raw, flags=re.IGNORECASE).strip()
+                                # Separar Quantidade, Código e Descrição
                                 qt = "1"
                                 codigo = ""
+                                desc = desc_raw
+                                desc = re.sub(r'^(Qt Código|Descrição)\s*', '', desc, flags=re.IGNORECASE).strip()
                                 
-                                # Procura: Quantidade + Código (OBRIGATÓRIO TER UM NÚMERO NO CÓDIGO) + Descrição
-                                m_qt_cod = re.match(r'^(\d+)\s+([A-Z0-9\.\-]*\d[A-Z0-9\.\-]*)\s+(.*)', desc)
-                                # Procura: Apenas Quantidade + Descrição (Cai aqui quando é "1 POLIA")
-                                m_qt_only = re.match(r'^(\d+)\s+(.*)', desc)
+                                # NOVO: Aceita quantidades com vírgula (ex: "5,5 OLEO...") e só aceita Código se tiver NÚMERO
+                                m_qt_cod = re.match(r'^([\d,]+)\s+([A-Z0-9\.\-]*\d[A-Z0-9\.\-]*)\s+(.*)', desc)
+                                m_qt_only = re.match(r'^([\d,]+)\s+(.*)', desc)
                                 
                                 if m_qt_cod:
                                     qt = m_qt_cod.group(1)
@@ -1227,37 +1240,34 @@ def logistics_page():
                                     
                                 qt_codigo = f"{qt} {codigo}".strip()
                                 
-                                # Limpeza final de lixo na descrição
+                                # Limpeza final da descrição
                                 desc = desc.replace(' 00:00', '').strip()
                                 desc = re.sub(r'\s+[\d\.,]+\s+[A-Z0-9\-]+\s+[\d\.,]+.*$', '', desc).strip()
                                 desc = re.sub(r'\s+\d{2}/\d{2}/\d{4}.*$', '', desc).strip()
                                 if not desc: desc = "Mão de Obra / Serviço"
 
-                                # Processar Fornecedor, NF e Descontos
-                                nf = ""
+                                # Extrair Fornecedor, NF e Descontos do "resto" da frase
+                                nf = nf_extraido
                                 desconto = "0,00"
-                                fornecedor = ""
+                                fornecedor = fornecedor_extraido
                                 
-                                # Extrai desconto (sempre precedido por R$)
                                 m_desc = re.search(r'(R\$\s*[\d\.]+,\d{2})', resto)
                                 if m_desc:
                                     desconto = m_desc.group(1).replace('R$', '').strip()
                                     resto = resto.replace(m_desc.group(1), '').strip()
                                     
-                                # Extrai NF (sequência de números isolada no meio do fornecedor)
                                 m_nf = re.search(r'\b(\d{3,9})\b', resto)
                                 if m_nf:
-                                    nf = m_nf.group(1)
-                                    fornecedor = resto[:m_nf.start()].strip()
+                                    if not nf: nf = m_nf.group(1)
+                                    if not fornecedor: fornecedor = resto[:m_nf.start()].strip()
                                 else:
-                                    fornecedor = resto.strip()
+                                    if not fornecedor: fornecedor = resto.strip()
                                     
                                 fornecedor = re.sub(r'(NF manutenção|Mão-de-Obra|Origem|Posição|NF).*', '', fornecedor, flags=re.IGNORECASE).strip()
                                 
                                 parsed_data.append({
-                                    'N. Veículo': n_veiculo,
-                                    'Modelo': modelo,
                                     'Placa': placa,
+                                    'Modelo': modelo,
                                     'Km Atual': km_atual,
                                     'Ano Fabr.': ano_fabr,
                                     'Data Exec.': data_exec,
@@ -1288,7 +1298,7 @@ def logistics_page():
                         for c in colunas_moeda:
                             df_resultado[c] = pd.to_numeric(df_resultado[c].astype(str).str.replace('.', '').str.replace(',', '.'), errors='coerce').fillna(0)
                         
-                        st.success(f"✅ Tabelada processada perfeitamente! ({len(df_resultado)} serviços encontrados)")
+                        st.success(f"✅ Tabela processada perfeitamente! ({len(df_resultado)} serviços extraídos)")
                         st.dataframe(df_resultado, use_container_width=True)
 
                         # Montar o Excel final com larguras dinâmicas
@@ -1305,7 +1315,7 @@ def logistics_page():
                                 if col in colunas_moeda:
                                     worksheet.set_column(idx, idx, 15, formato_moeda)
                                 else:
-                                    worksheet.set_column(idx, idx, min(max_len, 35))
+                                    worksheet.set_column(idx, idx, min(max_len, 40))
 
                         output.seek(0)
 
