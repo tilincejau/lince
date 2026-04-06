@@ -1125,11 +1125,10 @@ def logistics_page():
 
             parsed_data = []
 
-            # NOVA EXPRESSÃO REGULAR UNIFICADA (Impede que veículos sejam pulados e misturados)
-            # Lê placas antigas e padrão Mercosul com segurança, bloqueando o avanço do texto incorreto.
+            # 1. EXPRESSÃO UNIFICADA: Encontra veículos em qualquer layout (com ou sem placa repetida)
             veiculo_pattern = re.compile(
                 r'\b([A-Z]{3}-?\d[A-Z0-9]\d{2})\b\s+'
-                r'((?:(?!\b[A-Z]{3}-?\d[A-Z0-9]\d{2}\b).){1,80}?)\s+'
+                r'((?:(?!\b[A-Z]{3}-?\d[A-Z0-9]\d{2}\b).){1,150}?)\s+'
                 r'(?:[A-Z]{3}-?\d[A-Z0-9]\d{2}\s*)?'
                 r'([\d\.,]+)\s+'
                 r'(\d{4})\b', 
@@ -1140,6 +1139,7 @@ def logistics_page():
             for i in range(len(matches_veiculos)):
                 match = matches_veiculos[i]
                 
+                # -- CABEÇALHO DO VEÍCULO --
                 placa = match.group(1).replace('-', '')
                 n_veiculo = placa 
                 modelo = match.group(2).strip().replace('\n', ' ')
@@ -1150,16 +1150,12 @@ def logistics_page():
                 end_idx = matches_veiculos[i+1].start() if i + 1 < len(matches_veiculos) else len(text)
                 bloco = text[start_idx:end_idx]
 
-                # GUILHOTINA: Corta o Resumo Final para não gerar lixo no último veículo
-                marcadores_resumo = [
-                    "N. DE VEÍCULOS ATENDIDOS", "N. DE OS'S REALIZADAS", "N. DE OS'S PENDENTES",
-                    "DIAS PARADO\n", "DIAS PARADO \n", "NO. DE IM'S PREVENTIVAS", "NO. DE IM"
-                ]
-                for marcador in marcadores_resumo:
-                    idx_resumo = bloco.upper().find(marcador)
-                    if idx_resumo != -1:
-                        bloco = bloco[:idx_resumo]
+                # GUILHOTINA: Corta o Resumo Final com segurança máxima
+                idx_resumo = re.search(r'\b(N\. DE VEÍCULOS ATENDIDOS|NO\. DE IM\'S PREVENTIVAS)\b', bloco.upper())
+                if idx_resumo:
+                    bloco = bloco[:idx_resumo.start()]
 
+                # Extrair informações da linha de datas do veículo
                 header_dados_pattern = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})\s+([\d\.,]+)\s+(R\$\s*[\d\.,]+)', bloco)
                 
                 data_exec = data_inicio = data_fim = tempo_parado = hodometro = total_mo = ""
@@ -1195,6 +1191,7 @@ def logistics_page():
                     if re.search(r'\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}', linha_limpa):
                         continue
 
+                    # Identifica Serviço (Impede que 'R$ 0,00' isolado do cabeçalho vire serviço)
                     match_valor = re.search(r'(R\$\s*[\d\.]+,\d{2})', linha_limpa)
                     if match_valor and not linha_upper.startswith("DESCONTOS"):
                         valor_str = match_valor.group(1)
@@ -1217,10 +1214,11 @@ def logistics_page():
 
                         candidatos_desc = buffer_servico + [antes_rs]
                         
+                        # NOVO: Encontra onde começa a Quantidade (Mesmo que seja um "1" isolado na linha)
                         start_idx_desc = 0
                         for idx in range(len(candidatos_desc)-1, -1, -1):
                             c_up = candidatos_desc[idx].strip().upper()
-                            if re.match(r'^[\d,]+\s+[A-Z]', c_up):
+                            if re.match(r'^[\d,]+(\s+[A-Z].*)?$', c_up):
                                 start_idx_desc = idx
                                 break
                                 
@@ -1235,6 +1233,7 @@ def logistics_page():
                             if any(cab in c_up for cab in cabecalhos_invalidos): continue
                             if re.match(r'^\d{1,3}\.\d{3}\s+[A-Z0-9\.\-]+\s+[\d\.,]+\s+\d{4}', c_up): continue
                             if fornecedor_extraido and c_up == fornecedor_extraido.upper(): continue
+                            if re.fullmatch(r'[\d\.,]{6,}', c_up): continue # Ignora Hódomeros perdidos
                             valid_parts.append(c)
 
                         final_desc_parts = []
