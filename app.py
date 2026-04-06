@@ -1122,11 +1122,10 @@ def logistics_page():
                     parsed_data = []
 
                     # 1. Identificar blocos de veículos (Suporta quebra de linha no meio do modelo)
-                    # Padrão: Placa Modelo Placa KM Ano (A segunda placa funciona como trava de segurança)
                     veiculo_pattern = re.compile(r'([A-Z]{3}-?\d[A-Z0-9]\d{2})\s+(.+?)\s+\1\s+([\d\.,]+)\s+(\d{4})', re.DOTALL)
                     matches_veiculos = list(veiculo_pattern.finditer(text))
 
-                    # Fallback caso o PDF não repita a placa (ocorre em algumas versões do FleetCom)
+                    # Fallback caso o PDF não repita a placa
                     if not matches_veiculos:
                          veiculo_pattern = re.compile(r'([A-Z]{3}-?\d[A-Z0-9]\d{2})\s+(.+?)\s+([\d\.,]+)\s+(\d{4})', re.DOTALL)
                          matches_veiculos = list(veiculo_pattern.finditer(text))
@@ -1136,6 +1135,7 @@ def logistics_page():
                         
                         # -- CABEÇALHO DO VEÍCULO --
                         placa = match.group(1).replace('-', '')
+                        n_veiculo = placa 
                         if len(match.groups()) == 4:
                             modelo = match.group(2).strip().replace('\n', ' ')
                             km_atual = match.group(3)
@@ -1145,7 +1145,6 @@ def logistics_page():
                             km_atual = match.group(3)
                             ano_fabr = match.group(4)
 
-                        # Isolar as linhas de serviço pertinentes APENAS a este veículo
                         start_idx = match.end()
                         end_idx = matches_veiculos[i+1].start() if i + 1 < len(matches_veiculos) else len(text)
                         bloco = text[start_idx:end_idx]
@@ -1165,27 +1164,42 @@ def logistics_page():
                         linhas_bloco = bloco.split('\n')
                         valid_lines_buffer = [] 
                         
-                        junk_exact = [
-                            "PR.TOT FORNECEDOR", "FORNECEDOR DE MÃO-DE-OBRA", "FORNECEDOR",
-                            "DESCRIÇÃO", "QT CÓDIGO", "TEMPO PARADO", "HODÔMETRO", "TOTAL M-O",
-                            "N. VEÍCULO", "MODELO", "PLACA", "KM ATUAL", "ANO FABR.", "DATA EXEC.",
-                            "DATA INÍCIO", "DATA FIM", "N. NE", "DESCONTOS", "GA.KMS GA.D", "00:00"
+                        # LISTA NEGRA: Palavras de cabeçalho do PDF que NUNCA são peças/serviços
+                        cabecalhos_invalidos = [
+                            "FORNECEDOR DE MÃO-DE-OBRA", "N. NF", "DESCONTOS", "DESCRIÇÃO",
+                            "GAR.KMS", "GAR.DIAS", "GA.KMS", "GA.D", "PR.TOT FORNECEDOR", "QT CÓDIGO",
+                            "TEMPO PARADO", "HODÔMETRO", "TOTAL M-O", "N. VEÍCULO", "MODELO", "PLACA",
+                            "KM ATUAL", "ANO FABR", "DATA EXEC", "DATA INÍCIO", "DATA FIM", "N. NE",
+                            "PEÇAS MÃO-DE-OBRA", "CUSTO IM", "TOTAL DE IM", "CUSTO PEÇAS", "VALOR",
+                            "TOTALIZADOR", "TOTAL:"
                         ]
+
+                        # Função inteligente que checa se o texto é de fato uma peça/serviço
+                        def is_valid_description(t):
+                            t_up = t.upper()
+                            if not t_up: return False
+                            if re.match(r'^\d{2}/\d{2}/\d{4}', t_up): return False # É uma data
+                            if '00:00' in t_up: return False # É linha de tempo
+                            # Bloqueia se for um cabeçalho perdido do PDF
+                            for cab in cabecalhos_invalidos:
+                                if cab in t_up: return False
+                            # Bloqueia se for aquela linha de códigos de sistema
+                            if re.match(r'^\d{1,3}\.\d{3}\s+[A-Z0-9\.\-]+\s+[\d\.,]+\s+\d{4}', t_up): return False
+                            return True
 
                         for idx_linha, linha in enumerate(linhas_bloco):
                             linha_limpa = linha.strip()
                             if not linha_limpa: continue
                             linha_upper = linha_limpa.upper()
                             
-                            # 1. IGNORAR LIXOS E TOTAIS (Impede a criação de serviços "fantasmas")
+                            # Ignorar totais
                             if any(k in linha_upper for k in ['TOTAL DE IM', 'CUSTO MÃO', 'CUSTO PEÇAS', 'CUSTO IM', 'TOTAL: R$', 'PR.TOT FORNECEDOR']):
                                 continue
                             
-                            # Ignora a linha de datas do cabeçalho que o Python tenta ler como serviço
+                            # Ignora a linha de datas do cabeçalho
                             if re.search(r'\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}', linha_limpa):
                                 continue
 
-                            # 2. IDENTIFICAR UM SERVIÇO REAL (Tem 'R$' e um valor válido)
                             match_valor = re.search(r'(R\$\s*[\d\.]+,\d{2})', linha_limpa)
                             if match_valor and not linha_upper.startswith("DESCONTOS"):
                                 valor_str = match_valor.group(1)
@@ -1194,39 +1208,39 @@ def logistics_page():
                                 desc_raw = partes[0].strip()
                                 resto = partes[1].strip() if len(partes) > 1 else ""
                                 
-                                # NOVO: TRATAR FORNECEDOR E NF QUE FICARAM ANTES DO R$ (Ex: "PARDAL 2164 R$ 150,00")
                                 nf_extraido = ""
                                 fornecedor_extraido = ""
                                 
+                                # Detecta se o Fornecedor/NF ficou preso ANTES do R$ (Caso do "PARDAL 2164")
                                 if desc_raw and not re.match(r'^[\d,]+\s', desc_raw):
                                     m_nf_antes = re.search(r'\b(\d{3,9})$', desc_raw.strip())
                                     if m_nf_antes:
                                         forn_cand = desc_raw[:m_nf_antes.start()].strip()
-                                        if len(forn_cand) < 30: # É um fornecedor
+                                        if len(forn_cand) < 30: 
                                             nf_extraido = m_nf_antes.group(1)
                                             fornecedor_extraido = forn_cand
-                                            desc_raw = "" # Força buscar a descrição no buffer
-                                    elif len(desc_raw) < 25 and not any(x in desc_raw.upper() for x in ["M-O", "SERVIÇO", "MANUTENÇÃO", "TROCA"]):
-                                        fornecedor_extraido = desc_raw
-                                        desc_raw = ""
+                                            desc_raw = "" 
 
-                                # Resgatar a verdadeira descrição do buffer se a atual estiver vazia
-                                if not desc_raw or desc_raw.upper() in junk_exact:
+                                # O Resgate: Se a descrição capturada for lixo ou estiver vazia, busca no buffer!
+                                if not desc_raw or not is_valid_description(desc_raw):
+                                    
+                                    # Se era um texto curto e inofensivo, joga pro fornecedor (salva-vidas)
+                                    if desc_raw and len(desc_raw) < 30 and not fornecedor_extraido:
+                                        if not any(cab in desc_raw.upper() for cab in cabecalhos_invalidos):
+                                            fornecedor_extraido = desc_raw
+
+                                    desc_raw = "" 
                                     for prev in reversed(valid_lines_buffer):
                                         prev_limpo = prev.strip()
-                                        prev_upper = prev_limpo.upper()
-                                        if prev_upper not in junk_exact and not re.match(r'^\d{2}/\d{2}/\d{4}', prev_upper):
-                                            if not re.match(r'^\d{1,3}\.\d{3}\s+[A-Z0-9\.\-]+\s+[\d\.,]+\s+\d{4}', prev_upper):
-                                                desc_raw = prev_limpo
-                                                break
+                                        if is_valid_description(prev_limpo):
+                                            desc_raw = prev_limpo
+                                            break
                                 
-                                # Separar Quantidade, Código e Descrição
+                                desc = re.sub(r'^(Qt Código|Descrição)\s*', '', desc_raw, flags=re.IGNORECASE).strip()
                                 qt = "1"
                                 codigo = ""
-                                desc = desc_raw
-                                desc = re.sub(r'^(Qt Código|Descrição)\s*', '', desc, flags=re.IGNORECASE).strip()
                                 
-                                # NOVO: Aceita quantidades com vírgula (ex: "5,5 OLEO...") e só aceita Código se tiver NÚMERO
+                                # Separação de Qt e Código com suporte a vírgulas (Ex: 5,5 OLEO)
                                 m_qt_cod = re.match(r'^([\d,]+)\s+([A-Z0-9\.\-]*\d[A-Z0-9\.\-]*)\s+(.*)', desc)
                                 m_qt_only = re.match(r'^([\d,]+)\s+(.*)', desc)
                                 
@@ -1240,13 +1254,11 @@ def logistics_page():
                                     
                                 qt_codigo = f"{qt} {codigo}".strip()
                                 
-                                # Limpeza final da descrição
                                 desc = desc.replace(' 00:00', '').strip()
                                 desc = re.sub(r'\s+[\d\.,]+\s+[A-Z0-9\-]+\s+[\d\.,]+.*$', '', desc).strip()
                                 desc = re.sub(r'\s+\d{2}/\d{2}/\d{4}.*$', '', desc).strip()
                                 if not desc: desc = "Mão de Obra / Serviço"
 
-                                # Extrair Fornecedor, NF e Descontos do "resto" da frase
                                 nf = nf_extraido
                                 desconto = "0,00"
                                 fornecedor = fornecedor_extraido
@@ -1266,8 +1278,9 @@ def logistics_page():
                                 fornecedor = re.sub(r'(NF manutenção|Mão-de-Obra|Origem|Posição|NF).*', '', fornecedor, flags=re.IGNORECASE).strip()
                                 
                                 parsed_data.append({
-                                    'Placa': placa,
+                                    'N. Veículo': n_veiculo,
                                     'Modelo': modelo,
+                                    'Placa': placa,
                                     'Km Atual': km_atual,
                                     'Ano Fabr.': ano_fabr,
                                     'Data Exec.': data_exec,
@@ -1285,15 +1298,14 @@ def logistics_page():
                                     'Ga. Kms': '',
                                     'Ga. Dis': ''
                                 })
-                                continue # Pula a inserção desta linha no buffer
+                                continue
                                 
-                            # Se não for uma linha de serviço (R$), joga na memória para caso a próxima linha precise
+                            # Alimenta o buffer com qualquer linha que não for de serviço
                             valid_lines_buffer.append(linha_limpa)
 
                     if parsed_data:
                         df_resultado = pd.DataFrame(parsed_data)
                         
-                        # Converter as colunas financeiras para o formato Number do Pandas
                         colunas_moeda = ['Total M-O', 'Total Fornecedor', 'Descontos']
                         for c in colunas_moeda:
                             df_resultado[c] = pd.to_numeric(df_resultado[c].astype(str).str.replace('.', '').str.replace(',', '.'), errors='coerce').fillna(0)
@@ -1301,7 +1313,6 @@ def logistics_page():
                         st.success(f"✅ Tabela processada perfeitamente! ({len(df_resultado)} serviços extraídos)")
                         st.dataframe(df_resultado, use_container_width=True)
 
-                        # Montar o Excel final com larguras dinâmicas
                         output = io.BytesIO()
                         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                             df_resultado.to_excel(writer, index=False, sheet_name="Manutencao_FleetCom")
@@ -1309,7 +1320,6 @@ def logistics_page():
                             worksheet = writer.sheets['Manutencao_FleetCom']
                             formato_moeda = writer.book.add_format({'num_format': 'R$ #,##0.00'})
                             
-                            # Ajuste cosmético do Excel
                             for idx, col in enumerate(df_resultado.columns):
                                 max_len = max(df_resultado[col].astype(str).map(len).max(), len(col)) + 2
                                 if col in colunas_moeda:
