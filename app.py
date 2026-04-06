@@ -1149,6 +1149,21 @@ def logistics_page():
                         end_idx = matches_veiculos[i+1].start() if i + 1 < len(matches_veiculos) else len(text)
                         bloco = text[start_idx:end_idx]
 
+                        # --- GUILHOTINA: CORTA O RESUMO FINAL DO PDF ---
+                        # Evita que o último veículo absorva a tabela de totais do rodapé do documento
+                        marcadores_resumo = [
+                            "N. DE VEÍCULOS ATENDIDOS",
+                            "N. DE OS'S REALIZADAS",
+                            "N. DE OS'S PENDENTES",
+                            "DIAS PARADO\n",
+                            "DIAS PARADO \n"
+                        ]
+                        for marcador in marcadores_resumo:
+                            idx_resumo = bloco.upper().find(marcador)
+                            if idx_resumo != -1:
+                                bloco = bloco[:idx_resumo] # Corta o texto exatamente onde começa o resumo
+                        # -----------------------------------------------
+
                         # Extrair informações da linha de datas do veículo
                         header_dados_pattern = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2})\s+([\d\.,]+)\s+(R\$\s*[\d\.,]+)', bloco)
                         
@@ -1251,7 +1266,7 @@ def logistics_page():
 
                                 desc_raw = " ".join(final_desc_parts).strip()
                                 
-                                # TRAVA MESTRA: Se não achou descrição nenhuma, era uma linha fantasma de Total. Pula!
+                                # TRAVA MESTRA: Se não achou descrição nenhuma, era uma linha fantasma. Pula!
                                 if not desc_raw:
                                     buffer_servico = []
                                     continue
@@ -1359,7 +1374,6 @@ def logistics_page():
 
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo: {e}")
-
 # ====================================================================
 # 6. SETOR COMERCIAL
 # ====================================================================
