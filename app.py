@@ -1104,7 +1104,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-    # --- SCRIPT MANUTENÇÃO VEÍCULOS ---
+   # --- SCRIPT MANUTENÇÃO VEÍCULOS ---
     elif script_choice == "Manutenção Veículos":
         st.subheader("Manutenção de Veículos (FleetCom)")
         st.info("Envie os relatórios em PDF. O sistema irá consolidar tudo em um único arquivo Excel com abas separadas.")
@@ -1125,28 +1125,26 @@ def logistics_page():
 
             parsed_data = []
 
-            # 1. Identificar blocos de veículos (Suporta quebra de linha no meio do modelo)
-            veiculo_pattern = re.compile(r'([A-Z]{3}-?\d[A-Z0-9]\d{2})\s+(.+?)\s+\1\s+([\d\.,]+)\s+(\d{4})', re.DOTALL)
+            # NOVA EXPRESSÃO REGULAR UNIFICADA (Impede que veículos sejam pulados e misturados)
+            # Lê placas antigas e padrão Mercosul com segurança, bloqueando o avanço do texto incorreto.
+            veiculo_pattern = re.compile(
+                r'\b([A-Z]{3}-?\d[A-Z0-9]\d{2})\b\s+'
+                r'((?:(?!\b[A-Z]{3}-?\d[A-Z0-9]\d{2}\b).){1,80}?)\s+'
+                r'(?:[A-Z]{3}-?\d[A-Z0-9]\d{2}\s*)?'
+                r'([\d\.,]+)\s+'
+                r'(\d{4})\b', 
+                re.DOTALL
+            )
             matches_veiculos = list(veiculo_pattern.finditer(text))
-
-            # Fallback caso o PDF não repita a placa
-            if not matches_veiculos:
-                 veiculo_pattern = re.compile(r'([A-Z]{3}-?\d[A-Z0-9]\d{2})\s+(.+?)\s+([\d\.,]+)\s+(\d{4})', re.DOTALL)
-                 matches_veiculos = list(veiculo_pattern.finditer(text))
 
             for i in range(len(matches_veiculos)):
                 match = matches_veiculos[i]
                 
                 placa = match.group(1).replace('-', '')
                 n_veiculo = placa 
-                if len(match.groups()) == 4:
-                    modelo = match.group(2).strip().replace('\n', ' ')
-                    km_atual = match.group(3)
-                    ano_fabr = match.group(4)
-                else:
-                    modelo = match.group(2).strip().replace('\n', ' ')
-                    km_atual = match.group(3)
-                    ano_fabr = match.group(4)
+                modelo = match.group(2).strip().replace('\n', ' ')
+                km_atual = match.group(3)
+                ano_fabr = match.group(4)
 
                 start_idx = match.end()
                 end_idx = matches_veiculos[i+1].start() if i + 1 < len(matches_veiculos) else len(text)
