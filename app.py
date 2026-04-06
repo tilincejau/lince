@@ -1164,7 +1164,7 @@ def logistics_page():
                         linhas_bloco = bloco.split('\n')
                         valid_lines_buffer = [] 
                         
-                        # LISTA NEGRA: Palavras de cabeçalho do PDF que NUNCA são peças/serviços
+                        # LISTA NEGRA: Palavras que NUNCA são peças/serviços
                         cabecalhos_invalidos = [
                             "FORNECEDOR DE MÃO-DE-OBRA", "N. NF", "DESCONTOS", "DESCRIÇÃO",
                             "GAR.KMS", "GAR.DIAS", "GA.KMS", "GA.D", "PR.TOT FORNECEDOR", "QT CÓDIGO",
@@ -1173,17 +1173,25 @@ def logistics_page():
                             "PEÇAS MÃO-DE-OBRA", "CUSTO IM", "TOTAL DE IM", "CUSTO PEÇAS", "VALOR",
                             "TOTALIZADOR", "TOTAL:"
                         ]
+                        
+                        # Lista de termos exatos que devem ser ignorados (evita bloquear peças que contenham a palavra no meio)
+                        cabecalhos_exatos = ["M-O", "PEÇAS", "MÃO-DE-OBRA", "MÃO DE OBRA", "ORIGEM", "POSIÇÃO"]
 
                         # Função inteligente que checa se o texto é de fato uma peça/serviço
                         def is_valid_description(t):
-                            t_up = t.upper()
+                            t_up = t.upper().strip()
                             if not t_up: return False
                             if re.match(r'^\d{2}/\d{2}/\d{4}', t_up): return False # É uma data
                             if '00:00' in t_up: return False # É linha de tempo
+                            
+                            # Bloqueia palavras curtas exatas de seção do PDF
+                            if t_up in cabecalhos_exatos: return False
+                            
                             # Bloqueia se for um cabeçalho perdido do PDF
                             for cab in cabecalhos_invalidos:
                                 if cab in t_up: return False
-                            # Bloqueia se for aquela linha de códigos de sistema
+                                
+                            # Bloqueia se for aquela linha de códigos de sistema (ex: 13.180 PFH4049...)
                             if re.match(r'^\d{1,3}\.\d{3}\s+[A-Z0-9\.\-]+\s+[\d\.,]+\s+\d{4}', t_up): return False
                             return True
 
@@ -1211,7 +1219,7 @@ def logistics_page():
                                 nf_extraido = ""
                                 fornecedor_extraido = ""
                                 
-                                # Detecta se o Fornecedor/NF ficou preso ANTES do R$ (Caso do "PARDAL 2164")
+                                # Detecta se o Fornecedor/NF ficou preso ANTES do R$
                                 if desc_raw and not re.match(r'^[\d,]+\s', desc_raw):
                                     m_nf_antes = re.search(r'\b(\d{3,9})$', desc_raw.strip())
                                     if m_nf_antes:
@@ -1221,12 +1229,12 @@ def logistics_page():
                                             fornecedor_extraido = forn_cand
                                             desc_raw = "" 
 
-                                # O Resgate: Se a descrição capturada for lixo ou estiver vazia, busca no buffer!
+                                # O Resgate: Se a descrição capturada for lixo, M-O, ou estiver vazia, busca no buffer!
                                 if not desc_raw or not is_valid_description(desc_raw):
                                     
-                                    # Se era um texto curto e inofensivo, joga pro fornecedor (salva-vidas)
+                                    # Se era um texto inofensivo que bateu na trave, joga pro fornecedor
                                     if desc_raw and len(desc_raw) < 30 and not fornecedor_extraido:
-                                        if not any(cab in desc_raw.upper() for cab in cabecalhos_invalidos):
+                                        if not any(cab in desc_raw.upper() for cab in cabecalhos_invalidos) and desc_raw.upper() not in cabecalhos_exatos:
                                             fornecedor_extraido = desc_raw
 
                                     desc_raw = "" 
@@ -1257,7 +1265,8 @@ def logistics_page():
                                 desc = desc.replace(' 00:00', '').strip()
                                 desc = re.sub(r'\s+[\d\.,]+\s+[A-Z0-9\-]+\s+[\d\.,]+.*$', '', desc).strip()
                                 desc = re.sub(r'\s+\d{2}/\d{2}/\d{4}.*$', '', desc).strip()
-                                if not desc: desc = "Mão de Obra / Serviço"
+                                if not desc or desc.upper() in cabecalhos_exatos: 
+                                    desc = "Mão de Obra / Serviço"
 
                                 nf = nf_extraido
                                 desconto = "0,00"
