@@ -1123,27 +1123,44 @@ def logistics_page():
             for page in pdf_reader.pages:
                 text += page.extract_text() + "\n"
 
-            # 1. LAVAGEM DE ARTEFATOS INVISÍVEIS (Resolve o problema de Carros e Motos)
+            # 1. LAVAGEM DE ARTEFATOS INVISÍVEIS DO FLEETCOM (Resolve Carros e Motos)
+            text = text.replace('\r\n', '\n')
+            text = text.replace('"\n","', ' ') 
+            text = text.replace('",\n"', ' ')
+            text = text.replace('"\n"', '\n')
             text = text.replace('"', '')
             text = re.sub(r'^\s*,\s*', '', text, flags=re.MULTILINE)
-            
-            # GUILHOTINA: Corta o Resumo Final para não gerar lixo na última placa
+
+            # 2. GUILHOTINA ABSOLUTA: Corta o Resumo Final para não gerar lixo na última placa
             marcadores_resumo = [
                 "N. DE VEÍCULOS ATENDIDOS", "NO. DE IM'S PREVENTIVAS", "RESUMO POR PLACA", 
                 "CUSTO IM'S PREVENTIVAS", "CUSTO IM'S CORRETIVAS"
             ]
             for marcador in marcadores_resumo:
-                idx = text.upper().find(marcador)
-                if idx != -1: text = text[:idx]
+                idx_resumo = text.upper().find(marcador)
+                if idx_resumo != -1:
+                    text = text[:idx_resumo]
 
-            linhas = [l.strip() for l in text.split('\n') if l.strip()]
+            parsed_data = []
 
-            veiculos = {}
-            current_placa = None
-            desc_queue = []
-            parsed_services = []
+            # 3. EXPRESSÃO UNIFICADA ANCORADA (10 Pontos de Checagem Inquebráveis)
+            veiculo_pattern = re.compile(
+                r'\b([A-Z]{3}-?\d[A-Z0-9]\d{2})\b\s+'   # 1. Placa
+                r'((?:(?!\b[A-Z]{3}-?\d[A-Z0-9]\d{2}\b).){1,100}?)\s+' # 2. Modelo
+                r'(?:[A-Z]{3}-?\d[A-Z0-9]\d{2}\b\s+)?'  # Placa repetida opcional
+                r'([\d\.,]+)\s+'                        # 3. Km Atual
+                r'(\d{4})\s+'                           # 4. Ano Fabr.
+                r'(\d{2}/\d{2}/\d{4})\s+'               # 5. Data Exec
+                r'(\d{2}/\d{2}/\d{4})\s+'               # 6. Data Inicio
+                r'(\d{2}/\d{2}/\d{4})\s+'               # 7. Data Fim
+                r'(\d{2,5}:\d{2})\s+'                   # 8. Tempo Parado
+                r'([\d\.,]+)\s+'                        # 9. Hodômetro
+                r'(R\$\s*[\d\.,]+)',                    # 10. Total M-O
+                re.DOTALL
+            )
+            
+            matches_veiculos = list(veiculo_pattern.finditer(text))
 
-            # Dicionários de Exclusão
             cabecalhos_invalidos = [
                 "FORNECEDOR DE MÃO-DE-OBRA", "N. NF", "DESCONTOS", "DESCRIÇÃO",
                 "GAR.KMS", "GAR.DIAS", "GA.KMS", "GA.D", "PR.TOT FORNECEDOR", "QT CÓDIGO",
@@ -1151,183 +1168,183 @@ def logistics_page():
                 "KM ATUAL", "ANO FABR", "DATA EXEC", "DATA INÍCIO", "DATA FIM", "N. NE",
                 "PEÇAS MÃO-DE-OBRA", "CUSTO IM", "TOTAL DE IM", "CUSTO PEÇAS", "VALOR",
                 "TOTALIZADOR", "TOTAL:", "TOTAL PEÇAS", "CUSTO DA IM", "CÓDIGO DA IM",
-                "GRUPO VEICULAR", "SETOR DE OFICINA", "N. DA OS", "POSIÇÃO ORIGEM", "TOTAL %", 
-                "DIAS PARADO", "MANUTS. REALIZADAS", "PERÍODO:", "EMITIDO EM:", "PÁGINA:", "LINCE"
+                "GRUPO VEICULAR", "SETOR DE OFICINA", "N. DA OS", "POSIÇÃO ORIGEM", "TOTAL %", "DIAS PARADO",
+                "MANUTS. REALIZADAS", "PERÍODO:", "EMITIDO EM:", "PÁGINA:", "LINCE", "USUÁRIO: AMANDA", "FLEETCOM - MANUTENÇÃO"
             ]
             cabecalhos_exatos = ["M-O", "PEÇAS", "MÃO-DE-OBRA", "MÃO DE OBRA", "ORIGEM", "POSIÇÃO"]
 
-            def is_valid_desc(t):
-                t_up = t.upper()
+            def is_valid_description(t, cur_placa):
+                t_up = t.upper().strip()
                 if not t_up: return False
-                if re.fullmatch(r'[A-Z]{3}-?\d[A-Z0-9]\d{2}', t_up): return False 
-                if re.search(r'^\d{2}/\d{2}/\d{4}', t_up): return False
+                if t_up.replace('-', '') == cur_placa.upper(): return False
+                if re.search(r'^\d{2}/\d{2}/\d{4}', t_up): return False 
                 if '00:00' in t_up: return False
                 if t_up in cabecalhos_exatos: return False
                 for cab in cabecalhos_invalidos:
                     if cab in t_up: return False
                 if re.match(r'^\d{1,3}\.\d{3}\s+[A-Z0-9\.\-]+\s+[\d\.,]+\s+\d{4}', t_up): return False
-                if re.fullmatch(r'[\d\.,]+', t_up): return False # Apenas números
+                if re.match(r'^[\d\.]+,\d+\s+\d{4}$', t_up): return False
+                if re.fullmatch(r'[\d\.,]{5,}', t_up): return False 
+                if re.fullmatch(r'\d{4,}', t_up): return False 
                 return True
 
-            i = 0
-            while i < len(linhas):
-                linha = linhas[i]
-                linha_up = linha.upper()
+            for i in range(len(matches_veiculos)):
+                match = matches_veiculos[i]
+                
+                # -- CABEÇALHO DO VEÍCULO --
+                placa = match.group(1).replace('-', '')
+                n_veiculo = placa 
+                modelo = match.group(2).strip().replace('\n', ' ')
+                km_atual = match.group(3)
+                ano_fabr = match.group(4)
+                data_exec = match.group(5)
+                data_inicio = match.group(6)
+                data_fim = match.group(7)
+                tempo_parado = match.group(8)
+                hodometro = match.group(9)
+                total_mo = match.group(10).replace('R$', '').strip()
 
-                # A. IGNORAR TOTAIS FANTASMAS E DATAS COLADAS
-                if any(k in linha_up for k in ['TOTAL DE IM', 'CUSTO MÃO', 'CUSTO PEÇAS', 'CUSTO IM', 'TOTAL: R$', 'PR.TOT FORNECEDOR']):
-                    i += 1; continue
-                if re.search(r'\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}', linha):
-                    i += 1; continue
+                start_idx = match.end()
+                end_idx = matches_veiculos[i+1].start() if i + 1 < len(matches_veiculos) else len(text)
+                bloco = text[start_idx:end_idx]
 
-                # B. CAPTURAR PLACA E MODELO
-                m_placa = re.fullmatch(r'([A-Z]{3}-?\d[A-Z0-9]\d{2})', linha_up)
-                if m_placa:
-                    placa = m_placa.group(1).replace('-', '')
-                    current_placa = placa
-                    if placa not in veiculos:
-                        modelo = ""
-                        if i + 1 < len(linhas) and not re.fullmatch(r'[A-Z]{3}-?\d[A-Z0-9]\d{2}', linhas[i+1]):
-                            modelo = linhas[i+1]
-                        veiculos[placa] = {
-                            'Modelo': modelo, 'Km Atual': '', 'Ano Fabr.': '', 'Data Exec.': '',
-                            'Data Início': '', 'Data Fim': '', 'Tempo Parado': '', 'Hodômetro': '', 'Total M-O': '0,00'
-                        }
-                    i += 1; continue
-
-                # C. CAPTURAR DADOS DO VEÍCULO (Mesmo Embaralhados)
-                m_km = re.fullmatch(r'([\d\.]+,\d+)\s+(\d{4})', linha)
-                if m_km and current_placa:
-                    veiculos[current_placa]['Km Atual'] = m_km.group(1)
-                    veiculos[current_placa]['Ano Fabr.'] = m_km.group(2)
-                    i += 1; continue
+                linhas_bloco = bloco.split('\n')
+                buffer_servico = [] 
+                
+                for idx_linha, linha in enumerate(linhas_bloco):
+                    linha_limpa = linha.strip()
+                    if not linha_limpa: continue
+                    linha_upper = linha_limpa.upper()
                     
-                if re.fullmatch(r'[\d\.]+,\d+', linha) and i+1 < len(linhas) and re.fullmatch(r'\d{4}', linhas[i+1]):
-                    if current_placa and not veiculos[current_placa]['Km Atual']:
-                        veiculos[current_placa]['Km Atual'] = linha
-                        veiculos[current_placa]['Ano Fabr.'] = linhas[i+1]
-                        i += 2; continue
+                    if any(k in linha_upper for k in ['TOTAL DE IM', 'CUSTO MÃO', 'CUSTO PEÇAS', 'CUSTO IM', 'TOTAL: R$', 'PR.TOT FORNECEDOR']):
+                        continue
+                    if re.search(r'\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}', linha_limpa):
+                        continue
 
-                if re.fullmatch(r'\d{2}/\d{2}/\d{4}', linha) and i+2 < len(linhas) and re.fullmatch(r'\d{2}/\d{2}/\d{4}', linhas[i+1]) and re.fullmatch(r'\d{2}/\d{2}/\d{4}', linhas[i+2]):
-                    if current_placa:
-                        veiculos[current_placa]['Data Exec.'] = linha
-                        veiculos[current_placa]['Data Início'] = linhas[i+1]
-                        veiculos[current_placa]['Data Fim'] = linhas[i+2]
-                        if i+3 < len(linhas) and re.fullmatch(r'\d{2,5}:\d{2}', linhas[i+3]):
-                            veiculos[current_placa]['Tempo Parado'] = linhas[i+3]
-                        if i+4 < len(linhas) and re.fullmatch(r'[\d\.]+,\d+', linhas[i+4]):
-                            veiculos[current_placa]['Hodômetro'] = linhas[i+4]
-                        if i+5 < len(linhas) and 'R$' in linhas[i+5]:
-                            veiculos[current_placa]['Total M-O'] = re.search(r'R\$\s*([\d\.,]+)', linhas[i+5]).group(1)
-                            i += 6; continue
-                        else:
-                            i += 5; continue
-
-                # D. IDENTIFICAR SERVIÇO (LÓGICA DE FILA IMPENETRÁVEL)
-                match_valor = re.search(r'(R\$\s*[\d\.]+,\d{2})', linha)
-                if match_valor and not linha_up.startswith("DESCONTOS"):
-                    valor = match_valor.group(1).replace('R$', '').strip()
-                    partes = linha.split(match_valor.group(0), 1)
-                    antes_rs = partes[0].strip()
-                    resto = partes[1].strip() if len(partes) > 1 else ""
-
-                    nf = ""
-                    fornecedor = ""
-                    if antes_rs and not re.match(r'^[\d,]+\s', antes_rs):
-                        m_nf = re.search(r'\b(\d{2,9})$', antes_rs)
-                        if m_nf:
-                            f_cand = antes_rs[:m_nf.start()].strip()
-                            if len(f_cand) < 30 and is_valid_desc(f_cand):
-                                nf = m_nf.group(1)
-                                fornecedor = f_cand
-                                antes_rs = ""
-
-                    desc = antes_rs
-                    placa_alvo = current_placa
-                    
-                    # Puxa da Fila se não tiver descrição inline
-                    if not desc or not is_valid_desc(desc):
-                        if desc_queue:
-                            placa_alvo, desc = desc_queue.pop(0)
-                        else:
-                            desc = "Manutenção Diversa"
-
-                    # Formata Quantidade e Código
-                    qt = "1"
-                    codigo = ""
-                    desc = re.sub(r'^(Qt Código|Descrição)\s*', '', desc, flags=re.IGNORECASE).strip()
-                    m_qt_cod = re.match(r'^([\d,]+)\s+([A-Z0-9\.\-]*\d[A-Z0-9\.\-]*)\s+(.*)', desc)
-                    m_qt_only = re.match(r'^([\d,]+)\s+(.*)', desc)
-                    if m_qt_cod:
-                        qt, codigo, desc = m_qt_cod.groups()
-                    elif m_qt_only:
-                        qt, desc = m_qt_only.groups()
-                    qt_codigo = f"{qt} {codigo}".strip()
-                    
-                    desc = re.sub(r'\s+[\d\.,]+\s+[A-Z0-9\-]+\s+[\d\.,]+.*$', '', desc).strip()
-                    
-                    desconto = "0,00"
-                    m_desc = re.search(r'(R\$\s*[\d\.]+,\d{2})', resto)
-                    if m_desc:
-                        desconto = m_desc.group(1).replace('R$', '').strip()
-                        resto = resto.replace(m_desc.group(1), '').strip()
+                    # Identifica Serviço
+                    match_valor = re.search(r'(R\$\s*[\d\.]+,\d{2})', linha_limpa)
+                    if match_valor and not linha_upper.startswith("DESCONTOS"):
+                        valor_str = match_valor.group(1)
+                        partes = linha_limpa.split(valor_str, 1)
                         
-                    m_nf2 = re.search(r'\b(\d{2,9})\b', resto)
-                    if m_nf2:
-                        if not nf: nf = m_nf2.group(1)
-                        if not fornecedor: fornecedor = resto[:m_nf2.start()].strip()
+                        antes_rs = partes[0].strip()
+                        resto = partes[1].strip() if len(partes) > 1 else ""
+                        
+                        nf_extraido = ""
+                        fornecedor_extraido = ""
+                        
+                        # Extrai Fornecedor/NF grudado antes do R$
+                        if antes_rs and not re.match(r'^[\d,]+\s', antes_rs):
+                            m_nf_antes = re.search(r'\b(\d{2,9})$', antes_rs.strip())
+                            if m_nf_antes:
+                                forn_cand = antes_rs[:m_nf_antes.start()].strip()
+                                if len(forn_cand) < 30 and not any(cab in forn_cand.upper() for cab in cabecalhos_invalidos): 
+                                    nf_extraido = m_nf_antes.group(1)
+                                    fornecedor_extraido = forn_cand
+                                    antes_rs = "" 
+
+                        candidatos_desc = buffer_servico + [antes_rs]
+                        
+                        start_idx_desc = 0
+                        for idx in range(len(candidatos_desc)-1, -1, -1):
+                            c_up = candidatos_desc[idx].strip().upper()
+                            if re.match(r'^[\d,]+(\s+[A-Z].*)?$', c_up):
+                                start_idx_desc = idx
+                                break
+                                
+                        valid_parts = []
+                        for idx in range(start_idx_desc, len(candidatos_desc)):
+                            c = candidatos_desc[idx].strip()
+                            if is_valid_description(c, placa):
+                                if fornecedor_extraido and c.upper() == fornecedor_extraido.upper(): continue
+                                valid_parts.append(c)
+
+                        final_desc_parts = []
+                        for p in valid_parts:
+                            is_subset = False
+                            for idx_fd, existing in enumerate(final_desc_parts):
+                                if p in existing:
+                                    is_subset = True
+                                    break
+                                elif existing in p:
+                                    final_desc_parts[idx_fd] = p
+                                    is_subset = True
+                                    break
+                            if not is_subset:
+                                final_desc_parts.append(p)
+
+                        desc_raw = " ".join(final_desc_parts).strip()
+                        
+                        if not desc_raw:
+                            buffer_servico = []
+                            continue
+                        
+                        desc = re.sub(r'^(Qt Código|Descrição)\s*', '', desc_raw, flags=re.IGNORECASE).strip()
+                        
+                        qt = "1"
+                        codigo = ""
+                        m_qt_cod = re.match(r'^([\d,]+)\s+([A-Z0-9\.\-]*\d[A-Z0-9\.\-]*)\s+(.*)', desc)
+                        m_qt_only = re.match(r'^([\d,]+)\s+(.*)', desc)
+                        
+                        if m_qt_cod:
+                            qt = m_qt_cod.group(1)
+                            codigo = m_qt_cod.group(2)
+                            desc = m_qt_cod.group(3)
+                        elif m_qt_only:
+                            qt = m_qt_only.group(1)
+                            desc = m_qt_only.group(2)
+                            
+                        qt_codigo = f"{qt} {codigo}".strip()
+                        
+                        desc = desc.replace(' 00:00', '').strip()
+                        desc = re.sub(r'\s+[\d\.,]+\s+[A-Z0-9\-]+\s+[\d\.,]+.*$', '', desc).strip()
+                        desc = re.sub(r'\s+\d{2}/\d{2}/\d{4}.*$', '', desc).strip()
+                        if re.fullmatch(r'[\d,]+', desc): desc = "Mão de Obra / Serviço"
+                        if not desc: desc = "Mão de Obra / Serviço"
+
+                        nf = nf_extraido
+                        desconto = "0,00"
+                        fornecedor = fornecedor_extraido
+                        
+                        m_desc = re.search(r'(R\$\s*[\d\.]+,\d{2})', resto)
+                        if m_desc:
+                            desconto = m_desc.group(1).replace('R$', '').strip()
+                            resto = resto.replace(m_desc.group(1), '').strip()
+                            
+                        m_nf = re.search(r'\b(\d{2,9})\b', resto)
+                        if m_nf:
+                            if not nf: nf = m_nf.group(1)
+                            if not fornecedor: fornecedor = resto[:m_nf.start()].strip()
+                        else:
+                            if not fornecedor: fornecedor = resto.strip()
+                            
+                        fornecedor = re.sub(r'(NF manutenção|Mão-de-Obra|Origem|Posição|NF).*', '', fornecedor, flags=re.IGNORECASE).strip()
+
+                        parsed_data.append({
+                            'N. Veículo': n_veiculo,
+                            'Modelo': modelo,
+                            'Placa': placa,
+                            'Km Atual': km_atual,
+                            'Ano Fabr.': ano_fabr,
+                            'Data Exec.': data_exec,
+                            'Data Início': data_inicio,
+                            'Data Fim': data_fim,
+                            'Tempo Parado': tempo_parado,
+                            'Hodômetro': hodometro,
+                            'Total M-O': total_mo,
+                            'Qt Código': qt_codigo,
+                            'Descrição': desc,
+                            'Total Fornecedor': valor_str.replace('R$', '').strip(),
+                            'Fornecedor': fornecedor,
+                            'N. NF': nf,
+                            'Descontos': desconto,
+                            'Ga. Kms': '',
+                            'Ga. Dis': ''
+                        })
+                        
+                        buffer_servico = []
                     else:
-                        if not fornecedor: fornecedor = resto.strip()
-                    
-                    fornecedor = re.sub(r'(NF manutenção|Mão-de-Obra|Origem|Posição|NF).*', '', fornecedor, flags=re.IGNORECASE).strip()
-
-                    parsed_services.append({
-                        'Placa_Alvo': placa_alvo,
-                        'Qt Código': qt_codigo,
-                        'Descrição': desc,
-                        'Total Fornecedor': valor,
-                        'Fornecedor': fornecedor,
-                        'N. NF': nf,
-                        'Descontos': desconto
-                    })
-                    i += 1; continue
-
-                # E. ALIMENTAR A FILA DE DESCRIÇÕES (SISTEMA QUE JUNTA TEXTOS QUEBRADOS)
-                if is_valid_desc(linha) and current_placa:
-                    if re.fullmatch(r'[\d,]+', linha) and i+1 < len(linhas) and is_valid_desc(linhas[i+1]):
-                        desc_queue.append((current_placa, linha + " " + linhas[i+1]))
-                        i += 2; continue
-                    else:
-                        desc_queue.append((current_placa, linha))
-
-                i += 1
-
-            # Montagem Final do Arquivo
-            parsed_data = []
-            for s in parsed_services:
-                p = s['Placa_Alvo']
-                v_info = veiculos.get(p, {})
-                parsed_data.append({
-                    'N. Veículo': p,
-                    'Modelo': v_info.get('Modelo', ''),
-                    'Placa': p,
-                    'Km Atual': v_info.get('Km Atual', ''),
-                    'Ano Fabr.': v_info.get('Ano Fabr.', ''),
-                    'Data Exec.': v_info.get('Data Exec.', ''),
-                    'Data Início': v_info.get('Data Início', ''),
-                    'Data Fim': v_info.get('Data Fim', ''),
-                    'Tempo Parado': v_info.get('Tempo Parado', ''),
-                    'Hodômetro': v_info.get('Hodômetro', ''),
-                    'Total M-O': v_info.get('Total M-O', '0,00'),
-                    'Qt Código': s['Qt Código'],
-                    'Descrição': s['Descrição'],
-                    'Total Fornecedor': s['Total Fornecedor'],
-                    'Fornecedor': s['Fornecedor'],
-                    'N. NF': s['N. NF'],
-                    'Descontos': s['Descontos'],
-                    'Ga. Kms': '',
-                    'Ga. Dis': ''
-                })
+                        buffer_servico.append(linha_limpa)
 
             if parsed_data:
                 df_resultado = pd.DataFrame(parsed_data)
@@ -1365,7 +1382,6 @@ def logistics_page():
                             worksheet = writer.sheets[nome_aba]
                             
                             for idx, col in enumerate(df_sheet.columns):
-                                # Cálculo 100% seguro contra DataFrames vazios e formato Arrow
                                 tamanho_dados = df_sheet[col].astype(str).str.len().max()
                                 tamanho_dados = int(tamanho_dados) if pd.notna(tamanho_dados) else 0
                                 max_len = max(tamanho_dados, len(str(col))) + 2
