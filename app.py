@@ -1162,38 +1162,20 @@ def logistics_page():
                             total_mo = header_dados_pattern.group(6)
 
                         linhas_bloco = bloco.split('\n')
-                        valid_lines_buffer = [] 
+                        buffer_servico = [] 
                         
-                        # LISTA NEGRA: Palavras que NUNCA são peças/serviços
+                        # LISTA NEGRA MÁXIMA: Palavras que NUNCA são peças/serviços
                         cabecalhos_invalidos = [
                             "FORNECEDOR DE MÃO-DE-OBRA", "N. NF", "DESCONTOS", "DESCRIÇÃO",
                             "GAR.KMS", "GAR.DIAS", "GA.KMS", "GA.D", "PR.TOT FORNECEDOR", "QT CÓDIGO",
                             "TEMPO PARADO", "HODÔMETRO", "TOTAL M-O", "N. VEÍCULO", "MODELO", "PLACA",
                             "KM ATUAL", "ANO FABR", "DATA EXEC", "DATA INÍCIO", "DATA FIM", "N. NE",
                             "PEÇAS MÃO-DE-OBRA", "CUSTO IM", "TOTAL DE IM", "CUSTO PEÇAS", "VALOR",
-                            "TOTALIZADOR", "TOTAL:"
+                            "TOTALIZADOR", "TOTAL:", "TOTAL PEÇAS", "CUSTO DA IM", "CÓDIGO DA IM",
+                            "GRUPO VEICULAR", "SETOR DE OFICINA", "N. DA OS", "POSIÇÃO ORIGEM", "TOTAL %", "DIAS PARADO"
                         ]
                         
-                        # Lista de termos exatos que devem ser ignorados (evita bloquear peças que contenham a palavra no meio)
                         cabecalhos_exatos = ["M-O", "PEÇAS", "MÃO-DE-OBRA", "MÃO DE OBRA", "ORIGEM", "POSIÇÃO"]
-
-                        # Função inteligente que checa se o texto é de fato uma peça/serviço
-                        def is_valid_description(t):
-                            t_up = t.upper().strip()
-                            if not t_up: return False
-                            if re.match(r'^\d{2}/\d{2}/\d{4}', t_up): return False # É uma data
-                            if '00:00' in t_up: return False # É linha de tempo
-                            
-                            # Bloqueia palavras curtas exatas de seção do PDF
-                            if t_up in cabecalhos_exatos: return False
-                            
-                            # Bloqueia se for um cabeçalho perdido do PDF
-                            for cab in cabecalhos_invalidos:
-                                if cab in t_up: return False
-                                
-                            # Bloqueia se for aquela linha de códigos de sistema (ex: 13.180 PFH4049...)
-                            if re.match(r'^\d{1,3}\.\d{3}\s+[A-Z0-9\.\-]+\s+[\d\.,]+\s+\d{4}', t_up): return False
-                            return True
 
                         for idx_linha, linha in enumerate(linhas_bloco):
                             linha_limpa = linha.strip()
@@ -1213,42 +1195,65 @@ def logistics_page():
                                 valor_str = match_valor.group(1)
                                 partes = linha_limpa.split(valor_str, 1)
                                 
-                                desc_raw = partes[0].strip()
+                                antes_rs = partes[0].strip()
                                 resto = partes[1].strip() if len(partes) > 1 else ""
                                 
                                 nf_extraido = ""
                                 fornecedor_extraido = ""
                                 
-                                # Detecta se o Fornecedor/NF ficou preso ANTES do R$
-                                if desc_raw and not re.match(r'^[\d,]+\s', desc_raw):
-                                    m_nf_antes = re.search(r'\b(\d{3,9})$', desc_raw.strip())
+                                # Detecta Fornecedor/NF presos ANTES do R$ (Ex: ADAMO 74)
+                                if antes_rs and not re.match(r'^[\d,]+\s', antes_rs):
+                                    # Busca NFs a partir de 2 dígitos no final da string
+                                    m_nf_antes = re.search(r'\b(\d{2,9})$', antes_rs.strip())
                                     if m_nf_antes:
-                                        forn_cand = desc_raw[:m_nf_antes.start()].strip()
-                                        if len(forn_cand) < 30: 
+                                        forn_cand = antes_rs[:m_nf_antes.start()].strip()
+                                        if len(forn_cand) < 30 and not any(cab in forn_cand.upper() for cab in cabecalhos_invalidos): 
                                             nf_extraido = m_nf_antes.group(1)
                                             fornecedor_extraido = forn_cand
-                                            desc_raw = "" 
+                                            antes_rs = "" 
 
-                                # O Resgate: Se a descrição capturada for lixo, M-O, ou estiver vazia, busca no buffer!
-                                if not desc_raw or not is_valid_description(desc_raw):
-                                    
-                                    # Se era um texto inofensivo que bateu na trave, joga pro fornecedor
-                                    if desc_raw and len(desc_raw) < 30 and not fornecedor_extraido:
-                                        if not any(cab in desc_raw.upper() for cab in cabecalhos_invalidos) and desc_raw.upper() not in cabecalhos_exatos:
-                                            fornecedor_extraido = desc_raw
-
-                                    desc_raw = "" 
-                                    for prev in reversed(valid_lines_buffer):
-                                        prev_limpo = prev.strip()
-                                        if is_valid_description(prev_limpo):
-                                            desc_raw = prev_limpo
-                                            break
+                                # Tratamento do Resto (Fornecedor e NF padrão)
+                                nf = nf_extraido
+                                desconto = "0,00"
+                                fornecedor = fornecedor_extraido
                                 
+                                m_desc = re.search(r'(R\$\s*[\d\.]+,\d{2})', resto)
+                                if m_desc:
+                                    desconto = m_desc.group(1).replace('R$', '').strip()
+                                    resto = resto.replace(m_desc.group(1), '').strip()
+                                    
+                                m_nf = re.search(r'\b(\d{2,9})\b', resto)
+                                if m_nf:
+                                    if not nf: nf = m_nf.group(1)
+                                    if not fornecedor: fornecedor = resto[:m_nf.start()].strip()
+                                else:
+                                    if not fornecedor: fornecedor = resto.strip()
+                                    
+                                fornecedor = re.sub(r'(NF manutenção|Mão-de-Obra|Origem|Posição|NF).*', '', fornecedor, flags=re.IGNORECASE).strip()
+
+                                # Construção Poderosa da Descrição (Junta Múltiplas Linhas do Buffer)
+                                candidatos_desc = buffer_servico + [antes_rs]
+                                desc_parts = []
+                                
+                                for cand in candidatos_desc:
+                                    c = cand.strip()
+                                    c_up = c.upper()
+                                    if not c: continue
+                                    if re.match(r'^\d{2}/\d{2}/\d{4}', c_up): continue
+                                    if '00:00' in c_up: continue
+                                    if c_up in cabecalhos_exatos: continue
+                                    if any(cab in c_up for cab in cabecalhos_invalidos): continue
+                                    if re.match(r'^\d{1,3}\.\d{3}\s+[A-Z0-9\.\-]+\s+[\d\.,]+\s+\d{4}', c_up): continue
+                                    if c_up == fornecedor.upper() and fornecedor: continue
+                                    
+                                    desc_parts.append(c)
+
+                                desc_raw = " ".join(desc_parts).strip()
                                 desc = re.sub(r'^(Qt Código|Descrição)\s*', '', desc_raw, flags=re.IGNORECASE).strip()
+                                
+                                # Extração flexível de Quantidade (Aceita 5,5) e Código
                                 qt = "1"
                                 codigo = ""
-                                
-                                # Separação de Qt e Código com suporte a vírgulas (Ex: 5,5 OLEO)
                                 m_qt_cod = re.match(r'^([\d,]+)\s+([A-Z0-9\.\-]*\d[A-Z0-9\.\-]*)\s+(.*)', desc)
                                 m_qt_only = re.match(r'^([\d,]+)\s+(.*)', desc)
                                 
@@ -1268,24 +1273,6 @@ def logistics_page():
                                 if not desc or desc.upper() in cabecalhos_exatos: 
                                     desc = "Mão de Obra / Serviço"
 
-                                nf = nf_extraido
-                                desconto = "0,00"
-                                fornecedor = fornecedor_extraido
-                                
-                                m_desc = re.search(r'(R\$\s*[\d\.]+,\d{2})', resto)
-                                if m_desc:
-                                    desconto = m_desc.group(1).replace('R$', '').strip()
-                                    resto = resto.replace(m_desc.group(1), '').strip()
-                                    
-                                m_nf = re.search(r'\b(\d{3,9})\b', resto)
-                                if m_nf:
-                                    if not nf: nf = m_nf.group(1)
-                                    if not fornecedor: fornecedor = resto[:m_nf.start()].strip()
-                                else:
-                                    if not fornecedor: fornecedor = resto.strip()
-                                    
-                                fornecedor = re.sub(r'(NF manutenção|Mão-de-Obra|Origem|Posição|NF).*', '', fornecedor, flags=re.IGNORECASE).strip()
-                                
                                 parsed_data.append({
                                     'N. Veículo': n_veiculo,
                                     'Modelo': modelo,
@@ -1307,10 +1294,12 @@ def logistics_page():
                                     'Ga. Kms': '',
                                     'Ga. Dis': ''
                                 })
-                                continue
                                 
-                            # Alimenta o buffer com qualquer linha que não for de serviço
-                            valid_lines_buffer.append(linha_limpa)
+                                # Limpa o buffer pois o serviço foi fechado
+                                buffer_servico = []
+                            else:
+                                # Guarda a linha na memória para compor o próximo serviço
+                                buffer_servico.append(linha_limpa)
 
                     if parsed_data:
                         df_resultado = pd.DataFrame(parsed_data)
@@ -1334,7 +1323,7 @@ def logistics_page():
                                 if col in colunas_moeda:
                                     worksheet.set_column(idx, idx, 15, formato_moeda)
                                 else:
-                                    worksheet.set_column(idx, idx, min(max_len, 40))
+                                    worksheet.set_column(idx, idx, min(max_len, 45))
 
                         output.seek(0)
 
