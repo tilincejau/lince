@@ -1123,7 +1123,7 @@ def logistics_page():
             for page in pdf_reader.pages:
                 text += page.extract_text() + "\n"
 
-            # 1. LAVAGEM DE ARTEFATOS INVISÍVEIS DO FLEETCOM (Resolve Carros e Motos)
+            # 1. LAVAGEM DE ARTEFATOS INVISÍVEIS DO FLEETCOM
             text = text.replace('\r\n', '\n')
             text = text.replace('"\n","', ' ') 
             text = text.replace('",\n"', ' ')
@@ -1132,7 +1132,7 @@ def logistics_page():
             text = re.sub(r'^\s*,\s*', '', text, flags=re.MULTILINE)
             text = re.sub(r',\s*$', '', text, flags=re.MULTILINE)
 
-            # 2. GUILHOTINA ABSOLUTA: Corta o Resumo Final para não gerar lixo na última placa
+            # 2. GUILHOTINA ABSOLUTA: Corta o Resumo Final
             marcadores_resumo = [
                 "N. DE VEÍCULOS ATENDIDOS", "NO. DE IM'S PREVENTIVAS", "RESUMO POR PLACA", 
                 "CUSTO IM'S PREVENTIVAS", "CUSTO IM'S CORRETIVAS", "TOTAL DE IM'S:"
@@ -1143,7 +1143,6 @@ def logistics_page():
                     text = text[:idx_resumo]
 
             # 3. AGRUPAMENTO INTELIGENTE POR PLACA (Chunking)
-            # Ignora a ordem maluca do PDF e agrupa tudo que pertence ao mesmo veículo
             linhas = [l.strip() for l in text.split('\n') if l.strip() and l.strip() != ',']
             veiculos_raw = []
             current_placa = None
@@ -1159,7 +1158,7 @@ def logistics_page():
                         current_placa = placa
                         current_lines = [l]
                     else:
-                        current_lines.append(l) # Se a placa repete no cabeçalho, apenas adiciona
+                        current_lines.append(l) 
                 elif current_placa:
                     current_lines.append(l)
                     
@@ -1196,34 +1195,35 @@ def logistics_page():
                 if re.fullmatch(r'\d{4,}', t_up): return False 
                 return True
 
-            # Processa cada "Caixa de Veículo" separadamente
             for placa, linhas_bloco in veiculos_raw:
                 bloco_str = " ".join(linhas_bloco)
                 
-                # Extrair KM e Ano
-                km_atual = ""
-                ano_fabr = ""
-                m_km = re.search(r'\b([\d\.]+,\d+)\s+(\d{4})\b', bloco_str)
-                if m_km:
-                    km_atual = m_km.group(1)
-                    ano_fabr = m_km.group(2)
-                    
-                    # O Modelo é o que sobra entre a primeira Placa e o Km
-                    mod_str = bloco_str[len(placa):m_km.start()].strip()
-                    mod_str = re.sub(r'\b' + placa + r'\b', '', mod_str).strip()
-                    modelo = mod_str
-                else:
-                    modelo = ""
-
-                # Extrair Cabeçalho de Datas e Totais
+                # EXTRAÇÃO MATEMÁTICA DO CABEÇALHO (Tokens)
                 m_datas = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(\d{2,5}:\d{2})\s+([\d\.,]+)\s*(?:R\$\s*)?([\d\.,]+)?', bloco_str)
-                data_exec = m_datas.group(1) if m_datas else ""
-                data_inicio = m_datas.group(2) if m_datas else ""
-                data_fim = m_datas.group(3) if m_datas else ""
-                tempo_parado = m_datas.group(4) if m_datas else ""
-                hodometro = m_datas.group(5) if m_datas else ""
-                total_mo = m_datas.group(6) if m_datas and m_datas.group(6) else "0,00"
-                total_mo = total_mo.replace('R$', '').strip()
+                
+                if m_datas:
+                    data_exec = m_datas.group(1)
+                    data_inicio = m_datas.group(2)
+                    data_fim = m_datas.group(3)
+                    tempo_parado = m_datas.group(4)
+                    hodometro = m_datas.group(5)
+                    total_mo = m_datas.group(6) if m_datas.group(6) else "0,00"
+                    
+                    header_str = bloco_str[:m_datas.start()].strip()
+                    tokens = header_str.split()
+                    
+                    if len(tokens) >= 3:
+                        ano_fabr = tokens[-1]
+                        km_atual = tokens[-2]
+                        
+                        mod_tokens = tokens[1:-2]
+                        mod_tokens = [t for t in mod_tokens if t.replace('-','') != placa]
+                        modelo = " ".join(mod_tokens)
+                    else:
+                        ano_fabr = km_atual = modelo = ""
+                else:
+                    data_exec = data_inicio = data_fim = tempo_parado = hodometro = ano_fabr = km_atual = modelo = ""
+                    total_mo = "0,00"
 
                 buffer_servico = [] 
                 
@@ -1236,8 +1236,10 @@ def logistics_page():
                         continue
                     if re.search(r'\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}\s+\d{2}/\d{2}/\d{4}', linha_limpa):
                         continue
+                    if re.search(r'^[\d\.,]+\s+\d{4}$', linha_limpa):
+                        continue
 
-                    # Identifica Serviço (Custo em R$)
+                    # Identifica Serviço
                     match_valor = re.search(r'(R\$\s*[\d\.]+,\d{2})', linha_limpa)
                     if match_valor and not linha_upper.startswith("DESCONTOS"):
                         valor_str = match_valor.group(1)
@@ -1249,7 +1251,6 @@ def logistics_page():
                         nf_extraido = ""
                         fornecedor_extraido = ""
                         
-                        # Extrai Fornecedor/NF grudado antes do R$ (Ex: ADAMO 74 R$)
                         if antes_rs and not re.match(r'^[\d,]+\s', antes_rs):
                             m_nf_antes = re.search(r'\b(\d{2,9})$', antes_rs.strip())
                             if m_nf_antes:
@@ -1291,7 +1292,6 @@ def logistics_page():
 
                         desc_raw = " ".join(final_desc_parts).strip()
                         
-                        # Trava Mestra: Se não tem descrição, é lixo do PDF.
                         if not desc_raw:
                             buffer_servico = []
                             continue
