@@ -1107,13 +1107,13 @@ def logistics_page():
     # --- SCRIPT MANUTENÇÃO VEÍCULOS ---
     elif script_choice == "Manutenção Veículos":
         st.subheader("Manutenção de Veículos (FleetCom)")
-        st.info("Envie o relatório de manutenções em PDF para convertê-lo em uma planilha estruturada de fácil filtragem.")
+        st.info("Envie o relatório de manutenções em PDF para convertê-lo em planilha estruturada para filtros e somas.")
 
         uploaded_manut_pdf = st.file_uploader("Envie o arquivo PDF (Manutenção)", type=["pdf"], key="manutencao_uploader")
 
         if uploaded_manut_pdf is not None:
             try:
-                with st.spinner("Analisando blocos e extraindo serviços..."):
+                with st.spinner("Analisando relatório linha por linha... Isso pode demorar alguns instantes."):
                     pdf_reader = PyPDF2.PdfReader(io.BytesIO(uploaded_manut_pdf.getvalue()))
                     text = ""
                     for page in pdf_reader.pages:
@@ -1121,126 +1121,157 @@ def logistics_page():
 
                     parsed_data = []
 
-                    # Separar o texto por blocos de veículos.
-                    # Procuramos a assinatura: PLACA MODELO PLACA KM ANO
-                    # Ex: FCT1J98 ATRON 1719 FCT1J98 257.911,0 2014 (Cobre placas antigas e Mercosul)
-                    veiculo_regex = r'([A-Z]{3}\d[A-Z0-9]\d{2})\s+(.+?)\s+\1\s+([\d\.]+,\d+)\s+(\d{4})'
-                    
-                    matches = list(re.finditer(veiculo_regex, text))
-                    
-                    for i in range(len(matches)):
-                        match = matches[i]
+                    # Regex para identificar o bloco de cada veículo
+                    veiculo_pattern = re.compile(r'([A-Z]{3}[A-Z0-9]{4})\s+(.+?)(?:\s+[A-Z]{3}[A-Z0-9]{4})?\s+([\d\.]+,\d+)\s+(\d{4})')
+                    matches_veiculos = list(veiculo_pattern.finditer(text))
+
+                    for i in range(len(matches_veiculos)):
+                        match = matches_veiculos[i]
                         placa = match.group(1)
-                        modelo = match.group(2).strip()
+                        modelo = match.group(2).replace(placa, '').strip()
                         km_atual = match.group(3)
-                        
-                        # Isola os dados apenas desse veículo até o próximo
+
+                        # Isola o bloco de texto deste veículo até o próximo
                         start_idx = match.end()
-                        end_idx = matches[i+1].start() if i + 1 < len(matches) else len(text)
+                        end_idx = matches_veiculos[i+1].start() if i + 1 < len(matches_veiculos) else len(text)
                         bloco = text[start_idx:end_idx]
-                        
-                        # Extrai datas padrões de serviço do bloco
-                        datas = re.findall(r'\d{2}/\d{2}/\d{4}', bloco)
+
+                        # Extrai a primeira e a última data geral do bloco (Fallback)
+                        datas = re.findall(r'\d{2}/\d{2}/\d{4}', text[match.start():start_idx + 100])
                         data_inicio = datas[0] if len(datas) > 0 else ""
                         data_fim = datas[-1] if len(datas) > 0 else ""
+
+                        linhas_bloco = bloco.split('\n')
+                        valid_lines_buffer = [] # Buffer de memória para lembrar descrições válidas
                         
-                        linhas = bloco.split('\n')
-                        
-                        for idx_linha, linha in enumerate(linhas):
-                            linha_limpa = linha.strip()
+                        # Palavras exatas que são lixo de formatação do PDF e nunca serão Descrição
+                        junk_exact = [
+                            "PR.TOT FORNECEDOR", "FORNECEDOR DE MÃO-DE-OBRA", "FORNECEDOR",
+                            "DESCRIÇÃO", "QT CÓDIGO", "TEMPO PARADO", "HODÔMETRO", "TOTAL M-O",
+                            "N. VEÍCULO", "MODELO", "PLACA", "KM ATUAL", "ANO FABR.", "DATA EXEC.",
+                            "DATA INÍCIO", "DATA FIM", "N. NE DESCONTOS GA.KMS GA.D",
+                            "N. NE", "DESCONTOS", "GA.KMS GA.D", "00:00"
+                        ]
+
+                        for idx_linha, linha in enumerate(linhas_bloco):
+                            linha = linha.strip()
+                            if not linha: continue
+                            linha_upper = linha.upper()
                             
-                            # Identifica uma linha de custo real (ignora valores R$ 0,00 e totais)
-                            if 'R$' in linha_limpa and '0,00' not in linha_limpa and 'Total' not in linha_limpa:
-                                valor_match = re.search(r'R\$\s*([\d\.]+,\d+)', linha_limpa)
-                                if not valor_match:
-                                    continue
+                            # Ignorar totais e rodapés do buffer
+                            if 'TOTAL' in linha_upper or 'CUSTO' in linha_upper or 'TOTALIZADOR' in linha_upper:
+                                continue
+                                
+                            # Identificar uma linha de custo real!
+                            if 'R$' in linha_upper and '0,00' not in linha_upper:
+                                valor_match = re.search(r'R\$\s*([\d\.]+,\d+)', linha)
+                                if valor_match:
+                                    valor = valor_match.group(1)
+                                    partes = linha.split(valor_match.group(0))
                                     
-                                valor = valor_match.group(1)
-                                
-                                # Extrai o fornecedor isolando o que vem depois do valor
-                                fornecedor = linha_limpa.split(valor_match.group(0))[-1].strip()
-                                if not fornecedor and idx_linha + 1 < len(linhas):
-                                    fornecedor = linhas[idx_linha+1].strip()
-
-                                # Limpa lixo do fornecedor se tiver puxado alguma data sem querer
-                                fornecedor = re.sub(r'\d{2}/\d{2}/\d{4}.*', '', fornecedor).strip()
-                                
-                                # Procurar a Nota Fiscal (N. NF) nas linhas subsequentes
-                                nf = ""
-                                for j in range(idx_linha, min(idx_linha+6, len(linhas))):
-                                    nf_match = re.search(r'\b(\d{3,7})\b', linhas[j])
-                                    if nf_match and '00:00' not in linhas[j] and not re.search(r'\d{2}/\d{2}/\d{4}', linhas[j]):
-                                        nf = nf_match.group(1)
-                                        break
-
-                                # Procurar a Descrição e Quantidade varrendo as linhas para TRÁS
-                                desc = "Manutenção Diversa"
-                                qt = "1"
-                                
-                                for j in range(idx_linha - 1, max(-1, idx_linha - 12), -1):
-                                    prev_linha = linhas[j].strip()
-                                    if not prev_linha or prev_linha in ["Qt Código", "Descrição", "Pr.Tot Fornecedor"]:
-                                        continue
+                                    antes_rs = partes[0].strip()
+                                    depois_rs = partes[1].strip() if len(partes) > 1 else ""
+                                    
+                                    # Tratar Fornecedor
+                                    fornecedor = depois_rs
+                                    if (not fornecedor or fornecedor == '00:00') and idx_linha + 1 < len(linhas_bloco):
+                                        fornecedor = linhas_bloco[idx_linha+1].strip()
+                                    
+                                    fornecedor = re.sub(r'\d{2}/\d{2}/\d{4}.*', '', fornecedor).strip()
+                                    if fornecedor.upper() in junk_exact:
+                                        fornecedor = ""
                                         
-                                    # Padrão exato da linha de item (Ex: "1 PFH4049 POLIA CUBO VISCOSA")
-                                    item_match = re.match(r'^(\d+)\s+([A-Z0-9\.\-]+)\s+(.+)', prev_linha)
-                                    if item_match:
-                                        qt = item_match.group(1)
-                                        desc_bruta = item_match.group(3)
-                                        # Limpa números perdidos no fim da descrição
-                                        desc = re.sub(r'\s+[\d\.,]+$', '', desc_bruta).strip()
-                                        break
+                                    # Tratar Descrição (Verifica se grudou o fornecedor na frente)
+                                    desc = antes_rs
+                                    if not desc or desc.upper() == fornecedor.upper() or desc.upper() in junk_exact or len(desc) < 4:
+                                        # Resgate da memória (Buffer): Pega a última linha limpa que passou
+                                        for prev_line in reversed(valid_lines_buffer):
+                                            p_upper = prev_line.upper().strip()
+                                            # Ignora datas, tempos e lixos conhecidos
+                                            if p_upper and p_upper not in junk_exact and not re.match(r'^\d{2}/\d{2}/\d{4}', p_upper) and '00:00' not in p_upper:
+                                                desc = prev_line
+                                                break
+                                    
+                                    # Tratar Quantidade (Geralmente no início da descrição limpa, ex: "1 BATERIA")
+                                    qt = "1"
+                                    match_qt = re.match(r'^(\d+)\s+(.*)', desc)
+                                    if match_qt:
+                                        qt = match_qt.group(1)
+                                        desc = match_qt.group(2)
                                         
-                                    # Padrão alternativo (somente a descrição da peça)
-                                    if len(prev_linha) > 5 and not re.search(r'\d{2}/\d{2}/\d{4}', prev_linha) and 'R$' not in prev_linha:
-                                        if desc == "Manutenção Diversa":
-                                            desc = prev_linha
-
-                                parsed_data.append({
-                                    'PLACA': placa,
-                                    'MODELO': modelo,
-                                    'KM ATUAL': km_atual,
-                                    'DESCRIÇÃO DA MANUTENÇÃO': desc,
-                                    'QUANTIDADE': qt,
-                                    'PERIODO DO INICIO DO SERVIÇO': data_inicio,
-                                    'PERIODO DO FIM DO SERVIÇO': data_fim,
-                                    'VALOR': valor,
-                                    'FORNECEDOR': fornecedor,
-                                    'N° DA NOTA': nf
-                                })
+                                    # Super Limpeza da Descrição (Tira horas, lixo numérico do fim e datas)
+                                    desc = desc.replace(' 00:00', '').strip()
+                                    # Remove códigos estranhos no fim da linha (ex: 13.180 PFH4049 333.967,0 2022)
+                                    desc = re.sub(r'\s+[\d\.,]+\s+[A-Z0-9\-]+\s+[\d\.,]+.*$', '', desc).strip()
+                                    desc = re.sub(r'\s+\d{2}/\d{2}/\d{4}.*$', '', desc).strip()
+                                    
+                                    if not desc:
+                                        desc = "Manutenção Diversa"
+                                    
+                                    # Buscar NF nas linhas próximas
+                                    nf = ""
+                                    for j in range(idx_linha, min(idx_linha+6, len(linhas_bloco))):
+                                        l_nf = linhas_bloco[j].strip()
+                                        if re.fullmatch(r'\d{3,9}', l_nf):
+                                            nf = l_nf
+                                            break
+                                        elif re.search(r'(?:N\.\s*NF|N\.\s*NE|NF)\s*(\d+)', l_nf, re.IGNORECASE):
+                                            nf = re.search(r'(?:N\.\s*NF|N\.\s*NE|NF)\s*(\d+)', l_nf, re.IGNORECASE).group(1)
+                                            break
+                                            
+                                    parsed_data.append({
+                                        'PLACA': placa,
+                                        'MODELO': modelo,
+                                        'KM ATUAL': km_atual,
+                                        'DESCRIÇÃO DA MANUTENÇÃO': desc,
+                                        'QUANTIDADE': qt,
+                                        'PERIODO DO INICIO DO SERVIÇO': data_inicio,
+                                        'PERIODO DO FIM DO SERVIÇO': data_fim,
+                                        'VALOR': valor,
+                                        'FORNECEDOR': fornecedor,
+                                        'N° DA NOTA': nf
+                                    })
+                                    # Linha de valor real não vai para o buffer de descrições
+                                    continue 
+                            
+                            # Se a linha não é de R$, guarda na memória para caso o R$ debaixo precise dela
+                            valid_lines_buffer.append(linha)
 
                     if parsed_data:
                         df_resultado = pd.DataFrame(parsed_data)
                         
-                        # Converte a coluna VALOR para número no Pandas (Facilita soma e filtro no Excel)
+                        # Converte VALOR para formato de número no Excel para permitir somas fáceis
                         df_resultado['VALOR'] = pd.to_numeric(df_resultado['VALOR'].str.replace('.', '').str.replace(',', '.'), errors='coerce')
                         
-                        st.success(f"✅ Tabela gerada com sucesso! ({len(df_resultado)} serviços encontrados)")
-                        
-                        # Mostra a tabela interativa na tela
-                        st.dataframe(df_resultado, use_container_width=True)
+                        st.success(f"✅ Tabela gerada com sucesso! ({len(df_resultado)} serviços extraídos limpos)")
+                        st.dataframe(df_resultado)
 
-                        # Prepara o arquivo Excel estruturado
+                        # Prepara o arquivo Excel Ajustado
                         output = io.BytesIO()
                         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                            df_resultado.to_excel(writer, index=False, sheet_name="Manutencao_Frota")
+                            df_resultado.to_excel(writer, index=False, sheet_name="Manutencao_Extrato")
                             
-                            # Ajustando dinamicamente a largura das colunas no Excel
-                            worksheet = writer.sheets['Manutencao_Frota']
+                            # Estiliza e ajusta colunas automaticamente no Excel
+                            worksheet = writer.sheets['Manutencao_Extrato']
+                            formato_moeda = writer.book.add_format({'num_format': 'R$ #,##0.00'})
+                            
                             for idx, col in enumerate(df_resultado.columns):
                                 max_len = max(df_resultado[col].astype(str).map(len).max(), len(col)) + 2
-                                worksheet.set_column(idx, idx, max_len)
+                                if col == 'VALOR':
+                                    worksheet.set_column(idx, idx, 15, formato_moeda)
+                                else:
+                                    worksheet.set_column(idx, idx, min(max_len, 45)) # Limita largura max
 
                         output.seek(0)
 
                         st.download_button(
-                            label="📥 Baixar Planilha Final (Excel)",
+                            label="📥 Baixar Planilha Final para Filtros (Excel)",
                             data=output,
-                            file_name="Controle_Manutencao_Veiculos.xlsx",
+                            file_name="Manutencao_Veiculos_Processado.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
                     else:
-                        st.warning("Nenhum registro de custo foi encontrado. Verifique se o PDF enviado é o Relatório FleetCom original.")
+                        st.warning("Não foi possível localizar registros de manutenção válidos. Verifique se o documento contém os custos em R$.")
 
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo: {e}")
