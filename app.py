@@ -1104,7 +1104,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-# --- SCRIPT MANUTENÇÃO VEÍCULOS (ATUALIZADO) ---
+ # --- SCRIPT MANUTENÇÃO VEÍCULOS (ATUALIZADO) ---
 elif script_choice == "Manutenção Veículos":
     st.subheader("Manutenção de Veículos (FleetCom)")
     st.info("Envie os relatórios em PDF. O sistema irá consolidar tudo em um único arquivo Excel com abas separadas.")
