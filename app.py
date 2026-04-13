@@ -1104,7 +1104,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-    # --- SCRIPT MANUTENÇÃO VEÍCULOS (ATUALIZADO) ---
+    # --- SCRIPT MANUTENÇÃO VEÍCULOS (NOVA LÓGICA ROBUSTA) ---
     elif script_choice == "Manutenção Veículos":
         st.subheader("Manutenção de Veículos (FleetCom)")
         st.info("Envie os relatórios em PDF. O sistema irá consolidar tudo em um único arquivo Excel com abas separadas.")
@@ -1123,162 +1123,167 @@ def logistics_page():
             for page in pdf_reader.pages:
                 text += page.extract_text() + "\n"
 
-            # Limpeza de artefatos de extração
-            text = text.replace('\r\n', '\n').replace('"\n","', ' ').replace('",\n"', ' ').replace('"\n"', '\n').replace('"', '')
+            # Limpeza profunda
+            text = text.replace('\r\n', '\n').replace('"\n","', ' ').replace('",\n"', ' ')
+            text = text.replace('"\n"', '\n').replace('"', '')
             text = re.sub(r'^\s*,\s*', '', text, flags=re.MULTILINE)
 
-            # Remove o resumo final para evitar lixo
             marcadores_resumo = ["N. DE VEÍCULOS ATENDIDOS", "NO. DE IM'S PREVENTIVAS", "RESUMO POR PLACA"]
             for marcador in marcadores_resumo:
                 idx_resumo = text.upper().find(marcador)
-                if idx_resumo != -1: text = text[:idx_resumo]
+                if idx_resumo != -1:
+                    text = text[:idx_resumo]
 
             parsed_data = []
 
-            # Regex para capturar o cabeçalho do veículo (Negrito no PDF)
-            veiculo_pattern = re.compile(
-                r'^([A-Z]{3}-?\d[A-Z0-9]\d{2})\s+'           # Placa/Veículo
-                r'(.+?)\s+'                                  # Modelo
-                r'(?:[A-Z]{3}-?\d[A-Z0-9]\d{2}\s+)?'         # Repetição da placa (opcional)
-                r'([\d\.]+,\d+)\s+'                          # KM Atual
-                r'(\d{4})\s+'                                # Ano Fabr.
-                r'(\d{2}/\d{2}/\d{4})\s+'                    # Data Exec.
-                r'(\d{2}/\d{2}/\d{4})\s+'                    # Data Início
-                r'(\d{2}/\d{2}/\d{4})\s+'                    # Data Fim
-                r'(\d{2,3}:\d{2})\s+'                        # Tempo Parado
-                r'([\d\.]+,\d+)\s+'                          # Hodômetro
-                r'([\d\.]+,\d+)\s+'                          # Total M-O
-                r'([\d\.]+,\d+)\s+'                          # Total Peças
-                r'([\d\.]+,\d+)\s*'                          # Custo da IM
-                r'(.*?)$',                                   # Código da IM / Grupo Veicular
-                re.MULTILINE
-            )
-
+            # Passo 1: Encontra com segurança onde cada veículo começa (Âncora forte)
+            veiculo_pattern = re.compile(r'([A-Z]{3}-?\d[A-Z0-9]\d{2})\s+(.+?)(?:\s+[A-Z]{3}-?\d[A-Z0-9]\d{2})?\s+([\d\.]+,\d+)\s+(\d{4})')
             matches_veiculos = list(veiculo_pattern.finditer(text))
 
             for i in range(len(matches_veiculos)):
                 m = matches_veiculos[i]
                 
-                # Dados base do veículo para repetir em cada linha
-                resto = m.group(14).strip()
-                partes_resto = resto.split()
-                grupo_veic = partes_resto[-1] if partes_resto else ""
-                cod_im = " ".join(partes_resto[:-1]) if len(partes_resto) > 1 else ""
-
-                veiculo_info = {
-                    'N. Veículo': m.group(1).replace('-', ''),
-                    'Modelo': m.group(2).strip(),
-                    'Placa': m.group(1).replace('-', ''),
-                    'Km Atual': m.group(3),
-                    'Ano Fabr.': m.group(4),
-                    'Data Exec.': m.group(5),
-                    'Data Início': m.group(6),
-                    'Data Fim': m.group(7),
-                    'Tempo Parado': m.group(8),
-                    'Hodômetro': m.group(9),
-                    'Total M-O': m.group(10),
-                    'Total Peças': m.group(11),
-                    'Custo da IM': m.group(12),
-                    'Código da IM': cod_im,
-                    'Grupo veicular': grupo_veic
-                }
+                placa = m.group(1).replace('-', '')
+                modelo = m.group(2).strip()
+                km_atual = m.group(3)
+                ano_fabr = m.group(4)
 
                 start_idx = m.end()
                 end_idx = matches_veiculos[i+1].start() if i+1 < len(matches_veiculos) else len(text)
-                bloco = text[start_idx:end_idx].strip()
-
-                pecas_lines = bloco.split('\n')
-                buffer_servico_texto = []
                 
-                for line in pecas_lines:
-                    line = line.strip()
-                    if not line or "PEÇAS" in line.upper(): continue
+                # Pega os primeiros caracteres do bloco para caçar as datas e valores financeiros
+                cabecalho_bruto = text[m.start():start_idx + 250].replace('\n', ' ')
+                
+                datas = re.findall(r'\d{2}/\d{2}/\d{4}', cabecalho_bruto)
+                data_exec = datas[0] if len(datas) > 0 else ""
+                data_inicio = datas[1] if len(datas) > 1 else ""
+                data_fim = datas[2] if len(datas) > 2 else ""
+                
+                m_tempo = re.search(r'\b\d{2,3}:\d{2}\b', cabecalho_bruto)
+                tempo_parado = m_tempo.group(0) if m_tempo else "00:00"
+                
+                resto_cab = cabecalho_bruto
+                if data_fim: resto_cab = cabecalho_bruto[cabecalho_bruto.rfind(data_fim) + 10:]
+                    
+                valores = re.findall(r'[\d\.]+[,\.]\d{1,2}', resto_cab)
+                hodometro = valores[0] if len(valores) > 0 else "0,00"
+                total_mo = valores[1] if len(valores) > 1 else "0,00"
+                total_pecas = valores[2] if len(valores) > 2 else "0,00"
+                custo_im = valores[3] if len(valores) > 3 else "0,00"
 
-                    # Padrão 1: PEÇAS
-                    m_peca = re.match(r'^(\d+)\s+(.*?)\s+([\d\.]+,\d{2})\s+(.*?)\s+(\d+)\s+([\d\.]+,\d{2})\s*(.*)$', line)
+                veiculo_info = {
+                    'N. Veículo': placa,
+                    'Modelo': modelo,
+                    'Placa': placa,
+                    'Km Atual': km_atual,
+                    'Ano Fabr.': ano_fabr,
+                    'Data Exec.': data_exec,
+                    'Data Início': data_inicio,
+                    'Data Fim': data_fim,
+                    'Tempo Parado': tempo_parado,
+                    'Hodômetro': hodometro,
+                    'Total M-O': total_mo,
+                    'Total Peças': total_pecas,
+                    'Custo da IM': custo_im,
+                    'Código da IM': '',
+                    'Grupo veicular': 'DIFERENCIAL'
+                }
+
+                # Passo 2: Processar as linhas de peças e serviços
+                bloco = text[start_idx:end_idx].strip()
+                pecas_lines = bloco.split('\n')
+                buffer_servico = []
+                
+                for idx_line, line in enumerate(pecas_lines):
+                    line = line.strip()
+                    if not line or line.upper() in ["PEÇAS", "QT CÓDIGO", "DESCRIÇÃO", "N. NF", "DESCONTOS"]: 
+                        continue
+
+                    # MÃO DE OBRA (Quando aparece o cabeçalho de fornecedor)
+                    if "Fornecedor de Mão-de-Obra" in line:
+                        desc_servico = " ".join(buffer_servico).strip()
+                        # Busca os valores nas próximas 3 linhas
+                        for offset in [1, 2, 3]:
+                            if idx_line + offset < len(pecas_lines):
+                                val_line = pecas_lines[idx_line + offset].strip()
+                                m_mo = re.match(r'^(.*?)\s+(\d+)\s+([\d\.,]+)\s+([\d\.,]+)', val_line)
+                                if m_mo:
+                                    row = veiculo_info.copy()
+                                    row.update({
+                                        'Qt Código': '1', 'Código': '',
+                                        'Descrição': desc_servico if desc_servico else "Mão de Obra / Serviço",
+                                        'Pr.Tot Fornecedor': m_mo.group(3),
+                                        'Fornecedor': m_mo.group(1).strip(),
+                                        'N. NF': m_mo.group(2),
+                                        'Descontos': m_mo.group(4),
+                                        'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': 'Mão de Obra'
+                                    })
+                                    parsed_data.append(row)
+                                    break
+                        buffer_servico = []
+                        continue
+                        
+                    # PEÇAS (Começa com a quantidade, ex: "1", "2")
+                    # Aceita o Fornecedor vindo ANTES ou DEPOIS do Valor
+                    m_peca1 = re.match(r'^(\d+)\s+(.*?)\s+([\d\.,]+)\s+([A-Za-z\s]+)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
+                    m_peca2 = re.match(r'^(\d+)\s+(.*?)\s+([A-Za-z\s]+)\s+([\d\.,]+)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
+                    m_peca = m_peca1 if m_peca1 else m_peca2
+                        
                     if m_peca:
-                        desc_codigo = m_peca.group(2).strip()
+                        g3 = m_peca.group(3).strip()
+                        g4 = m_peca.group(4).strip()
+                        
+                        if re.match(r'^[\d\.,]+$', g3):
+                            valor, fornecedor = g3, g4
+                        else:
+                            valor, fornecedor = g4, g3
+
+                        desc_full = m_peca.group(2).strip()
                         codigo = ""
-                        desc = desc_codigo
-                        partes_desc = desc_codigo.split(" ", 1)
-                        if len(partes_desc) > 1 and re.match(r'^[A-Z0-9\.\-]+$', partes_desc[0]):
-                            codigo = partes_desc[0]
-                            desc = partes_desc[1]
+                        m_cod = re.match(r'^([A-Z0-9\.\-]*\d[A-Z0-9\.\-]*)\s+(.*)', desc_full)
+                        if m_cod:
+                            codigo = m_cod.group(1)
+                            desc_full = m_cod.group(2)
 
                         row = veiculo_info.copy()
                         row.update({
                             'Qt Código': m_peca.group(1),
                             'Código': codigo,
-                            'Descrição': desc,
-                            'Pr.Tot Fornecedor': m_peca.group(3),
-                            'Fornecedor': m_peca.group(4).strip(),
+                            'Descrição': desc_full,
+                            'Pr.Tot Fornecedor': valor,
+                            'Fornecedor': fornecedor,
                             'N. NF': m_peca.group(5),
                             'Descontos': m_peca.group(6),
                             'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': m_peca.group(7).strip() if m_peca.group(7) else 'NF manutenção'
                         })
                         parsed_data.append(row)
+                        buffer_servico = [] 
                         continue
 
-                    # Padrão 2: MÃO DE OBRA / SERVIÇOS
-                    if "Fornecedor de Mão-de-Obra" in line:
-                        desc_servico = " ".join(buffer_servico_texto).strip()
-                        try:
-                            idx_next = pecas_lines.index(line) + 1
-                            val_line = pecas_lines[idx_next].strip()
-                            # Tenta pegar na próxima linha
-                            m_mo = re.match(r'^(.*?)\s+(\d+)\s+([\d\.]+,\d{2})\s+([\d\.]+,\d{2})', val_line)
-                            if m_mo:
-                                row = veiculo_info.copy()
-                                row.update({
-                                    'Qt Código': '1', 'Código': '',
-                                    'Descrição': desc_servico if desc_servico else "Mão de Obra / Serviço",
-                                    'Pr.Tot Fornecedor': m_mo.group(3),
-                                    'Fornecedor': m_mo.group(1).strip(),
-                                    'N. NF': m_mo.group(2),
-                                    'Descontos': m_mo.group(4),
-                                    'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': 'Mão de Obra'
-                                })
-                                parsed_data.append(row)
-                            else:
-                                # Tenta pegar puleando mais uma linha (caso o nome do fornecedor ocupe uma linha toda)
-                                forn_temp = val_line
-                                idx_next2 = idx_next + 1
-                                if idx_next2 < len(pecas_lines):
-                                    val_line2 = pecas_lines[idx_next2].strip()
-                                    if "Valor" in val_line2 or "N. NF" in val_line2:
-                                        idx_next2 += 1
-                                        if idx_next2 < len(pecas_lines): val_line2 = pecas_lines[idx_next2].strip()
-                                    m_vals = re.search(r'(\d+)\s+([\d\.]+,\d{2})\s+([\d\.]+,\d{2})', val_line2)
-                                    if m_vals:
-                                        row = veiculo_info.copy()
-                                        row.update({
-                                            'Qt Código': '1', 'Código': '',
-                                            'Descrição': desc_servico if desc_servico else "Mão de Obra / Serviço",
-                                            'Pr.Tot Fornecedor': m_vals.group(2),
-                                            'Fornecedor': forn_temp,
-                                            'N. NF': m_vals.group(1),
-                                            'Descontos': m_vals.group(3),
-                                            'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': 'Mão de Obra'
-                                        })
-                                        parsed_data.append(row)
-                        except Exception: pass
-                        buffer_servico_texto = [] 
-                    else:
-                        if not re.search(r'[\d\.]+,\d{2}', line) and len(line) > 5 and not "Valor" in line and not "Descontos" in line:
-                            buffer_servico_texto.append(line)
+                    # SE NÃO É PEÇA NEM FORNECEDOR, É TEXTO DE DESCRIÇÃO DO SERVIÇO
+                    if not re.match(r'^\d{2}/\d{2}/\d{4}', line) and not re.match(r'^[\d\.,]+$', line) and len(line) > 3:
+                        if "Valor" not in line and "Desconto" not in line:
+                            buffer_servico.append(line)
 
             if parsed_data:
                 df_resultado = pd.DataFrame(parsed_data)
                 
-                # Colunas para organizar a ordem final
+                colunas_moeda = ['Total M-O', 'Total Peças', 'Custo da IM', 'Pr.Tot Fornecedor', 'Descontos']
+                for c in colunas_moeda:
+                    if c in df_resultado.columns:
+                        df_resultado[c] = pd.to_numeric(
+                            df_resultado[c].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False), 
+                            errors='coerce'
+                        ).fillna(0)
+                        
                 colunas_ordenadas = [
                     'N. Veículo', 'Modelo', 'Placa', 'Km Atual', 'Ano Fabr.', 
                     'Data Exec.', 'Data Início', 'Data Fim', 'Tempo Parado', 'Hodômetro', 
                     'Total M-O', 'Total Peças', 'Custo da IM', 'Código da IM', 'Grupo veicular',
-                    'Qt Código', 'Descrição', 'Pr.Tot Fornecedor', 'N. NF', 'Descontos', 
-                    'Ga.Kms', 'Ga. Dias', 'Posição', 'Origem', 'Fornecedor'
+                    'Qt Código', 'Código', 'Descrição', 'Pr.Tot Fornecedor', 'Fornecedor', 
+                    'N. NF', 'Descontos', 'Ga.Kms', 'Ga. Dias', 'Posição', 'Origem'
                 ]
-                colunas_presentes = [col for col in colunas_ordenadas if col in df_resultado.columns]
+                colunas_presentes = [c for c in colunas_ordenadas if c in df_resultado.columns]
                 return df_resultado[colunas_presentes]
                 
             return pd.DataFrame()
@@ -1302,25 +1307,33 @@ def logistics_page():
                     st.success("✅ Relatórios processados com sucesso!")
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        formato_moeda = writer.book.add_format({'num_format': 'R$ #,##0.00'})
                         for nome_aba, df_sheet in dict_dfs.items():
                             df_sheet.to_excel(writer, index=False, sheet_name=nome_aba)
+                            ws = writer.sheets[nome_aba]
+                            for idx, col in enumerate(df_sheet.columns):
+                                tamanho = max(df_sheet[col].astype(str).str.len().max(), len(col)) + 2
+                                if col in ['Total M-O', 'Total Peças', 'Custo da IM', 'Pr.Tot Fornecedor', 'Descontos']:
+                                    ws.set_column(idx, idx, 15, formato_moeda)
+                                else:
+                                    ws.set_column(idx, idx, min(tamanho, 45))
                     
                     output.seek(0)
                     st.download_button(
                         label="📥 Baixar Planilha Consolidada (Excel)",
                         data=output,
-                        file_name="Manutencao_Frota_Consolidada.xlsx",
+                        file_name="Manutencao_Frota_Completa.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         type="primary", use_container_width=True
                     )
-                    for nome, df_vis in dict_dfs.items():
-                        with st.expander(f"Visualizar {nome}"):
-                            st.dataframe(df_vis)
+                    
+                    st.write("---")
+                    st.write("### 👁️ Visualização dos Dados:")
+                    for nome_aba, df_sheet in dict_dfs.items():
+                        with st.expander(f"Frota: {nome_aba} ({len(df_sheet)} serviços)"):
+                            st.dataframe(df_sheet, use_container_width=True)
                 else:
                     st.error("Não foi possível extrair dados dos arquivos. Verifique o padrão do PDF.")
-
-# ====================================================================
-# 6. SETOR COMERCIAL
 
  
 # ====================================================================
