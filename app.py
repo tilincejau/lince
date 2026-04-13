@@ -1104,7 +1104,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-    # --- SCRIPT MANUTENÇÃO VEÍCULOS (NOVA LÓGICA ROBUSTA) ---
+    # --- SCRIPT MANUTENÇÃO VEÍCULOS (NOVA LÓGICA ROBUSTA COM FILTRO DE PÁGINA) ---
     elif script_choice == "Manutenção Veículos":
         st.subheader("Manutenção de Veículos (FleetCom)")
         st.info("Envie os relatórios em PDF. O sistema irá consolidar tudo em um único arquivo Excel com abas separadas.")
@@ -1151,7 +1151,6 @@ def logistics_page():
                 start_idx = m.end()
                 end_idx = matches_veiculos[i+1].start() if i+1 < len(matches_veiculos) else len(text)
                 
-                # Pega os primeiros caracteres do bloco para caçar as datas e valores financeiros
                 cabecalho_bruto = text[m.start():start_idx + 250].replace('\n', ' ')
                 
                 datas = re.findall(r'\d{2}/\d{2}/\d{4}', cabecalho_bruto)
@@ -1189,50 +1188,95 @@ def logistics_page():
                     'Grupo veicular': 'DIFERENCIAL'
                 }
 
-                # Passo 2: Processar as linhas de peças e serviços
+                # Passo 2: O Segredo para as Quebras de Página (A Peneira Fina)
                 bloco = text[start_idx:end_idx].strip()
-                pecas_lines = bloco.split('\n')
-                buffer_servico = []
+                pecas_lines_raw = bloco.split('\n')
+                pecas_lines = []
                 
-                for idx_line, line in enumerate(pecas_lines):
-                    line = line.strip()
-                    clean_line_check = line.replace(' ', '').replace('.', '').upper()
+                # Lista de lixos que o PDF gera quando muda de página
+                lixos_ignorar = [
+                    "FLEETCOM - MANUTENÇÃO", "LINCE", "USUÁRIO:", "MANUTS. REALIZADAS", "PERÍODO:",
+                    "N. VEÍCULO", "MODELO", "PLACA", "KM ATUAL", "ANO FABR", "DATA EXEC", "DATA INÍCIO", "DATA FIM", 
+                    "TEMPO PARADO", "HODÔMETRO", "TOTAL M-O", "TOTAL PEÇAS", "CUSTO DA IM", "CÓDIGO DA IM", "GRUPO VEICULAR",
+                    "QT CÓDIGO", "DESCRIÇÃO", "PR.TOT FORNECEDOR", "N. NF", "DESCONTOS", "GA.KMS", "GA. DIAS", "POSIÇÃO", "ORIGEM",
+                    "PEÇAS", "VALOR", "ATUAL", "FABR.", "EXEC.", "INÍCIO", "INICIO", "FIM", "PARADO", "M-O", "DA IM", "KM ANO", "GAR.KMS", "GAR.DIAS", "DESCONTOS DESCRIÇÃO"
+                ]
+                
+                for l in pecas_lines_raw:
+                    l_upper = l.strip().upper()
+                    is_lixo = any(l_upper.startswith(lixo) or l_upper == lixo for lixo in lixos_ignorar)
+                    if not is_lixo and l.strip():
+                        pecas_lines.append(l.strip())
+                
+                # Passo 3: Varredura dos Dados Limpos
+                buffer_servico = []
+                idx_line = 0
+                
+                while idx_line < len(pecas_lines):
+                    line = pecas_lines[idx_line]
                     
-                    # Ignorar sujeiras e cabeçalhos repetidos
-                    if not line or clean_line_check in ["PEÇAS", "QTCÓDIGO", "DESCRIÇÃO", "NNF", "DESCONTOS", "VALOR", "NFMANUTENÇÃO", "MANUTENÇÃONF", "DIFERENCIAL", "TOM", "MOTOR", "TOMMOTOR"]: 
-                        continue
-
-                    # MÃO DE OBRA (Quando aparece o cabeçalho de fornecedor)
+                    # === MÃO DE OBRA ===
                     if "Fornecedor de Mão-de-Obra" in line:
                         desc_servico = " ".join(buffer_servico).strip()
-                        # Busca os valores nas próximas linhas
-                        for offset in [1, 2, 3]:
-                            if idx_line + offset < len(pecas_lines):
-                                val_line = pecas_lines[idx_line + offset].strip()
-                                m_mo = re.match(r'^(.*?)\s+(\d+)\s+([\d\.,]+)\s+([\d\.,]+)', val_line)
-                                if m_mo:
-                                    row = veiculo_info.copy()
-                                    row.update({
-                                        'Qt Código': '1', 'Código': '',
-                                        'Descrição': desc_servico if desc_servico else "Mão de Obra / Serviço",
-                                        'Pr.Tot Fornecedor': m_mo.group(3),
-                                        'Fornecedor': m_mo.group(1).strip(),
-                                        'N. NF': m_mo.group(2),
-                                        'Descontos': m_mo.group(4),
-                                        'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': 'Mão de Obra'
-                                    })
-                                    parsed_data.append(row)
-                                    break
-                        buffer_servico = []
-                        continue
                         
-                    # PEÇAS
-                    m_peca1 = re.match(r'^(\d+)\s+(.*?)\s+([\d\.,]+)\s+([A-Za-z\s]+)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
-                    m_peca2 = re.match(r'^(\d+)\s+(.*?)\s+([A-Za-z\s]+)\s+([\d\.,]+)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
+                        fornecedor = ""
+                        nf = ""
+                        valor = ""
+                        desconto = ""
+                        
+                        # Olha as próximas linhas dinamicamente para caçar os valores fracionados pela página
+                        offset = 1
+                        while idx_line + offset < len(pecas_lines) and offset <= 6:
+                            prox = pecas_lines[idx_line + offset]
+                            
+                            # Tenta ler tudo numa linha só (se não quebrou)
+                            m_full = re.match(r'^(.*?)\s+(\d+)\s+([\d\.,]+)\s+([\d\.,]+)', prox)
+                            if m_full:
+                                fornecedor, nf, valor, desconto = m_full.groups()
+                                offset += 1
+                                break
+                                
+                            # Leitura vertical (Pedaço por pedaço após o corte do lixo da página)
+                            if not fornecedor and not re.match(r'^[\d\.,]+$', prox):
+                                fornecedor = prox
+                            elif not nf and re.match(r'^\d+$', prox):
+                                nf = prox
+                            elif not valor and re.match(r'^[\d\.,]+$', prox):
+                                valor = prox
+                            elif not desconto and re.match(r'^[\d\.,]+$', prox):
+                                desconto = prox
+                                offset += 1
+                                break 
+                            
+                            offset += 1
+                            
+                        # Atualiza o ponteiro para pular as linhas lidas
+                        idx_line += (offset - 1)
+                        
+                        row = veiculo_info.copy()
+                        row.update({
+                            'Qt Código': '1', 'Código': '',
+                            'Descrição': desc_servico if desc_servico else "Mão de Obra / Serviço",
+                            'Pr.Tot Fornecedor': valor if valor else '0,00',
+                            'Fornecedor': fornecedor.strip() if fornecedor else 'Não Informado',
+                            'N. NF': nf,
+                            'Descontos': desconto if desconto else '0,00',
+                            'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': 'Mão de Obra'
+                        })
+                        parsed_data.append(row)
+                        buffer_servico = []
+                        
+                        idx_line += 1
+                        continue
+
+                    # === PEÇAS ===
+                    # Regex ajustado para ignorar caracteres especiais do fornecedor
+                    m_peca1 = re.match(r'^(\d+)\s+(.*?)\s+([\d\.,]+)\s+(.*?)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
+                    m_peca2 = re.match(r'^(\d+)\s+(.*?)\s+(.*?)\s+([\d\.,]+)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
                     m_peca = m_peca1 if m_peca1 else m_peca2
                         
                     if m_peca:
-                        # FLUSH DO BUFFER: Salva descrições "Órfãs" (Como o TROCAR OLEO) antes de processar a peça
+                        # Descarrega o buffer se houver um serviço solto (Ex: TROCAR OLEO)
                         if buffer_servico:
                             desc_tmp = " ".join(buffer_servico).strip()
                             if desc_tmp and len(desc_tmp) > 3:
@@ -1242,17 +1286,12 @@ def logistics_page():
                                     'Descrição': desc_tmp,
                                     'Pr.Tot Fornecedor': '0,00',
                                     'Fornecedor': 'Serviço Interno / Sem NF',
-                                    'N. NF': '',
-                                    'Descontos': '0,00',
-                                    'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': 'Interno'
+                                    'N. NF': '', 'Descontos': '0,00', 'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': 'Interno'
                                 })
                                 parsed_data.append(row_mo)
                             buffer_servico = []
 
-                        # Continua processando a Peça normalmente
-                        g3 = m_peca.group(3).strip()
-                        g4 = m_peca.group(4).strip()
-                        
+                        g3, g4 = m_peca.group(3).strip(), m_peca.group(4).strip()
                         if re.match(r'^[\d\.,]+$', g3):
                             valor, fornecedor = g3, g4
                         else:
@@ -1277,13 +1316,16 @@ def logistics_page():
                             'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': m_peca.group(7).strip() if m_peca.group(7) else 'NF manutenção'
                         })
                         parsed_data.append(row)
+                        idx_line += 1
                         continue
 
-                    # SE NÃO É PEÇA NEM FORNECEDOR, É TEXTO DE DESCRIÇÃO DO SERVIÇO
+                    # === TEXTO SOLTO (DESCRIÇÃO DE SERVIÇO) ===
                     if not re.match(r'^\d{2}/\d{2}/\d{4}', line) and not re.match(r'^[\d\.,]+$', line) and len(line) > 3:
                         buffer_servico.append(line)
+                        
+                    idx_line += 1
 
-                # FLUSH FINAL: Caso o bloco acabe e tenha sobrado texto no buffer
+                # Flush Final de serviços no fim do bloco
                 if buffer_servico:
                     desc_tmp = " ".join(buffer_servico).strip()
                     if desc_tmp and len(desc_tmp) > 3:
@@ -1293,12 +1335,9 @@ def logistics_page():
                             'Descrição': desc_tmp,
                             'Pr.Tot Fornecedor': '0,00',
                             'Fornecedor': 'Serviço Interno / Sem NF',
-                            'N. NF': '',
-                            'Descontos': '0,00',
-                            'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': 'Interno'
+                            'N. NF': '', 'Descontos': '0,00', 'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': 'Interno'
                         })
                         parsed_data.append(row_mo)
-                    buffer_servico = []
 
             if parsed_data:
                 df_resultado = pd.DataFrame(parsed_data)
