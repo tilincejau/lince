@@ -1269,14 +1269,17 @@ def logistics_page():
                         idx_line += 1
                         continue
 
-                    # === PEÇAS ===
-                    # Ajuste: Aceita NF com letras/traços ([A-Za-z0-9\-\/]+) e valores negativos ([\-\d\.,]+)
-                    m_peca1 = re.match(r'^([\-\d\.,]+)\s+(.+?)\s+([\-\d\.,]+)\s+(.+?)\s+([A-Za-z0-9\-\/_]+)\s+([\-\d\.,]+)\s*(.*)$', line)
-                    m_peca2 = re.match(r'^([\-\d\.,]+)\s+(.*?)\s+(.*?)\s+([\-\d\.,]+)\s+([A-Za-z0-9\-\/_]+)\s+([\-\d\.,]+)\s*(.*)$', line)
-                    m_peca = m_peca1 if m_peca1 else m_peca2
+                    # === NOVA LÓGICA DE EXTRAÇÃO DE PEÇAS E SERVIÇOS ===
+                    # 1. Encontra a NF, Desconto e Origem no final da linha
+                    m_end = re.search(r'\s+([A-Za-z0-9\-\/_]+)\s+([\-\d\.,]+)(?:\s+(NF manutenção|Mão de Obra|Interno))?$', line)
+                    
+                    # 2. Verifica se a linha começa com uma Quantidade (Número)
+                    m_start = re.match(r'^([\-\d\.,]+)\s+(.*)', line)
+
+                    if m_end and m_start:
+                        # É uma linha de PEÇA válida!
                         
-                    if m_peca:
-                        # Descarrega o buffer se houver um serviço solto
+                        # Descarrega o buffer de serviços pendentes
                         if buffer_servico:
                             desc_tmp = " ".join(buffer_servico).strip()
                             if desc_tmp and len(desc_tmp) > 3:
@@ -1291,19 +1294,34 @@ def logistics_page():
                                 parsed_data.append(row_mo)
                             buffer_servico = []
 
-                        g3, g4 = m_peca.group(3).strip(), m_peca.group(4).strip()
+                        nf = m_end.group(1)
+                        desconto = m_end.group(2)
+                        origem = m_end.group(3) if m_end.group(3) else 'NF manutenção'
                         
-                        # Proteção contra números no fim da descrição
-                        if re.match(r'^\-?\d+$', g3) and re.match(r'^[\-\d\.]+,\d{2}', g4):
-                            valor = g4.split()[0]
-                            fornecedor = g4.replace(valor, '').strip()
-                            desc_full = m_peca.group(2).strip() + " " + g3
-                        elif re.match(r'^[\-\d\.,]+$', g3):
-                            valor, fornecedor = g3, g4
-                            desc_full = m_peca.group(2).strip()
+                        qtd = m_start.group(1)
+                        
+                        # O "meio" é tudo que está entre a Quantidade e a NF
+                        resto = line[m_start.end(1):m_end.start()].strip()
+                        
+                        # Varredura Reversa: Lê de trás pra frente para achar o Valor e separar do Fornecedor
+                        sub_tokens = resto.split()
+                        valor_idx = -1
+                        
+                        for i in range(len(sub_tokens)-1, -1, -1):
+                            # Identifica o valor (número puro com ou sem vírgula/sinal, ignorando letras)
+                            if re.match(r'^[\-\d]+(?:,\d+)?$', sub_tokens[i]):
+                                valor_idx = i
+                                break
+                                
+                        if valor_idx != -1:
+                            valor = sub_tokens[valor_idx]
+                            fornecedor = " ".join(sub_tokens[valor_idx+1:])
+                            desc_full = " ".join(sub_tokens[:valor_idx])
                         else:
-                            valor, fornecedor = g4, g3
-                            desc_full = m_peca.group(2).strip()
+                            # Fallback de segurança
+                            valor = "0,00"
+                            fornecedor = "Não Identificado"
+                            desc_full = resto
 
                         codigo = ""
                         m_cod = re.match(r'^([A-Z0-9\.\-]*\d[A-Z0-9\.\-]*)\s+(.*)', desc_full)
@@ -1313,14 +1331,14 @@ def logistics_page():
 
                         row = veiculo_info.copy()
                         row.update({
-                            'Qt Código': m_peca.group(1),
+                            'Qt Código': qtd,
                             'Código': codigo,
                             'Descrição': desc_full,
                             'Pr.Tot Fornecedor': valor,
-                            'Fornecedor': fornecedor,
-                            'N. NF': m_peca.group(5),
-                            'Descontos': m_peca.group(6),
-                            'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': m_peca.group(7).strip() if m_peca.group(7) else 'NF manutenção'
+                            'Fornecedor': fornecedor if fornecedor else 'Não Informado',
+                            'N. NF': nf,
+                            'Descontos': desconto,
+                            'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': origem
                         })
                         parsed_data.append(row)
                         idx_line += 1
@@ -1330,6 +1348,11 @@ def logistics_page():
                     if re.match(r'^\d{2}:\d{2}\s+[\d\.,]+\s+[\d\.,]+', line):
                         idx_line += 1
                         continue
+
+                    if not re.match(r'^\d{2}/\d{2}/\d{4}', line) and not re.match(r'^[\-\d\.,]+$', line) and len(line) > 3:
+                        buffer_servico.append(line)
+                        
+                    idx_line += 1
 
                     if not re.match(r'^\d{2}/\d{2}/\d{4}', line) and not re.match(r'^[\-\d\.,]+$', line) and len(line) > 3:
                         buffer_servico.append(line)
