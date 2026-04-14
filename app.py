@@ -1271,12 +1271,14 @@ def logistics_page():
 
                     # === PEÇAS ===
                     # Regex ajustado para ignorar caracteres especiais do fornecedor
-                    m_peca1 = re.match(r'^(\d+)\s+(.*?)\s+([\d\.,]+)\s+(.*?)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
-                    m_peca2 = re.match(r'^(\d+)\s+(.*?)\s+(.*?)\s+([\d\.,]+)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
+                    # === PEÇAS ===
+                    # Ajuste 1: ^([\d\.,]+) agora captura quantidades com vírgula (ex: 15,8)
+                    m_peca1 = re.match(r'^([\d\.,]+)\s+(.+?)\s+([\d\.,]+)\s+(.+?)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
+                    m_peca2 = re.match(r'^([\d\.,]+)\s+(.*?)\s+(.*?)\s+([\d\.,]+)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
                     m_peca = m_peca1 if m_peca1 else m_peca2
                         
                     if m_peca:
-                        # Descarrega o buffer se houver um serviço solto (Ex: TROCAR OLEO)
+                        # Descarrega o buffer se houver um serviço solto
                         if buffer_servico:
                             desc_tmp = " ".join(buffer_servico).strip()
                             if desc_tmp and len(desc_tmp) > 3:
@@ -1292,12 +1294,20 @@ def logistics_page():
                             buffer_servico = []
 
                         g3, g4 = m_peca.group(3).strip(), m_peca.group(4).strip()
-                        if re.match(r'^[\d\.,]+$', g3):
+                        
+                        # Ajuste 2: Proteção contra números no fim da descrição (ex: "DIESEL 15")
+                        # Se g3 for um número inteiro pequeno e g4 começar com um valor monetário (ex: 550,00)
+                        if re.match(r'^\d+$', g3) and re.match(r'^[\d\.]+,\d{2}', g4):
+                            valor = g4.split()[0]
+                            fornecedor = g4.replace(valor, '').strip()
+                            desc_full = m_peca.group(2).strip() + " " + g3
+                        elif re.match(r'^[\d\.,]+$', g3):
                             valor, fornecedor = g3, g4
+                            desc_full = m_peca.group(2).strip()
                         else:
                             valor, fornecedor = g4, g3
+                            desc_full = m_peca.group(2).strip()
 
-                        desc_full = m_peca.group(2).strip()
                         codigo = ""
                         m_cod = re.match(r'^([A-Z0-9\.\-]*\d[A-Z0-9\.\-]*)\s+(.*)', desc_full)
                         if m_cod:
@@ -1320,6 +1330,11 @@ def logistics_page():
                         continue
 
                     # === TEXTO SOLTO (DESCRIÇÃO DE SERVIÇO) ===
+                    # Ajuste 3: Ignora a linha de totalizadores gerais que vazava para o final da tabela
+                    if re.match(r'^\d{2}:\d{2}\s+[\d\.,]+\s+[\d\.,]+', line):
+                        idx_line += 1
+                        continue
+
                     if not re.match(r'^\d{2}/\d{2}/\d{4}', line) and not re.match(r'^[\d\.,]+$', line) and len(line) > 3:
                         buffer_servico.append(line)
                         
