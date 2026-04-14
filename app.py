@@ -1270,13 +1270,15 @@ def logistics_page():
                         continue
 
                     # === PEÇAS ===
-                    # Ajuste 1: ^([\d\.,]+) agora captura quantidades com vírgula (ex: 15,8)
-                    m_peca1 = re.match(r'^([\d\.,]+)\s+(.+?)\s+([\d\.,]+)\s+(.+?)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
-                    m_peca2 = re.match(r'^([\d\.,]+)\s+(.*?)\s+(.*?)\s+([\d\.,]+)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
+                    # NOVA REGEX: Exige que o preço termine com vírgula e dois dígitos (\d{2})
+                    # Isso impede que números como "900 ML", "4 VIAS" ou "DIESEL 15" quebrem o código
+                    m_peca1 = re.match(r'^([\d\.,]+)\s+(.+?)\s+([\d\.]*,\d{2})\s+(.+?)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
+                    m_peca2 = re.match(r'^([\d\.,]+)\s+(.+?)\s+(.+?)\s+([\d\.]*,\d{2})\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
+                    
                     m_peca = m_peca1 if m_peca1 else m_peca2
                         
                     if m_peca:
-                        # Descarrega o buffer se houver um serviço solto
+                        # Descarrega o buffer se houver um serviço solto (Ex: TROCAR OLEO)
                         if buffer_servico:
                             desc_tmp = " ".join(buffer_servico).strip()
                             if desc_tmp and len(desc_tmp) > 3:
@@ -1291,22 +1293,18 @@ def logistics_page():
                                 parsed_data.append(row_mo)
                             buffer_servico = []
 
-                        g3, g4 = m_peca.group(3).strip(), m_peca.group(4).strip()
-                        
-                        # Ajuste 2: Proteção contra números no fim da descrição (ex: "DIESEL 15")
-                        # Se g3 for um número inteiro pequeno e g4 começar com um valor monetário (ex: 550,00)
-                        if re.match(r'^\d+$', g3) and re.match(r'^[\d\.]+,\d{2}', g4):
-                            valor = g4.split()[0]
-                            fornecedor = g4.replace(valor, '').strip()
-                            desc_full = m_peca.group(2).strip() + " " + g3
-                        elif re.match(r'^[\d\.,]+$', g3):
-                            valor, fornecedor = g3, g4
-                            desc_full = m_peca.group(2).strip()
+                        # Identifica qual grupo é o preço e qual é o fornecedor dependendo do Padrão
+                        if m_peca1:
+                            valor = m_peca.group(3).strip()
+                            fornecedor = m_peca.group(4).strip()
                         else:
-                            valor, fornecedor = g4, g3
-                            desc_full = m_peca.group(2).strip()
+                            fornecedor = m_peca.group(3).strip()
+                            valor = m_peca.group(4).strip()
 
+                        desc_full = m_peca.group(2).strip()
                         codigo = ""
+                        
+                        # Tenta separar o Código da Peça da Descrição, se existir
                         m_cod = re.match(r'^([A-Z0-9\.\-]*\d[A-Z0-9\.\-]*)\s+(.*)', desc_full)
                         if m_cod:
                             codigo = m_cod.group(1)
