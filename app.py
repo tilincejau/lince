@@ -1124,10 +1124,10 @@ def logistics_page():
                 text += page.extract_text() + "\n"
 
             # ==================================================
-            # MODO DIAGNÓSTICO - ADICIONE ESTAS 3 LINHAS:
-            st.error("🛑 MODO DIAGNÓSTICO ATIVADO")
-            st.text_area("Copie esse texto e me mande:", text[:2000], height=400)
-            st.stop()
+            # MODO DIAGNÓSTICO (Comentado para não travar o app)
+            # st.error("🛑 MODO DIAGNÓSTICO ATIVADO")
+            # st.text_area("Copie esse texto e me mande:", text[:2000], height=400)
+            # st.stop()
             # ==================================================
 
             # Limpeza profunda
@@ -1357,16 +1357,6 @@ def logistics_page():
                         
                     idx_line += 1
 
-                    if not re.match(r'^\d{2}/\d{2}/\d{4}', line) and not re.match(r'^[\-\d\.,]+$', line) and len(line) > 3:
-                        buffer_servico.append(line)
-                        
-                    idx_line += 1
-
-                    if not re.match(r'^\d{2}/\d{2}/\d{4}', line) and not re.match(r'^[\-\d\.,]+$', line) and len(line) > 3:
-                        buffer_servico.append(line)
-                        
-                    idx_line += 1
-
                 # Flush Final de serviços no fim do bloco
                 if buffer_servico:
                     desc_tmp = " ".join(buffer_servico).strip()
@@ -1384,11 +1374,23 @@ def logistics_page():
             if parsed_data:
                 df_resultado = pd.DataFrame(parsed_data)
                 
-                colunas_moeda = ['Total M-O', 'Total Peças', 'Custo da IM', 'Pr.Tot Fornecedor', 'Descontos']
-                for c in colunas_moeda:
+                # =========================================================
+                # NOVO BLOCO DE CONVERSÃO NUMÉRICA MAIS ABRANGENTE E ROBUSTO
+                # =========================================================
+                colunas_numericas = [
+                    'Km Atual', 'Hodômetro', 'Total M-O', 'Total Peças', 
+                    'Custo da IM', 'Pr.Tot Fornecedor', 'Descontos', 
+                    'Qt Código', 'Ga.Kms', 'Ga. Dias'
+                ]
+                
+                for c in colunas_numericas:
                     if c in df_resultado.columns:
+                        # Limpa espaços em branco, retira o ponto de milhar e troca vírgula por ponto
                         df_resultado[c] = pd.to_numeric(
-                            df_resultado[c].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False), 
+                            df_resultado[c].astype(str)
+                            .str.replace(r'\s+', '', regex=True)
+                            .str.replace('.', '', regex=False)
+                            .str.replace(',', '.', regex=False), 
                             errors='coerce'
                         ).fillna(0)
                         
@@ -1423,14 +1425,22 @@ def logistics_page():
                     st.success("✅ Relatórios processados com sucesso!")
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        # =========================================================
+                        # NOVA LÓGICA DE FORMATAÇÃO EXCEL COM QUILOMETRAGEM E MOEDA
+                        # =========================================================
                         formato_moeda = writer.book.add_format({'num_format': 'R$ #,##0.00'})
+                        formato_km = writer.book.add_format({'num_format': '#,##0.0'})
+                        
                         for nome_aba, df_sheet in dict_dfs.items():
                             df_sheet.to_excel(writer, index=False, sheet_name=nome_aba)
                             ws = writer.sheets[nome_aba]
                             for idx, col in enumerate(df_sheet.columns):
                                 tamanho = max(df_sheet[col].astype(str).str.len().max(), len(col)) + 2
+                                
                                 if col in ['Total M-O', 'Total Peças', 'Custo da IM', 'Pr.Tot Fornecedor', 'Descontos']:
                                     ws.set_column(idx, idx, 15, formato_moeda)
+                                elif col in ['Km Atual', 'Hodômetro', 'Qt Código', 'Ga.Kms', 'Ga. Dias']:
+                                    ws.set_column(idx, idx, 12, formato_km)
                                 else:
                                     ws.set_column(idx, idx, min(tamanho, 45))
                     
