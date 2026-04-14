@@ -1270,8 +1270,6 @@ def logistics_page():
                         continue
 
                     # === PEÇAS ===
-                    # Regex ajustado para ignorar caracteres especiais do fornecedor
-                    # === PEÇAS ===
                     # Ajuste 1: ^([\d\.,]+) agora captura quantidades com vírgula (ex: 15,8)
                     m_peca1 = re.match(r'^([\d\.,]+)\s+(.+?)\s+([\d\.,]+)\s+(.+?)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
                     m_peca2 = re.match(r'^([\d\.,]+)\s+(.*?)\s+(.*?)\s+([\d\.,]+)\s+(\d+)\s+([\d\.,]+)\s*(.*)$', line)
