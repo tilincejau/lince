@@ -1269,59 +1269,55 @@ def logistics_page():
                         idx_line += 1
                         continue
 
-                    # === NOVA LÓGICA DE EXTRAÇÃO DE PEÇAS E SERVIÇOS ===
-                    # 1. Encontra a NF, Desconto e Origem no final da linha
-                    m_end = re.search(r'\s+([A-Za-z0-9\-\/_]+)\s+([\-\d\.,]+)(?:\s+(NF manutenção|Mão de Obra|Interno))?$', line)
+                    # === PEÇAS (NOVA LÓGICA BLINDADA POR TOKENS) ===
+                    tokens = line.split()
                     
-                    # 2. Verifica se a linha começa com uma Quantidade (Número)
-                    m_start = re.match(r'^([\-\d\.,]+)\s+(.*)', line)
-
-                    if m_end and m_start:
-                        # É uma linha de PEÇA válida!
+                    # Verifica se a linha começa com um número (Quantidade) e tem o mínimo de informações
+                    if len(tokens) >= 4 and re.match(r'^[\-\d\.,]+$', tokens[0]):
                         
-                        # Descarrega o buffer de serviços pendentes
+                        # Descarrega o buffer se houver um serviço solto pendente
                         if buffer_servico:
                             desc_tmp = " ".join(buffer_servico).strip()
-                            if desc_tmp and len(desc_tmp) > 3:
+                            if len(desc_tmp) > 3:
                                 row_mo = veiculo_info.copy()
                                 row_mo.update({
-                                    'Qt Código': '1', 'Código': '',
-                                    'Descrição': desc_tmp,
-                                    'Pr.Tot Fornecedor': '0,00',
-                                    'Fornecedor': 'Serviço Interno / Sem NF',
+                                    'Qt Código': '1', 'Código': '', 'Descrição': desc_tmp,
+                                    'Pr.Tot Fornecedor': '0,00', 'Fornecedor': 'Serviço Interno',
                                     'N. NF': '', 'Descontos': '0,00', 'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': 'Interno'
                                 })
                                 parsed_data.append(row_mo)
                             buffer_servico = []
 
-                        nf = m_end.group(1)
-                        desconto = m_end.group(2)
-                        origem = m_end.group(3) if m_end.group(3) else 'NF manutenção'
+                        qtd = tokens[0]
                         
-                        qtd = m_start.group(1)
+                        # Tenta identificar Desconto e NF no final da linha, tolerando variações
+                        desconto = tokens[-1] if re.match(r'^[\-\d\.,]+$', tokens[-1]) else "0,00"
                         
-                        # O "meio" é tudo que está entre a Quantidade e a NF
-                        resto = line[m_start.end(1):m_end.start()].strip()
+                        if desconto != "0,00":
+                            nf = tokens[-2] if len(tokens) > 2 else ""
+                            fim_idx = len(tokens) - 2
+                        else:
+                            nf = tokens[-1] if re.match(r'^[A-Za-z0-9\-\/_]+$', tokens[-1]) else ""
+                            fim_idx = len(tokens) - 1 if nf else len(tokens)
+                            
+                        meio_tokens = tokens[1:fim_idx]
                         
-                        # Varredura Reversa: Lê de trás pra frente para achar o Valor e separar do Fornecedor
-                        sub_tokens = resto.split()
                         valor_idx = -1
-                        
-                        for i in range(len(sub_tokens)-1, -1, -1):
-                            # Identifica o valor (número puro com ou sem vírgula/sinal, ignorando letras)
-                            if re.match(r'^[\-\d]+(?:,\d+)?$', sub_tokens[i]):
+                        # Varredura Reversa para achar o Preço e separar do Fornecedor corretamente
+                        for i in range(len(meio_tokens)-1, -1, -1):
+                            # O preço costuma ser um número com vírgula ou inteiro isolado
+                            if re.match(r'^[\-\d]+,\d{2}$', meio_tokens[i]) or re.match(r'^[\-\d]+$', meio_tokens[i]):
                                 valor_idx = i
                                 break
                                 
                         if valor_idx != -1:
-                            valor = sub_tokens[valor_idx]
-                            fornecedor = " ".join(sub_tokens[valor_idx+1:])
-                            desc_full = " ".join(sub_tokens[:valor_idx])
+                            valor = meio_tokens[valor_idx]
+                            fornecedor = " ".join(meio_tokens[valor_idx+1:])
+                            desc_full = " ".join(meio_tokens[:valor_idx])
                         else:
-                            # Fallback de segurança
                             valor = "0,00"
                             fornecedor = "Não Identificado"
-                            desc_full = resto
+                            desc_full = " ".join(meio_tokens)
 
                         codigo = ""
                         m_cod = re.match(r'^([A-Z0-9\.\-]*\d[A-Z0-9\.\-]*)\s+(.*)', desc_full)
@@ -1338,7 +1334,7 @@ def logistics_page():
                             'Fornecedor': fornecedor if fornecedor else 'Não Informado',
                             'N. NF': nf,
                             'Descontos': desconto,
-                            'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': origem
+                            'Ga.Kms': '0,00', 'Ga. Dias': '0,00', 'Posição': '', 'Origem': 'NF manutenção'
                         })
                         parsed_data.append(row)
                         idx_line += 1
@@ -1348,6 +1344,11 @@ def logistics_page():
                     if re.match(r'^\d{2}:\d{2}\s+[\d\.,]+\s+[\d\.,]+', line):
                         idx_line += 1
                         continue
+
+                    if not re.match(r'^\d{2}/\d{2}/\d{4}', line) and not re.match(r'^[\-\d\.,]+$', line) and len(line) > 3:
+                        buffer_servico.append(line)
+                        
+                    idx_line += 1
 
                     if not re.match(r'^\d{2}/\d{2}/\d{4}', line) and not re.match(r'^[\-\d\.,]+$', line) and len(line) > 3:
                         buffer_servico.append(line)
