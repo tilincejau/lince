@@ -1123,6 +1123,13 @@ def logistics_page():
             for page in pdf_reader.pages:
                 text += page.extract_text() + "\n"
 
+            # ==================================================
+            # MODO DIAGNÓSTICO - ADICIONE ESTAS 3 LINHAS:
+            st.error("🛑 MODO DIAGNÓSTICO ATIVADO")
+            st.text_area("Copie esse texto e me mande:", text[:2000], height=400)
+            st.stop()
+            # ==================================================
+
             # Limpeza profunda
             text = text.replace('\r\n', '\n').replace('"\n","', ' ').replace('",\n"', ' ')
             text = text.replace('"\n"', '\n').replace('"', '')
