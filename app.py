@@ -181,7 +181,6 @@ def main_page():
         st.session_state.pop('username', None)
         st.session_state.pop('current_page', None)
         st.rerun()
-
 # ====================================================================
 # 5. SETOR DE LOGÍSTICA
 # ====================================================================
@@ -1105,7 +1104,7 @@ def logistics_page():
             except Exception as e:
                 st.error(f"Ocorreu um erro ao processar o arquivo: {e}")
 
-    # --- SCRIPT MANUTENÇÃO VEÍCULOS ---
+    # --- SCRIPT MANUTENÇÃO VEÍCULOS (NOVA LÓGICA ROBUSTA COM FILTRO DE PÁGINA) ---
     elif script_choice == "Manutenção Veículos":
         st.subheader("Manutenção de Veículos (FleetCom)")
         st.info("Envie os relatórios em PDF. O sistema irá consolidar tudo em um único arquivo Excel com abas separadas.")
@@ -1124,6 +1123,14 @@ def logistics_page():
             for page in pdf_reader.pages:
                 text += page.extract_text() + "\n"
 
+            # ==================================================
+            # MODO DIAGNÓSTICO (Comentado para não travar o app)
+            # st.error("🛑 MODO DIAGNÓSTICO ATIVADO")
+            # st.text_area("Copie esse texto e me mande:", text[:2000], height=400)
+            # st.stop()
+            # ==================================================
+
+            # Limpeza profunda
             text = text.replace('\r\n', '\n').replace('"\n","', ' ').replace('",\n"', ' ')
             text = text.replace('"\n"', '\n').replace('"', '')
             text = re.sub(r'^\s*,\s*', '', text, flags=re.MULTILINE)
@@ -1136,6 +1143,7 @@ def logistics_page():
 
             parsed_data = []
 
+            # Passo 1: Encontra com segurança onde cada veículo começa
             veiculo_pattern = re.compile(r'([A-Z]{3}-?\d[A-Z0-9]\d{2})\s+(.+?)(?:\s+[A-Z]{3}-?\d[A-Z0-9]\d{2})?\s+([\d\.]+,\d+)\s+(\d{4})')
             matches_veiculos = list(veiculo_pattern.finditer(text))
 
@@ -1187,10 +1195,12 @@ def logistics_page():
                     'Grupo veicular': 'DIFERENCIAL'
                 }
 
+                # Passo 2: O Segredo para as Quebras de Página (A Peneira Fina)
                 bloco = text[start_idx:end_idx].strip()
                 pecas_lines_raw = bloco.split('\n')
                 pecas_lines = []
                 
+                # Lista de lixos que o PDF gera quando muda de página
                 lixos_ignorar = [
                     "FLEETCOM - MANUTENÇÃO", "LINCE", "USUÁRIO:", "MANUTS. REALIZADAS", "PERÍODO:",
                     "N. VEÍCULO", "MODELO", "PLACA", "KM ATUAL", "ANO FABR", "DATA EXEC", "DATA INÍCIO", "DATA FIM", 
@@ -1205,12 +1215,14 @@ def logistics_page():
                     if not is_lixo and l.strip():
                         pecas_lines.append(l.strip())
                 
+                # Passo 3: Varredura dos Dados Limpos
                 buffer_servico = []
                 idx_line = 0
                 
                 while idx_line < len(pecas_lines):
                     line = pecas_lines[idx_line]
                     
+                    # === MÃO DE OBRA ===
                     if "Fornecedor de Mão-de-Obra" in line:
                         desc_servico = " ".join(buffer_servico).strip()
                         
@@ -1219,16 +1231,19 @@ def logistics_page():
                         valor = ""
                         desconto = ""
                         
+                        # Olha as próximas linhas dinamicamente para caçar os valores fracionados pela página
                         offset = 1
                         while idx_line + offset < len(pecas_lines) and offset <= 6:
                             prox = pecas_lines[idx_line + offset]
                             
+                            # Tenta ler tudo numa linha só (se não quebrou)
                             m_full = re.match(r'^(.*?)\s+(\d+)\s+([\d\.,]+)\s+([\d\.,]+)', prox)
                             if m_full:
                                 fornecedor, nf, valor, desconto = m_full.groups()
                                 offset += 1
                                 break
                                 
+                            # Leitura vertical (Pedaço por pedaço após o corte do lixo da página)
                             if not fornecedor and not re.match(r'^[\d\.,]+$', prox):
                                 fornecedor = prox
                             elif not nf and re.match(r'^\d+$', prox):
@@ -1242,6 +1257,7 @@ def logistics_page():
                             
                             offset += 1
                             
+                        # Atualiza o ponteiro para pular as linhas lidas
                         idx_line += (offset - 1)
                         
                         row = veiculo_info.copy()
@@ -1260,10 +1276,13 @@ def logistics_page():
                         idx_line += 1
                         continue
 
+                    # === PEÇAS (NOVA LÓGICA BLINDADA POR TOKENS) ===
                     tokens = line.split()
                     
+                    # Verifica se a linha começa com um número (Quantidade) e tem o mínimo de informações
                     if len(tokens) >= 4 and re.match(r'^[\-\d\.,]+$', tokens[0]):
                         
+                        # Descarrega o buffer se houver um serviço solto pendente
                         if buffer_servico:
                             desc_tmp = " ".join(buffer_servico).strip()
                             if len(desc_tmp) > 3:
@@ -1278,6 +1297,7 @@ def logistics_page():
 
                         qtd = tokens[0]
                         
+                        # Tenta identificar Desconto e NF no final da linha, tolerando variações
                         desconto = tokens[-1] if re.match(r'^[\-\d\.,]+$', tokens[-1]) else "0,00"
                         
                         if desconto != "0,00":
@@ -1290,7 +1310,9 @@ def logistics_page():
                         meio_tokens = tokens[1:fim_idx]
                         
                         valor_idx = -1
+                        # Varredura Reversa para achar o Preço e separar do Fornecedor corretamente
                         for i in range(len(meio_tokens)-1, -1, -1):
+                            # O preço costuma ser um número com vírgula ou inteiro isolado
                             if re.match(r'^[\-\d]+,\d{2}$', meio_tokens[i]) or re.match(r'^[\-\d]+$', meio_tokens[i]):
                                 valor_idx = i
                                 break
@@ -1325,6 +1347,7 @@ def logistics_page():
                         idx_line += 1
                         continue
 
+                    # === TEXTO SOLTO (DESCRIÇÃO DE SERVIÇO) ===
                     if re.match(r'^\d{2}:\d{2}\s+[\d\.,]+\s+[\d\.,]+', line):
                         idx_line += 1
                         continue
@@ -1334,6 +1357,7 @@ def logistics_page():
                         
                     idx_line += 1
 
+                # Flush Final de serviços no fim do bloco
                 if buffer_servico:
                     desc_tmp = " ".join(buffer_servico).strip()
                     if desc_tmp and len(desc_tmp) > 3:
@@ -1350,6 +1374,9 @@ def logistics_page():
             if parsed_data:
                 df_resultado = pd.DataFrame(parsed_data)
                 
+                # =========================================================
+                # NOVO BLOCO DE CONVERSÃO NUMÉRICA MAIS ABRANGENTE E ROBUSTO
+                # =========================================================
                 colunas_numericas = [
                     'Km Atual', 'Hodômetro', 'Total M-O', 'Total Peças', 
                     'Custo da IM', 'Pr.Tot Fornecedor', 'Descontos', 
@@ -1358,6 +1385,7 @@ def logistics_page():
                 
                 for c in colunas_numericas:
                     if c in df_resultado.columns:
+                        # Limpa espaços em branco, retira o ponto de milhar e troca vírgula por ponto
                         df_resultado[c] = pd.to_numeric(
                             df_resultado[c].astype(str)
                             .str.replace(r'\s+', '', regex=True)
@@ -1397,6 +1425,9 @@ def logistics_page():
                     st.success("✅ Relatórios processados com sucesso!")
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        # =========================================================
+                        # NOVA LÓGICA DE FORMATAÇÃO EXCEL COM QUILOMETRAGEM E MOEDA
+                        # =========================================================
                         formato_moeda = writer.book.add_format({'num_format': 'R$ #,##0.00'})
                         formato_km = writer.book.add_format({'num_format': '#,##0.0'})
                         
@@ -1429,7 +1460,6 @@ def logistics_page():
                             st.dataframe(df_sheet, use_container_width=True)
                 else:
                     st.error("Não foi possível extrair dados dos arquivos. Verifique o padrão do PDF.")
-
 # ====================================================================
 # 6. SETOR COMERCIAL
 # ====================================================================
@@ -1494,7 +1524,7 @@ def commercial_page():
                     st.download_button(label="📥 Baixar Arquivo", data=output_with_dropdown.getvalue(), file_name="troca_canal_processada.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             except Exception as e: st.error(f"Erro: {e}")
 
-    # --- SCRIPT 2: CIRCUITO EXECUÇÃO ---
+    # --- SCRIPT 2: CIRCUITO EXECUÇÃO E COM12 ---
     elif script_selection == "Circuito Execução":
         st.subheader("Circuito Execução")
 
@@ -1567,131 +1597,6 @@ def commercial_page():
             
             return df_transformed
 
-        def transform_circuito_arquivo_2(df):
-            df2 = df.copy()
-
-            # 1° Passo: Unificar colunas "QUAL O OBJETIVO"
-            obj_cols = [c for c in df2.columns if "QUAL O OBJETIVO" in str(c).upper()]
-            if obj_cols:
-                df2['QUAL O OBJETIVO'] = df2[obj_cols].apply(
-                    lambda row: ' | '.join(row.dropna().astype(str).replace('nan', '').str.strip().loc[lambda x: x != '']), axis=1
-                )
-                df2.drop(columns=[c for c in obj_cols if c != 'QUAL O OBJETIVO'], inplace=True, errors='ignore')
-
-            # 2° e 3° Passos: Limpar Checklists, Potenciais RGB e Marcações Extras (Deixando apenas o texto entre colchetes ou limpo)
-            rename_dict = {}
-            for c in df2.columns:
-                c_str = str(c)
-                if any(x in c_str.upper() for x in ["CHECKLIST DE EXECUÇÃO", "POTENCIAL RGB", "CHECKLIST DE PERFORMANCE"]):
-                    match = re.search(r'\[(.*?)\]', c_str)
-                    if match:
-                        rename_dict[c] = match.group(1).strip()
-            df2.rename(columns=rename_dict, inplace=True)
-
-            # 3° Passo: Consolidar Pontos Fortes e Oportunidades
-            pf_chaves = [
-                "PONTOS FORTES E OPORTUNIDADES", 
-                "PLATAFORMAS DE MARCAS", 
-                "PONTOS FORTES DA ROTA",
-                "OPORTUNIDADES DA ROTA"
-            ]
-            pf_cols = [c for c in df2.columns if any(chave in str(c).upper() for chave in pf_chaves)]
-            nome_col_pf = 'PONTOS FORTES E OPORTUNIDADES, PONTOS FORTES E OPORTUNIDADES EM PDVs COM RELAÇÃO AS PLATAFORMAS DE MARCAS, KSMs, PROGRAMAS DE MERCADO, PROGRAMAS REGIONAIS E INOVAÇÃO e PONTOS FORTES DA ROTA'
-            if pf_cols:
-                df2[nome_col_pf] = df2[pf_cols].apply(
-                    lambda row: ' | '.join(row.dropna().astype(str).replace('nan', '').str.strip().loc[lambda x: x != '']), axis=1
-                )
-                df2.drop(columns=pf_cols, inplace=True)
-
-            # 4° Passo: Unificar Presença e Visibilidade pelas marcas entre colchetes ou textos compridos
-            pres_vis_cols = [c for c in df2.columns if any(p in str(c).upper() for p in ["PRESENÇA", "VISIBILIDADE", "TEM NOSSAS CERVEJAS GELADAS", "POSICIONAMENTO DE NOSSO PRODUTOS"]) and ('[' in str(c) or '(' in str(c))]
-            agrupamento_pv = {}
-            for c in pres_vis_cols:
-                match = re.search(r'\[(.*?)\]', str(c))
-                if match:
-                    novo_nome = match.group(1).strip()
-                else:
-                    # Se não tiver colchete, limpa o texto base e o parêntese de pontos
-                    novo_nome = re.sub(r'\s*\(.*?\)', '', str(c)).strip()
-                    for prefixo in ["PRESENÇA", "VISIBILIDADE", "TEM NOSSAS CERVEJAS GELADAS", "POSICIONAMENTO DE NOSSO PRODUTOS"]:
-                        novo_nome = novo_nome.replace(prefixo, "").strip()
-                
-                if novo_nome:
-                    if novo_nome not in agrupamento_pv:
-                        agrupamento_pv[novo_nome] = []
-                    agrupamento_pv[novo_nome].append(c)
-            
-            for novo_nome, colunas_antigas in agrupamento_pv.items():
-                if novo_nome not in df2.columns:
-                    df2[novo_nome] = df2[colunas_antigas].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
-                    df2.drop(columns=colunas_antigas, inplace=True)
-
-            # 6° Passo: SKUs Vitoriosos (Se for "TEM", extrai o que está entre colchetes do título e separa por vírgula)
-            sku_cols = [c for c in df2.columns if "SKUs VITORIOSOS" in str(c).upper()]
-            
-            def processar_skus(row):
-                marcas_encontradas = []
-                for c in sku_cols:
-                    if "TEM" in str(row[c]).upper():
-                        match = re.search(r'\[(.*?)\]', str(c))
-                        if match:
-                            marcas_encontradas.append(match.group(1).strip())
-                return ', '.join(marcas_encontradas)
-            
-            nome_col_sku = 'QUAIS SKUS VITORIOSOS PRESENTES NO PDV'
-            if sku_cols:
-                df2[nome_col_sku] = df2.apply(processar_skus, axis=1)
-                df2.drop(columns=sku_cols, inplace=True)
-
-            # Limpeza de nomes de colunas que contenham pontuações no final (ex: "Heineken (30 Pontos)" -> "Heineken")
-            rename_produtos = {}
-            for c in df2.columns:
-                limpo = re.sub(r'\s*\(\d+\s*Pontos\)', '', str(c), flags=re.IGNORECASE).strip()
-                if limpo != str(c):
-                    rename_produtos[c] = limpo
-            df2.rename(columns=rename_produtos, inplace=True)
-
-            # Lista limpa de ordem desejada (sem duplicadas)
-            ordem_desejada = [
-                'Carimbo de data/hora',
-                '% de Pontuação',
-                nome_col_pf,
-                'Vendedor', 'CÓDIGO PDV', 'AVALIADOR', 'QUAL O OBJETIVO', 'ROTA', 'CIDADE AVALIADA',
-                'Planejamento (Minuto de ouro)', 'Leitura de loja', 'Fotografia do sucesso', 'Fechamento e acompanhamento',
-                'Share de Gôndola (Prateleira)', 'Share de Geladeira (Frio)', 'QUANTIDADE DE SKUs RGB PRÓPRIOS', 'QUANTIDADE DE SKUs RGB AMBEV',
-                'CANAL', 'VALIDAÇÃO DO CADASTRO VS BWC',
-                'Heineken Chopp ou 600ml', 'Amstel Chopp ou 600ML ou Litro', 'Schin 600ml ou Litro',
-                'Heineken Long Neck 330ml ou Heineken Long Neck 330ml Ret', 'Heineken Long neck 0.0 330ml',
-                'Amstel Long Neck ou Ultra 330ml', 'Heineken Lata 350ml', 'Heineken Lata 269ml', 'Amstel Lata',
-                'Baden Chopp ou 600ml', 'Baden Lata 350ml', 'Praya Long Neck 330ml', 'Fys Lata 350ml',
-                'BlueMoon Lata ou Long Neck', 'Heineken Shot 250ml', 'Itubaína',
-                'Impacto - Luminoso', 'Impacto - Quadro', 'Serviço - Balde ou Cervejela', 'Gráfico - Estar no Cardápio',
-                'Gráfico - Cartaz/cartop ou Faixa', 'Gráfico - Estar no Cardápio ou Cartaz/cartop', 'Impacto - Luminoso ou Quadro',
-                'Impacto - Quadro ou Cartaz/cartop', 'Impacto - Cartop/Cartaz', 'Gráfico Cartaz multimarcas e Adesivo de geladeira multimarcas',
-                'Ponto Natural:Wobbler, Stopper e Faixa de Gôndola', 'Capa Pallet, Bobina, Forração e Precificador de ilha',
-                'Display', 'Wobbler, Stopper e Faixa de Gôndola', 'Luminoso', 'Can Base',
-                'Adesivo de geladeira multimarcas OU faixa de gondula/régua', 'Faixa ou Cartaz ilha ou cartaz multimarcas',
-                'EXISTE GELADEIRA DA CIA NO PDV', 'Há cerveja da Cia refrigerada', 'Geladeira está com no mínimo 75% Abastecida',
-                'Geladeira não está invadida', 'O PDV BATE SEU GIRO DE REFRIGERAÇÃO?', 'FOTO DA GELADEIRA COM A PORTA ABERTA',
-                'SKUs Obrigatórios presentes estão refrigerados?', 'TODAS AS NOSSA CERVEJAS ESTÃO PRECIFICADAS',
-                'QUANTOS SKUs ESTÃO PRESENTES NO PDV', nome_col_sku,
-                'TTC E TTV HNK VS ORIGINAL', 'TTC  E TTV AMSTEL VS M1', 'Visitou todos os PDVs', 'Aderência ao TTV sugerido (Preço Ponta)',
-                'Coleta de Dados/Pesquisa no App', 'Atitude e Postura no Varejista', 'Utilizou os EPIs em toda a rota',
-                'Acordo e Negociação', 'QUAL A SUA NOTA PARA A EXECUÇÃO DO SEU VENDEDOR?',
-                'PRESENÇA', 'VISIBILIDADE', 'POSICIONAMENTO DE NOSSO PRODUTOS', 'TEM NOSSAS CERVEJAS GELADAS'
-            ]
-
-            # Remove duplicadas mantendo a ordem
-            ordem_desejada_unica = []
-            for item in ordem_desejada:
-                if item not in ordem_desejada_unica:
-                    ordem_desejada_unica.append(item)
-
-            colunas_existentes = [c for c in ordem_desejada_unica if c in df2.columns]
-            colunas_restantes = [c for c in df2.columns if c not in colunas_existentes]
-            
-            return df2[colunas_existentes + colunas_restantes]
-
         uploaded_file_2 = st.file_uploader("Envie o arquivo do Circuito (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
         if uploaded_file_2 is not None:
             try:
@@ -1702,46 +1607,20 @@ def commercial_page():
                 df_transformed = transform_points_columns(df_points)
                 
                 st.success("Transformação do Circuito concluída!")
-                st.write("Visualização processada Circuito (Arquivo 1):")
+                st.write("Visualização processada Circuito:")
                 st.dataframe(df_transformed.head())
                 
-                # --- ARQUIVO 1 (Original com Pontos) ---
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                     df_transformed.to_excel(writer, index=False)
                 output.seek(0)
                 
-                # --- ARQUIVO 2 (Otimizado com Regras Extras) ---
-                df_transformed_2 = transform_circuito_arquivo_2(df_transformed)
-                st.write("Visualização Otimizada (Arquivo 2):")
-                st.dataframe(df_transformed_2.head())
-
-                output_2 = io.BytesIO()
-                with pd.ExcelWriter(output_2, engine="xlsxwriter") as writer:
-                    df_transformed_2.to_excel(writer, index=False)
-                output_2.seek(0)
-                
-                st.write("---")
-                st.write("### ⬇️ Faça o download dos arquivos:")
-                col_btn1, col_btn2 = st.columns(2)
-                
-                with col_btn1:
-                    st.download_button(
-                        label="📥 Baixar Arquivo 1 (Com Pontos)",
-                        data=output,
-                        file_name="circuito_execucao_1_pontos.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                    
-                with col_btn2:
-                    st.download_button(
-                        label="📥 Baixar Arquivo 2 (Layout Otimizado)",
-                        data=output_2,
-                        file_name="circuito_execucao_2_otimizado.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
+                st.download_button(
+                    label="📥 Baixar Arquivo Circuito Transformado",
+                    data=output,
+                    file_name="circuito_execucao_final.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo de Circuito: {e}")
 
@@ -2153,7 +2032,7 @@ def commercial_page():
                 st.error(f"Erro ao processar o arquivo de Limite de Crédito: {e}")
 
     # =============================================================
-    # NOVO SCRIPT 5: PLANO DE MARKET SHARE
+    # NOVO SCRIPT 5: PLANO DE MARKET SHARE (VOLUME & EXECUÇÃO SEPARADOS)
     # =============================================================
     elif script_selection == "Plano de Market Share":
         st.subheader("Plano de Market Share (Arquivos Independentes)")
@@ -2168,6 +2047,7 @@ def commercial_page():
         meses_pt = {1: 'jan', 2: 'fev', 3: 'mar', 4: 'abr', 5: 'mai', 6: 'jun', 
                     7: 'jul', 8: 'ago', 9: 'set', 10: 'out', 11: 'nov', 12: 'dez'}
         
+        # LISTA ATUALIZADA: Define a ORDEM EXATA em que as colunas vão aparecer no Excel final
         colunas_cadastrais = [
             'VendCliCod', 'Vend Cli (Cód)', 
             'SupCliCod', 'Sup Cli (Cód)', 
@@ -2177,6 +2057,9 @@ def commercial_page():
             'PastaCliCod', 'Pasta Cli'
         ]
 
+        # ==============================================================
+        # PROCESSAMENTO 1: VOLUME (RGB, MAINSTREAM, PREMIUM)
+        # ==============================================================
         if uploaded_ms is not None:
             try:
                 st.markdown("### 📊 Processamento de Volume")
@@ -2202,6 +2085,7 @@ def commercial_page():
                     col_cad_exist_vol = [c for c in colunas_cadastrais if c in df_vol.columns]
                     df_cad_vol = df_vol[['CodCli'] + col_cad_exist_vol].drop_duplicates(subset=['CodCli'], keep='last')
                     
+                    # Metas 2025 -> 2026
                     df_2025_vol = df_vol[df_vol['Ano'] == 2025].copy()
                     df_metas_vol = pd.DataFrame({'CodCli': df_cad_vol['CodCli'].unique()})
                     
@@ -2232,6 +2116,7 @@ def commercial_page():
                         for met in metricas_vol:
                             for q in [1, 2, 3, 4]: df_metas_vol[f'Meta {q}° Tri ({met})'] = 0.0
 
+                    # Pivot
                     df_pivot_vol = df_vol.pivot_table(index='CodCli', columns='MesFormatado', values=metricas_vol, aggfunc='sum', fill_value=0)
                     df_pivot_vol.columns = [f"{mes} ({'RGB' if met.upper()=='RGB' else met.upper()})" for met, mes in df_pivot_vol.columns]
                     df_pivot_vol = df_pivot_vol.reset_index()
@@ -2239,6 +2124,7 @@ def commercial_page():
                     df_final_vol = pd.merge(df_cad_vol, df_pivot_vol, on='CodCli', how='left').fillna(0)
                     df_final_vol = pd.merge(df_final_vol, df_metas_vol, on='CodCli', how='left').fillna(0)
 
+                    # Ordenação e Realizado
                     anos_unicos = sorted(df_vol['Ano'].unique())
                     meses_26_pres = df_vol[df_vol['Ano'] == 2026]['RefMes'].dt.month.unique() if 2026 in anos_unicos else []
                     cols_finais = ['CodCli'] + col_cad_exist_vol
@@ -2289,6 +2175,9 @@ def commercial_page():
             except Exception as e:
                 st.error(f"Erro no processamento de Volume: {e}")
 
+        # ==============================================================
+        # PROCESSAMENTO 2: EXECUÇÃO (SKUs, mixRGB, Drop)
+        # ==============================================================
         if uploaded_exec is not None:
             try:
                 st.markdown("### 📋 Processamento de Execução")
@@ -2323,6 +2212,7 @@ def commercial_page():
                     col_cad_exist_ex = [c for c in colunas_cadastrais if c in df_ex.columns]
                     df_cad_ex = df_ex[['CodCli'] + col_cad_exist_ex].drop_duplicates(subset=['CodCli'], keep='last')
                     
+                    # Metas 2025 -> 2026 (Regras Específicas de Execução)
                     df_2025_ex = df_ex[df_ex['Ano'] == 2025].copy()
                     df_metas_ex = pd.DataFrame({'CodCli': df_cad_ex['CodCli'].unique()})
                     
@@ -2342,6 +2232,7 @@ def commercial_page():
                             b3 = q3 if q3 > 0 else b2
                             b4 = q4 if q4 > 0 else b3
                             
+                            # +1 para Skus e mixRGB, +10% para Drop
                             if met in ['Skus', 'mixRGB']:
                                 return pd.Series([b1+1 if b1>0 else 1, b2+1 if b2>0 else 1, b3+1 if b3>0 else 1, b4+1 if b4>0 else 1])
                             else:
@@ -2357,6 +2248,7 @@ def commercial_page():
                         for met in metricas_ex:
                             for q in [1, 2, 3, 4]: df_metas_ex[f'Meta {q}° Tri ({met})'] = 0.0
 
+                    # Pivot
                     df_pivot_ex = df_ex.pivot_table(index='CodCli', columns='MesFormatado', values=metricas_ex, aggfunc='sum', fill_value=0)
                     df_pivot_ex.columns = [f"{mes} ({met})" for met, mes in df_pivot_ex.columns]
                     df_pivot_ex = df_pivot_ex.reset_index()
@@ -2364,6 +2256,7 @@ def commercial_page():
                     df_final_ex = pd.merge(df_cad_ex, df_pivot_ex, on='CodCli', how='left').fillna(0)
                     df_final_ex = pd.merge(df_final_ex, df_metas_ex, on='CodCli', how='left').fillna(0)
 
+                    # Ordenação e Realizado
                     anos_unicos_ex = sorted(df_ex['Ano'].unique())
                     meses_26_pres_ex = df_ex[df_ex['Ano'] == 2026]['RefMes'].dt.month.unique() if 2026 in anos_unicos_ex else []
                     cols_finais_ex = ['CodCli'] + col_cad_exist_ex
