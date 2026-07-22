@@ -1578,21 +1578,22 @@ def commercial_page():
                 )
                 df2.drop(columns=[c for c in obj_cols if c != 'QUAL O OBJETIVO'], inplace=True, errors='ignore')
 
-            # 2° e 3° Passos: Limpar Checklists e Potenciais RGB (deixando apenas o texto entre colchetes)
+            # 2° e 3° Passos: Limpar Checklists, Potenciais RGB e Marcações Extras (Deixando apenas o texto entre colchetes ou limpo)
             rename_dict = {}
             for c in df2.columns:
                 c_str = str(c)
-                if "CHECKLIST DE EXECUÇÃO" in c_str.upper() or "POTENCIAL RGB" in c_str.upper():
+                if any(x in c_str.upper() for x in ["CHECKLIST DE EXECUÇÃO", "POTENCIAL RGB", "CHECKLIST DE PERFORMANCE"]):
                     match = re.search(r'\[(.*?)\]', c_str)
                     if match:
                         rename_dict[c] = match.group(1).strip()
             df2.rename(columns=rename_dict, inplace=True)
 
-            # 3° Passo (Nome exato da coluna solicitada): Consolidar Pontos Fortes e Oportunidades
+            # 3° Passo: Consolidar Pontos Fortes e Oportunidades
             pf_chaves = [
                 "PONTOS FORTES E OPORTUNIDADES", 
                 "PLATAFORMAS DE MARCAS", 
-                "PONTOS FORTES DA ROTA"
+                "PONTOS FORTES DA ROTA",
+                "OPORTUNIDADES DA ROTA"
             ]
             pf_cols = [c for c in df2.columns if any(chave in str(c).upper() for chave in pf_chaves)]
             nome_col_pf = 'PONTOS FORTES E OPORTUNIDADES, PONTOS FORTES E OPORTUNIDADES EM PDVs COM RELAÇÃO AS PLATAFORMAS DE MARCAS, KSMs, PROGRAMAS DE MERCADO, PROGRAMAS REGIONAIS E INOVAÇÃO e PONTOS FORTES DA ROTA'
@@ -1602,23 +1603,31 @@ def commercial_page():
                 )
                 df2.drop(columns=pf_cols, inplace=True)
 
-            # 4° Passo: Unificar Presença e Visibilidade pelas marcas entre colchetes
-            pres_vis_cols = [c for c in df2.columns if ("PRESENÇA" in str(c).upper() or "VISIBILIDADE" in str(c).upper()) and '[' in str(c)]
+            # 4° Passo: Unificar Presença e Visibilidade pelas marcas entre colchetes ou textos compridos
+            pres_vis_cols = [c for c in df2.columns if any(p in str(c).upper() for p in ["PRESENÇA", "VISIBILIDADE", "TEM NOSSAS CERVEJAS GELADAS", "POSICIONAMENTO DE NOSSO PRODUTOS"]) and ('[' in str(c) or '(' in str(c))]
             agrupamento_pv = {}
             for c in pres_vis_cols:
                 match = re.search(r'\[(.*?)\]', str(c))
                 if match:
                     novo_nome = match.group(1).strip()
+                else:
+                    # Se não tiver colchete, limpa o texto base e o parêntese de pontos
+                    novo_nome = re.sub(r'\s*\(.*?\)', '', str(c)).strip()
+                    for prefixo in ["PRESENÇA", "VISIBILIDADE", "TEM NOSSAS CERVEJAS GELADAS", "POSICIONAMENTO DE NOSSO PRODUTOS"]:
+                        novo_nome = novo_nome.replace(prefixo, "").strip()
+                
+                if novo_nome:
                     if novo_nome not in agrupamento_pv:
                         agrupamento_pv[novo_nome] = []
                     agrupamento_pv[novo_nome].append(c)
             
             for novo_nome, colunas_antigas in agrupamento_pv.items():
-                df2[novo_nome] = df2[colunas_antigas].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
-                df2.drop(columns=colunas_antigas, inplace=True)
+                if novo_nome not in df2.columns:
+                    df2[novo_nome] = df2[colunas_antigas].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
+                    df2.drop(columns=colunas_antigas, inplace=True)
 
-            # 6° Passo (parte de SKUs Vitoriosos): Se for "TEM", extrai o que está entre colchetes do título da coluna e separa por vírgula
-            sku_cols = [c for c in df2.columns if "QUANTOS E QUAIS SKUs VITORIOSOS" in str(c).upper() or "SKUs VITORIOSOS" in str(c).upper()]
+            # 6° Passo: SKUs Vitoriosos (Se for "TEM", extrai o que está entre colchetes do título e separa por vírgula)
+            sku_cols = [c for c in df2.columns if "SKUs VITORIOSOS" in str(c).upper()]
             
             def processar_skus(row):
                 marcas_encontradas = []
@@ -1634,7 +1643,15 @@ def commercial_page():
                 df2[nome_col_sku] = df2.apply(processar_skus, axis=1)
                 df2.drop(columns=sku_cols, inplace=True)
 
-            # Reorganização exata baseada na ordem que você listou
+            # Limpeza de nomes de colunas que contenham pontuações no final (ex: "Heineken (30 Pontos)" -> "Heineken")
+            rename_produtos = {}
+            for c in df2.columns:
+                limpo = re.sub(r'\s*\(\d+\s*Pontos\)', '', str(c), flags=re.IGNORECASE).strip()
+                if limpo != str(c):
+                    rename_produtos[c] = limpo
+            df2.rename(columns=rename_produtos, inplace=True)
+
+            # Lista limpa de ordem desejada (sem duplicadas)
             ordem_desejada = [
                 'Carimbo de data/hora',
                 '% de Pontuação',
@@ -1656,15 +1673,21 @@ def commercial_page():
                 'Adesivo de geladeira multimarcas OU faixa de gondula/régua', 'Faixa ou Cartaz ilha ou cartaz multimarcas',
                 'EXISTE GELADEIRA DA CIA NO PDV', 'Há cerveja da Cia refrigerada', 'Geladeira está com no mínimo 75% Abastecida',
                 'Geladeira não está invadida', 'O PDV BATE SEU GIRO DE REFRIGERAÇÃO?', 'FOTO DA GELADEIRA COM A PORTA ABERTA',
-                'Há cerveja da Cia refrigerada?', 'SKUs Obrigatórios presentes estão refrigerados?', 'TODAS AS NOSSA CERVEJAS ESTÃO PRECIFICADAS',
+                'SKUs Obrigatórios presentes estão refrigerados?', 'TODAS AS NOSSA CERVEJAS ESTÃO PRECIFICADAS',
                 'QUANTOS SKUs ESTÃO PRESENTES NO PDV', nome_col_sku,
                 'TTC E TTV HNK VS ORIGINAL', 'TTC  E TTV AMSTEL VS M1', 'Visitou todos os PDVs', 'Aderência ao TTV sugerido (Preço Ponta)',
                 'Coleta de Dados/Pesquisa no App', 'Atitude e Postura no Varejista', 'Utilizou os EPIs em toda a rota',
                 'Acordo e Negociação', 'QUAL A SUA NOTA PARA A EXECUÇÃO DO SEU VENDEDOR?',
-                'PRESENÇA', 'VISIBILIDADE', 'POSICIONAMENTO DE NOSSO PRODUTOS', 'TEM NOSSAS CERVEJAS GELADAS', 'TODAS AS NOSSA CERVEJAS ESTÃO PRECIFICADAS'
+                'PRESENÇA', 'VISIBILIDADE', 'POSICIONAMENTO DE NOSSO PRODUTOS', 'TEM NOSSAS CERVEJAS GELADAS'
             ]
 
-            colunas_existentes = [c for c in ordem_desejada if c in df2.columns]
+            # Remove duplicadas mantendo a ordem
+            ordem_desejada_unica = []
+            for item in ordem_desejada:
+                if item not in ordem_desejada_unica:
+                    ordem_desejada_unica.append(item)
+
+            colunas_existentes = [c for c in ordem_desejada_unica if c in df2.columns]
             colunas_restantes = [c for c in df2.columns if c not in colunas_existentes]
             
             return df2[colunas_existentes + colunas_restantes]
