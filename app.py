@@ -1570,7 +1570,7 @@ def commercial_page():
         def transform_circuito_arquivo_2(df):
             df2 = df.copy()
 
-            # 1° Passo: Unificar "QUAL O OBJETIVO" em uma única coluna
+            # 1° Passo: Unificar colunas "QUAL O OBJETIVO"
             obj_cols = [c for c in df2.columns if "QUAL O OBJETIVO" in str(c).upper()]
             if obj_cols:
                 df2['QUAL O OBJETIVO'] = df2[obj_cols].apply(
@@ -1578,7 +1578,7 @@ def commercial_page():
                 )
                 df2.drop(columns=[c for c in obj_cols if c != 'QUAL O OBJETIVO'], inplace=True, errors='ignore')
 
-            # 2° Passo: Limpar Checklists e Potenciais RGB (Deixando apenas o texto entre colchetes)
+            # 2° e 3° Passos: Limpar Checklists e Potenciais RGB (deixando apenas o texto entre colchetes)
             rename_dict = {}
             for c in df2.columns:
                 c_str = str(c)
@@ -1588,15 +1588,16 @@ def commercial_page():
                         rename_dict[c] = match.group(1).strip()
             df2.rename(columns=rename_dict, inplace=True)
 
-            # 3° Passo: Consolidar as colunas de "PONTOS FORTES E OPORTUNIDADES" na Coluna C
+            # 3° Passo (Nome exato da coluna solicitada): Consolidar Pontos Fortes e Oportunidades
             pf_chaves = [
                 "PONTOS FORTES E OPORTUNIDADES", 
                 "PLATAFORMAS DE MARCAS", 
                 "PONTOS FORTES DA ROTA"
             ]
             pf_cols = [c for c in df2.columns if any(chave in str(c).upper() for chave in pf_chaves)]
+            nome_col_pf = 'PONTOS FORTES E OPORTUNIDADES, PONTOS FORTES E OPORTUNIDADES EM PDVs COM RELAÇÃO AS PLATAFORMAS DE MARCAS, KSMs, PROGRAMAS DE MERCADO, PROGRAMAS REGIONAIS E INOVAÇÃO e PONTOS FORTES DA ROTA'
             if pf_cols:
-                df2['Plano de Ação - PONTOS FORTES E OPORTUNIDADES, PONTOS FORTES E OPORTUNIDADES EM PDVs COM RELAÇÃO AS PLATAFORMAS DE MARCAS, KSMs, PROGRAMAS DE MERCADO, PROGRAMAS REGIONAIS E INOVAÇÃO e PONTOS FORTES DA ROTA'] = df2[pf_cols].apply(
+                df2[nome_col_pf] = df2[pf_cols].apply(
                     lambda row: ' | '.join(row.dropna().astype(str).replace('nan', '').str.strip().loc[lambda x: x != '']), axis=1
                 )
                 df2.drop(columns=pf_cols, inplace=True)
@@ -1616,7 +1617,7 @@ def commercial_page():
                 df2[novo_nome] = df2[colunas_antigas].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
                 df2.drop(columns=colunas_antigas, inplace=True)
 
-            # 5° Passo: SKUs Vitoriosos (Se for "TEM", agrupa o nome do produto que está no título entre colchetes separado por vírgula)
+            # 6° Passo (parte de SKUs Vitoriosos): Se for "TEM", extrai o que está entre colchetes do título da coluna e separa por vírgula
             sku_cols = [c for c in df2.columns if "QUANTOS E QUAIS SKUs VITORIOSOS" in str(c).upper() or "SKUs VITORIOSOS" in str(c).upper()]
             
             def processar_skus(row):
@@ -1628,15 +1629,16 @@ def commercial_page():
                             marcas_encontradas.append(match.group(1).strip())
                 return ', '.join(marcas_encontradas)
             
+            nome_col_sku = 'QUAIS SKUS VITORIOSOS PRESENTES NO PDV'
             if sku_cols:
-                df2['QUAIS SKUS VITORIOSOS PRESENTES NG PDV'] = df2.apply(processar_skus, axis=1)
+                df2[nome_col_sku] = df2.apply(processar_skus, axis=1)
                 df2.drop(columns=sku_cols, inplace=True)
 
-            # 6° Passo: Reorganizar o DataFrame seguindo a ordem desejada exata
+            # Reorganização exata baseada na ordem que você listou
             ordem_desejada = [
                 'Carimbo de data/hora',
                 '% de Pontuação',
-                'Plano de Ação - PONTOS FORTES E OPORTUNIDADES, PONTOS FORTES E OPORTUNIDADES EM PDVs COM RELAÇÃO AS PLATAFORMAS DE MARCAS, KSMs, PROGRAMAS DE MERCADO, PROGRAMAS REGIONAIS E INOVAÇÃO e PONTOS FORTES DA ROTA',
+                nome_col_pf,
                 'Vendedor', 'CÓDIGO PDV', 'AVALIADOR', 'QUAL O OBJETIVO', 'ROTA', 'CIDADE AVALIADA',
                 'Planejamento (Minuto de ouro)', 'Leitura de loja', 'Fotografia do sucesso', 'Fechamento e acompanhamento',
                 'Share de Gôndola (Prateleira)', 'Share de Geladeira (Frio)', 'QUANTIDADE DE SKUs RGB PRÓPRIOS', 'QUANTIDADE DE SKUs RGB AMBEV',
@@ -1655,11 +1657,11 @@ def commercial_page():
                 'EXISTE GELADEIRA DA CIA NO PDV', 'Há cerveja da Cia refrigerada', 'Geladeira está com no mínimo 75% Abastecida',
                 'Geladeira não está invadida', 'O PDV BATE SEU GIRO DE REFRIGERAÇÃO?', 'FOTO DA GELADEIRA COM A PORTA ABERTA',
                 'Há cerveja da Cia refrigerada?', 'SKUs Obrigatórios presentes estão refrigerados?', 'TODAS AS NOSSA CERVEJAS ESTÃO PRECIFICADAS',
-                'QUANTOS SKUs ESTÃO PRESENTES NO PDV', 'QUAIS SKUS VITORIOSOS PRESENTES NG PDV',
+                'QUANTOS SKUs ESTÃO PRESENTES NO PDV', nome_col_sku,
                 'TTC E TTV HNK VS ORIGINAL', 'TTC  E TTV AMSTEL VS M1', 'Visitou todos os PDVs', 'Aderência ao TTV sugerido (Preço Ponta)',
                 'Coleta de Dados/Pesquisa no App', 'Atitude e Postura no Varejista', 'Utilizou os EPIs em toda a rota',
                 'Acordo e Negociação', 'QUAL A SUA NOTA PARA A EXECUÇÃO DO SEU VENDEDOR?',
-                'PRESENÇA', 'VISIBILIDADE', 'POSICIONAMENTO DE NOSSO PRODUTOS', 'TEM NOSSAS CERVEJAS GELADAS', 'TODAS AS NOSSAS CERVEJAS ESTÃO PRECIFICADAS'
+                'PRESENÇA', 'VISIBILIDADE', 'POSICIONAMENTO DE NOSSO PRODUTOS', 'TEM NOSSAS CERVEJAS GELADAS', 'TODAS AS NOSSA CERVEJAS ESTÃO PRECIFICADAS'
             ]
 
             colunas_existentes = [c for c in ordem_desejada if c in df2.columns]
