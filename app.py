@@ -1124,7 +1124,6 @@ def logistics_page():
             for page in pdf_reader.pages:
                 text += page.extract_text() + "\n"
 
-            # Limpeza profunda
             text = text.replace('\r\n', '\n').replace('"\n","', ' ').replace('",\n"', ' ')
             text = text.replace('"\n"', '\n').replace('"', '')
             text = re.sub(r'^\s*,\s*', '', text, flags=re.MULTILINE)
@@ -1137,7 +1136,6 @@ def logistics_page():
 
             parsed_data = []
 
-            # Passo 1: Encontra com segurança onde cada veículo começa
             veiculo_pattern = re.compile(r'([A-Z]{3}-?\d[A-Z0-9]\d{2})\s+(.+?)(?:\s+[A-Z]{3}-?\d[A-Z0-9]\d{2})?\s+([\d\.]+,\d+)\s+(\d{4})')
             matches_veiculos = list(veiculo_pattern.finditer(text))
 
@@ -1189,12 +1187,10 @@ def logistics_page():
                     'Grupo veicular': 'DIFERENCIAL'
                 }
 
-                # Passo 2: O Segredo para as Quebras de Página (A Peneira Fina)
                 bloco = text[start_idx:end_idx].strip()
                 pecas_lines_raw = bloco.split('\n')
                 pecas_lines = []
                 
-                # Lista de lixos que o PDF gera quando muda de página
                 lixos_ignorar = [
                     "FLEETCOM - MANUTENÇÃO", "LINCE", "USUÁRIO:", "MANUTS. REALIZADAS", "PERÍODO:",
                     "N. VEÍCULO", "MODELO", "PLACA", "KM ATUAL", "ANO FABR", "DATA EXEC", "DATA INÍCIO", "DATA FIM", 
@@ -1209,14 +1205,12 @@ def logistics_page():
                     if not is_lixo and l.strip():
                         pecas_lines.append(l.strip())
                 
-                # Passo 3: Varredura dos Dados Limpos
                 buffer_servico = []
                 idx_line = 0
                 
                 while idx_line < len(pecas_lines):
                     line = pecas_lines[idx_line]
                     
-                    # === MÃO DE OBRA ===
                     if "Fornecedor de Mão-de-Obra" in line:
                         desc_servico = " ".join(buffer_servico).strip()
                         
@@ -1225,19 +1219,16 @@ def logistics_page():
                         valor = ""
                         desconto = ""
                         
-                        # Olha as próximas linhas dinamicamente para caçar os valores fracionados pela página
                         offset = 1
                         while idx_line + offset < len(pecas_lines) and offset <= 6:
                             prox = pecas_lines[idx_line + offset]
                             
-                            # Tenta ler tudo numa linha só (se não quebrou)
                             m_full = re.match(r'^(.*?)\s+(\d+)\s+([\d\.,]+)\s+([\d\.,]+)', prox)
                             if m_full:
                                 fornecedor, nf, valor, desconto = m_full.groups()
                                 offset += 1
                                 break
                                 
-                            # Leitura vertical (Pedaço por pedaço após o corte do lixo da página)
                             if not fornecedor and not re.match(r'^[\d\.,]+$', prox):
                                 fornecedor = prox
                             elif not nf and re.match(r'^\d+$', prox):
@@ -1251,7 +1242,6 @@ def logistics_page():
                             
                             offset += 1
                             
-                        # Atualiza o ponteiro para pular as linhas lidas
                         idx_line += (offset - 1)
                         
                         row = veiculo_info.copy()
@@ -1270,12 +1260,10 @@ def logistics_page():
                         idx_line += 1
                         continue
 
-                    # === PEÇAS ===
                     tokens = line.split()
                     
                     if len(tokens) >= 4 and re.match(r'^[\-\d\.,]+$', tokens[0]):
                         
-                        # Descarrega o buffer se houver um serviço solto pendente
                         if buffer_servico:
                             desc_tmp = " ".join(buffer_servico).strip()
                             if len(desc_tmp) > 3:
@@ -1337,7 +1325,6 @@ def logistics_page():
                         idx_line += 1
                         continue
 
-                    # === TEXTO SOLTO (DESCRIÇÃO DE SERVIÇO) ===
                     if re.match(r'^\d{2}:\d{2}\s+[\d\.,]+\s+[\d\.,]+', line):
                         idx_line += 1
                         continue
@@ -1347,7 +1334,6 @@ def logistics_page():
                         
                     idx_line += 1
 
-                # Flush Final de serviços no fim do bloco
                 if buffer_servico:
                     desc_tmp = " ".join(buffer_servico).strip()
                     if desc_tmp and len(desc_tmp) > 3:
@@ -1582,44 +1568,42 @@ def commercial_page():
             return df_transformed
 
         def transform_circuito_arquivo_2(df):
-            # Cria uma cópia do dataframe que já teve os pontos calculados
             df2 = df.copy()
 
-            # 1° Passo: Unificar "QUAL O OBJETIVO"
+            # 1° Passo: Unificar "QUAL O OBJETIVO" em uma única coluna
             obj_cols = [c for c in df2.columns if "QUAL O OBJETIVO" in str(c).upper()]
             if obj_cols:
-                # Junta os textos das colunas ignorando os vazios/nulos
-                df2['QUAL O OBJETIVO (Unificado)'] = df2[obj_cols].apply(
+                df2['QUAL O OBJETIVO'] = df2[obj_cols].apply(
                     lambda row: ' | '.join(row.dropna().astype(str).replace('nan', '').str.strip().loc[lambda x: x != '']), axis=1
                 )
-                df2.drop(columns=obj_cols, inplace=True)
-                df2.rename(columns={'QUAL O OBJETIVO (Unificado)': 'QUAL O OBJETIVO'}, inplace=True)
+                df2.drop(columns=[c for c in obj_cols if c != 'QUAL O OBJETIVO'], inplace=True, errors='ignore')
 
-            # 2° Passo: Remover "CHECKLIST DE EXECUÇÃO" e colchetes
+            # 2° Passo: Limpar Checklists e Potenciais RGB (Deixando apenas o texto entre colchetes)
             rename_dict = {}
             for c in df2.columns:
                 c_str = str(c)
-                if "CHECKLIST DE EXECUÇÃO" in c_str.upper():
-                    # Extrai apenas o que está dentro dos colchetes
-                    match = re.search(r'(?i)CHECKLIST DE EXECUÇÃO\s*\[(.*?)\]', c_str)
+                if "CHECKLIST DE EXECUÇÃO" in c_str.upper() or "POTENCIAL RGB" in c_str.upper():
+                    match = re.search(r'\[(.*?)\]', c_str)
                     if match:
                         rename_dict[c] = match.group(1).strip()
             df2.rename(columns=rename_dict, inplace=True)
 
-            # 3° Passo: Remover "POTENCIAL RGB" e colchetes
-            rename_dict = {}
-            for c in df2.columns:
-                c_str = str(c)
-                if "POTENCIAL RGB" in c_str.upper():
-                    match = re.search(r'(?i)POTENCIAL RGB\s*\[(.*?)\]', c_str)
-                    if match:
-                        rename_dict[c] = match.group(1).strip()
-            df2.rename(columns=rename_dict, inplace=True)
+            # 3° Passo: Consolidar as colunas de "PONTOS FORTES E OPORTUNIDADES" na Coluna C
+            pf_chaves = [
+                "PONTOS FORTES E OPORTUNIDADES", 
+                "PLATAFORMAS DE MARCAS", 
+                "PONTOS FORTES DA ROTA"
+            ]
+            pf_cols = [c for c in df2.columns if any(chave in str(c).upper() for chave in pf_chaves)]
+            if pf_cols:
+                df2['Plano de Ação - PONTOS FORTES E OPORTUNIDADES, PONTOS FORTES E OPORTUNIDADES EM PDVs COM RELAÇÃO AS PLATAFORMAS DE MARCAS, KSMs, PROGRAMAS DE MERCADO, PROGRAMAS REGIONAIS E INOVAÇÃO e PONTOS FORTES DA ROTA'] = df2[pf_cols].apply(
+                    lambda row: ' | '.join(row.dropna().astype(str).replace('nan', '').str.strip().loc[lambda x: x != '']), axis=1
+                )
+                df2.drop(columns=pf_cols, inplace=True)
 
-            # 4° Passo: Transformar PRESENÇA e VISIBILIDADE pegando o texto do colchete
+            # 4° Passo: Unificar Presença e Visibilidade pelas marcas entre colchetes
             pres_vis_cols = [c for c in df2.columns if ("PRESENÇA" in str(c).upper() or "VISIBILIDADE" in str(c).upper()) and '[' in str(c)]
             agrupamento_pv = {}
-            
             for c in pres_vis_cols:
                 match = re.search(r'\[(.*?)\]', str(c))
                 if match:
@@ -1629,31 +1613,11 @@ def commercial_page():
                     agrupamento_pv[novo_nome].append(c)
             
             for novo_nome, colunas_antigas in agrupamento_pv.items():
-                # Como os pontos já foram convertidos em números pela função 1, aqui nós somamos caso a marca apareça na presença e na visibilidade
                 df2[novo_nome] = df2[colunas_antigas].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
                 df2.drop(columns=colunas_antigas, inplace=True)
 
-            # 5° Passo: Consolidar "PONTOS FORTES..." e mover para a Coluna C
-            pf_chaves = [
-                "PONTOS FORTES E OPORTUNIDADES", 
-                "PLATAFORMAS DE MARCAS", # Parte do nome longo
-                "PONTOS FORTES DA ROTA"
-            ]
-            pf_cols = [c for c in df2.columns if any(chave in str(c).upper() for chave in pf_chaves)]
-            if pf_cols:
-                df2['Pontos Fortes (Consolidado)'] = df2[pf_cols].apply(
-                    lambda row: ' | '.join(row.dropna().astype(str).replace('nan', '').str.strip().loc[lambda x: x != '']), axis=1
-                )
-                df2.drop(columns=pf_cols, inplace=True)
-                
-                # Mover para a Coluna C (Index 2)
-                cols = list(df2.columns)
-                cols.remove('Pontos Fortes (Consolidado)')
-                cols.insert(2, 'Pontos Fortes (Consolidado)')
-                df2 = df2[cols]
-
-            # 6° Passo: SKUs Vitoriosos (Verificar se TEM)
-            sku_cols = [c for c in df2.columns if "QUANTOS E QUAIS SKUs VITORIOSOS" in str(c).upper()]
+            # 5° Passo: SKUs Vitoriosos (Se for "TEM", agrupa o nome do produto que está no título entre colchetes separado por vírgula)
+            sku_cols = [c for c in df2.columns if "QUANTOS E QUAIS SKUs VITORIOSOS" in str(c).upper() or "SKUs VITORIOSOS" in str(c).upper()]
             
             def processar_skus(row):
                 marcas_encontradas = []
@@ -1665,10 +1629,43 @@ def commercial_page():
                 return ', '.join(marcas_encontradas)
             
             if sku_cols:
-                df2['SKUs Vitoriosos (Marcas)'] = df2.apply(processar_skus, axis=1)
+                df2['QUAIS SKUS VITORIOSOS PRESENTES NG PDV'] = df2.apply(processar_skus, axis=1)
                 df2.drop(columns=sku_cols, inplace=True)
 
-            return df2
+            # 6° Passo: Reorganizar o DataFrame seguindo a ordem desejada exata
+            ordem_desejada = [
+                'Carimbo de data/hora',
+                '% de Pontuação',
+                'Plano de Ação - PONTOS FORTES E OPORTUNIDADES, PONTOS FORTES E OPORTUNIDADES EM PDVs COM RELAÇÃO AS PLATAFORMAS DE MARCAS, KSMs, PROGRAMAS DE MERCADO, PROGRAMAS REGIONAIS E INOVAÇÃO e PONTOS FORTES DA ROTA',
+                'Vendedor', 'CÓDIGO PDV', 'AVALIADOR', 'QUAL O OBJETIVO', 'ROTA', 'CIDADE AVALIADA',
+                'Planejamento (Minuto de ouro)', 'Leitura de loja', 'Fotografia do sucesso', 'Fechamento e acompanhamento',
+                'Share de Gôndola (Prateleira)', 'Share de Geladeira (Frio)', 'QUANTIDADE DE SKUs RGB PRÓPRIOS', 'QUANTIDADE DE SKUs RGB AMBEV',
+                'CANAL', 'VALIDAÇÃO DO CADASTRO VS BWC',
+                'Heineken Chopp ou 600ml', 'Amstel Chopp ou 600ML ou Litro', 'Schin 600ml ou Litro',
+                'Heineken Long Neck 330ml ou Heineken Long Neck 330ml Ret', 'Heineken Long neck 0.0 330ml',
+                'Amstel Long Neck ou Ultra 330ml', 'Heineken Lata 350ml', 'Heineken Lata 269ml', 'Amstel Lata',
+                'Baden Chopp ou 600ml', 'Baden Lata 350ml', 'Praya Long Neck 330ml', 'Fys Lata 350ml',
+                'BlueMoon Lata ou Long Neck', 'Heineken Shot 250ml', 'Itubaína',
+                'Impacto - Luminoso', 'Impacto - Quadro', 'Serviço - Balde ou Cervejela', 'Gráfico - Estar no Cardápio',
+                'Gráfico - Cartaz/cartop ou Faixa', 'Gráfico - Estar no Cardápio ou Cartaz/cartop', 'Impacto - Luminoso ou Quadro',
+                'Impacto - Quadro ou Cartaz/cartop', 'Impacto - Cartop/Cartaz', 'Gráfico Cartaz multimarcas e Adesivo de geladeira multimarcas',
+                'Ponto Natural:Wobbler, Stopper e Faixa de Gôndola', 'Capa Pallet, Bobina, Forração e Precificador de ilha',
+                'Display', 'Wobbler, Stopper e Faixa de Gôndola', 'Luminoso', 'Can Base',
+                'Adesivo de geladeira multimarcas OU faixa de gondula/régua', 'Faixa ou Cartaz ilha ou cartaz multimarcas',
+                'EXISTE GELADEIRA DA CIA NO PDV', 'Há cerveja da Cia refrigerada', 'Geladeira está com no mínimo 75% Abastecida',
+                'Geladeira não está invadida', 'O PDV BATE SEU GIRO DE REFRIGERAÇÃO?', 'FOTO DA GELADEIRA COM A PORTA ABERTA',
+                'Há cerveja da Cia refrigerada?', 'SKUs Obrigatórios presentes estão refrigerados?', 'TODAS AS NOSSA CERVEJAS ESTÃO PRECIFICADAS',
+                'QUANTOS SKUs ESTÃO PRESENTES NO PDV', 'QUAIS SKUS VITORIOSOS PRESENTES NG PDV',
+                'TTC E TTV HNK VS ORIGINAL', 'TTC  E TTV AMSTEL VS M1', 'Visitou todos os PDVs', 'Aderência ao TTV sugerido (Preço Ponta)',
+                'Coleta de Dados/Pesquisa no App', 'Atitude e Postura no Varejista', 'Utilizou os EPIs em toda a rota',
+                'Acordo e Negociação', 'QUAL A SUA NOTA PARA A EXECUÇÃO DO SEU VENDEDOR?',
+                'PRESENÇA', 'VISIBILIDADE', 'POSICIONAMENTO DE NOSSO PRODUTOS', 'TEM NOSSAS CERVEJAS GELADAS', 'TODAS AS NOSSAS CERVEJAS ESTÃO PRECIFICADAS'
+            ]
+
+            colunas_existentes = [c for c in ordem_desejada if c in df2.columns]
+            colunas_restantes = [c for c in df2.columns if c not in colunas_existentes]
+            
+            return df2[colunas_existentes + colunas_restantes]
 
         uploaded_file_2 = st.file_uploader("Envie o arquivo do Circuito (.xlsx)", type=["xlsx"], key="circuito_exec_uploader") 
         if uploaded_file_2 is not None:
