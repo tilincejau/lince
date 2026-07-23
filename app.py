@@ -1577,16 +1577,22 @@ def commercial_page():
             if '% de Pontuação' in df_transf_step1.columns:
                 df2['% de Pontuação'] = df_transf_step1['% de Pontuação']
 
+            # Lógica Anti-Float para a junção do OBJETIVO
             if len(df2.columns) >= 9:
                 col_fghi = list(df2.columns[5:9])
-                df2['QUAL O OBJETIVO'] = df2[col_fghi].astype(str).replace(['nan', 'None'], '').agg(' | '.join, axis=1)
-                df2['QUAL O OBJETIVO'] = df2['QUAL O OBJETIVO'].str.strip(' |').str.replace(r'(\s*\|\s*)+', ' | ', regex=True)
+                df2['QUAL O OBJETIVO'] = df2[col_fghi].apply(
+                    lambda row: ' | '.join([str(v).strip() for v in row if pd.notna(v) and str(v).strip().lower() not in ['nan', 'none', '']]), 
+                    axis=1
+                )
 
+            # Lógica Anti-Float para a junção dos PLANOS E AÇÕES
             planos_search = ["PONTOS FORTES E OPORTUNIDADES", "PLATAFORMAS DE MARCAS", "PONTOS FORTES DA ROTA", "OPORTUNIDADES DA ROTA"]
             planos_cols = [c for c in df2.columns if any(normalize_str(p) in normalize_str(c) for p in planos_search)]
             if planos_cols:
-                df2['PLANOS E AÇÕES'] = df2[planos_cols].astype(str).replace(['nan', 'None'], '').agg(' | '.join, axis=1)
-                df2['PLANOS E AÇÕES'] = df2['PLANOS E AÇÕES'].str.strip(' |').str.replace(r'(\s*\|\s*)+', ' | ', regex=True)
+                df2['PLANOS E AÇÕES'] = df2[planos_cols].apply(
+                    lambda row: ' | '.join([str(v).strip() for v in row if pd.notna(v) and str(v).strip().lower() not in ['nan', 'none', '']]), 
+                    axis=1
+                )
 
             rename_extract_map = {
                 "CHECKLIST DE EXECUÇÃO [Planejamento (Minuto de ouro)]": "Planejamento (Minuto de ouro)",
