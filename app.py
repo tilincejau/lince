@@ -1130,7 +1130,6 @@ def logistics_page():
 
             parsed_data = []
 
-            # 1. Padrão ajustado para capturar qualquer tipo de placa (incluindo empilhadeiras tipo "CPD25")
             veiculo_pattern = re.compile(r'^([A-Z0-9\-]{3,15})\s+(.+?)\s+([A-Z0-9\-]{3,15})\s+([\d\.]+,\d+)\s+(\d{4})', re.MULTILINE)
             matches_veiculos = list(veiculo_pattern.finditer(text))
             
@@ -1138,7 +1137,7 @@ def logistics_page():
                 veiculo_pattern = re.compile(r'([A-Z0-9\-]{3,15})\s+(.+?)\s+([A-Z0-9\-]{3,15})\s+([\d\.]+,\d+)\s+(\d{4})')
                 matches_veiculos = list(veiculo_pattern.finditer(text))
 
-            # FUNÇÕES AUXILIARES DE PARSER (Da Direita para a Esquerda)
+            # Função Auxiliar de Peça
             def parse_part_line(line):
                 tokens = line.split()
                 if len(tokens) < 4: return None
@@ -1177,28 +1176,7 @@ def logistics_page():
                     'fornecedor': fornecedor, 'N.NF': n_nf, 'Descontos': desconto, 'Origem': origem
                 }
 
-            def parse_labor_line(desc, detail_line):
-                tokens = detail_line.split()
-                if not tokens: return None
-                
-                desconto = "0,00"
-                if re.match(r'^[\d\.,]+$', tokens[-1]):
-                    desconto = tokens.pop()
-                    
-                valor = "0,00"
-                if tokens and re.match(r'^[\d\.,]+$', tokens[-1]):
-                    valor = tokens.pop()
-                    
-                n_nf = ""
-                if tokens and re.match(r'^\d+$', tokens[-1]):
-                    n_nf = tokens.pop()
-                    
-                fornecedor = " ".join(tokens)
-                return {
-                    'Qt Código': '1', 'descrição': desc, 'Pr,total': valor,
-                    'fornecedor': fornecedor, 'N.NF': n_nf, 'Descontos': desconto, 'Origem': 'Mão de Obra'
-                }
-
+            # Loop por cada veículo
             for i in range(len(matches_veiculos)):
                 m = matches_veiculos[i]
                 
@@ -1264,9 +1242,8 @@ def logistics_page():
                 
                 for l in pecas_lines_raw:
                     l_upper = l.strip().upper()
-                    if any(l_upper.startswith(lixo) for lixo in lixos_ignorar) and "FORNECEDOR DE MÃO" not in l_upper and "FORNECEDOR DE MAO" not in l_upper:
-                        continue
-                    if l.strip():
+                    is_lixo = any(l_upper.startswith(lixo) or l_upper == lixo for lixo in lixos_ignorar)
+                    if not is_lixo and l.strip():
                         linha_limpa = l.strip().replace('R$ ', '').replace('R$', '')
                         pecas_lines.append(linha_limpa)
 
@@ -1278,16 +1255,14 @@ def logistics_page():
                     line = pecas_lines[idx_line].strip()
                     line_upper = line.upper()
                     
-                    # 3. Pula lixos de datas soltas / Repetição de cabeçalho
                     if re.match(r'^\d{2}/\d{2}/\d{4}', line) or line == placa or re.match(r'^[A-Z0-9\-]{6,10}$', line):
                         idx_line += 1
                         continue
                         
-                    # Verifica se a linha bate com o padrão de Peça
+                    # 1. BLOCO DE PEÇA
                     if re.match(r'^\d+\s', line):
                         res = parse_part_line(line)
                         if res:
-                            # Se estávamos armazenando algo no buffer que não era Mão de Obra, joga como Interno
                             if buffer_desc:
                                 desc_tmp = " ".join(buffer_desc).strip()
                                 if len(desc_tmp) > 3 and not ("MÃO" in desc_tmp.upper() or "MAO" in desc_tmp.upper()):
@@ -1302,7 +1277,7 @@ def logistics_page():
                             idx_line += 1
                             continue
 
-                    # Identifica Fornecedor de Mão de Obra e "fecha" o serviço
+                    # 2. BLOCO DE MÃO DE OBRA
                     if line_upper.startswith("FORNECEDOR DE MÃO-DE-OBRA") or line_upper.startswith("FORNECEDOR DE MAO-DE-OBRA"):
                         desc_servico = " ".join(labor_desc).strip()
                         if not desc_servico and buffer_desc:
@@ -1315,36 +1290,51 @@ def logistics_page():
                         while idx_line + offset < len(pecas_lines):
                             nl = pecas_lines[idx_line + offset].strip()
                             nl_upper = nl.upper()
+                            nl_tokens = nl.split()
                             
                             # Se esbarrar no próximo bloco ou peça, para a varredura
                             if nl_upper.startswith("FORNECEDOR DE MÃO-DE-OBRA") or nl_upper.startswith("FORNECEDOR DE MAO-DE-OBRA") or nl_upper.startswith("PEÇAS") or nl_upper.startswith("PECAS"):
                                 break
+                            
+                            # Se esbarrar numa linha de peça, para a varredura
                             if re.match(r'^\d+\s', nl) and parse_part_line(nl) is not None:
                                 break
                                 
-                            if nl_upper not in ["VALOR", "N. NF", "DESCONTOS DESCRIÇÃO", "GAR.KMS", "GAR.DIAS", "0,00", "00:00"]:
-                                if re.match(r'^\d{1,10}$', nl) and not nf:
-                                    nf = nl
-                                elif re.match(r'^[\d\.]+,\d{2}$', nl) and not valor:
-                                    valor = nl
-                                elif not re.match(r'^[\d\.]+,\d{2}$', nl) and not re.match(r'^\d+$', nl):
+                            # Pular as linhas de cabeçalho perdidas
+                            if any(x in nl_upper for x in ["VALOR", "N. NF", "DESCONTOS", "DESCRIÇÃO", "GAR.KMS", "GAR.DIAS", "0,00", "00:00"]):
+                                offset += 1
+                                continue
+                                
+                            # Identificar NF, Valor e Fornecedor da Mão de obra fatiando a linha
+                            for t in nl_tokens:
+                                if re.match(r'^\d{1,10}$', t) and not nf:
+                                    nf = t
+                                elif re.match(r'^\d{1,3}(?:\.\d{3})*,\d{2}$', t) and not valor:
+                                    valor = t
+                                elif re.match(r'^\d{1,3}(?:\.\d{3})*,\d{2}$', t) and valor:
+                                    pass # O segundo valor monetário é o desconto
+                                else:
                                     if not fornecedor:
-                                        fornecedor = nl
+                                        fornecedor = t
                                     else:
-                                        fornecedor += " " + nl
+                                        fornecedor += " " + t
                             offset += 1
                             
                         row = veiculo_info.copy()
                         row.update({
-                            'Qt Código': '1', 'descrição': desc_servico if desc_servico else "Mão de Obra / Serviço",
-                            'Pr,total': valor if valor else '0,00', 'fornecedor': fornecedor if fornecedor else 'Não Informado',
-                            'N.NF': nf, 'Descontos': '0,00', 'Origem': 'Mão de Obra'
+                            'Qt Código': '1', 
+                            'descrição': desc_servico if desc_servico else "Mão de Obra / Serviço",
+                            'Pr,total': valor if valor else '0,00',
+                            'fornecedor': fornecedor if fornecedor else 'Não Informado',
+                            'N.NF': nf,
+                            'Descontos': '0,00',
+                            'Origem': 'Mão de Obra'
                         })
                         parsed_data.append(row)
                         idx_line += offset
                         continue
                         
-                    # Se não for peça nem o rodapé do fornecedor, guarda como texto genérico ou mão de obra
+                    # 3. TEXTOS GENÉRICOS (ACUMULADORES DE DESCRIÇÃO)
                     if not re.match(r'^\d{2}:\d{2}', line) and not re.match(r'^[\d\.,]+$', line):
                         if "MÃO" in line_upper or "MAO" in line_upper:
                             labor_desc.append(line)
@@ -1356,7 +1346,7 @@ def logistics_page():
                                 
                     idx_line += 1
                     
-                # Ao final do bloco, se sobrou algo no buffer de descrição avulsa
+                # Ao final do bloco do veículo, descarrega o buffer restante se houver algo
                 if buffer_desc:
                     desc_tmp = " ".join(buffer_desc).strip()
                     if len(desc_tmp) > 3:
@@ -1383,7 +1373,7 @@ def logistics_page():
                             errors='coerce'
                         ).fillna(0)
                         
-                # >>> NOVA LÓGICA DE CLASSIFICAÇÃO DE MANUTENÇÃO <<<
+                # >>> LÓGICA DE CLASSIFICAÇÃO DE MANUTENÇÃO (PREVENTIVA / CORRETIVA) <<<
                 if 'descrição' in df_resultado.columns:
                     condicao_prev = df_resultado['descrição'].astype(str).str.upper().str.replace('Ó', 'O', regex=False).str.contains(r'OLEO|GRAXA|ADITIVO', regex=True, na=False)
                     df_resultado['Manutenção'] = np.where(condicao_prev, 'Preventiva', 'Corretiva')
