@@ -1264,91 +1264,99 @@ def logistics_page():
                 
                 for l in pecas_lines_raw:
                     l_upper = l.strip().upper()
-                    is_lixo = any(l_upper.startswith(lixo) or l_upper == lixo for lixo in lixos_ignorar)
-                    if not is_lixo and l.strip():
+                    if any(l_upper.startswith(lixo) for lixo in lixos_ignorar) and "FORNECEDOR DE MÃO" not in l_upper and "FORNECEDOR DE MAO" not in l_upper:
+                        continue
+                    if l.strip():
                         linha_limpa = l.strip().replace('R$ ', '').replace('R$', '')
                         pecas_lines.append(linha_limpa)
 
                 idx_line = 0
                 buffer_desc = []
+                labor_desc = []
                 
                 while idx_line < len(pecas_lines):
                     line = pecas_lines[idx_line].strip()
+                    line_upper = line.upper()
                     
                     # 3. Pula lixos de datas soltas / Repetição de cabeçalho
                     if re.match(r'^\d{2}/\d{2}/\d{4}', line) or line == placa or re.match(r'^[A-Z0-9\-]{6,10}$', line):
                         idx_line += 1
                         continue
                         
-                    # BLOCO DE MÃO DE OBRA
-                    if line.upper().startswith("MÃO DE OBRA") or line.upper().startswith("MAO DE OBRA"):
-                        if buffer_desc:
-                            desc_tmp = " ".join(buffer_desc).strip()
-                            if len(desc_tmp) > 3:
-                                row = veiculo_info.copy()
-                                row.update({'Qt Código': '1', 'descrição': desc_tmp, 'Pr,total': '0,00', 'fornecedor': 'Serviço Interno', 'N.NF': '', 'Descontos': '0,00', 'Origem': 'Interno'})
-                                parsed_data.append(row)
-                            buffer_desc = []
-                        
-                        desc_lines = [line]
-                        idx_line += 1
-                        
-                        while idx_line < len(pecas_lines):
-                            nxt = pecas_lines[idx_line].strip()
-                            if nxt.upper().startswith("FORNECEDOR DE MÃO-DE-OBRA") or nxt.upper().startswith("FORNECEDOR DE MAO-DE-OBRA"):
-                                idx_line += 1
-                                break
-                            if not re.match(r'^\d{2}/\d{2}/\d{4}', nxt):
-                                desc_lines.append(nxt)
-                            idx_line += 1
-                            
-                        desc = " ".join(desc_lines)
-                        
-                        detail_line = ""
-                        while idx_line < len(pecas_lines):
-                            nxt = pecas_lines[idx_line].strip()
-                            if "VALOR" in nxt.upper() or "N. NF" in nxt.upper() or "DESCONTOS" in nxt.upper():
-                                idx_line += 1
-                                continue
-                            if re.match(r'^\d{2}/\d{2}/\d{4}', nxt):
-                                idx_line += 1
-                                continue
-                            detail_line = nxt
-                            idx_line += 1
-                            break
-                            
-                        if detail_line:
-                            res = parse_labor_line(desc, detail_line)
-                            if res:
-                                row = veiculo_info.copy()
-                                row.update(res)
-                                parsed_data.append(row)
-                        continue
-                        
-                    # BLOCO DE PEÇAS
+                    # Verifica se a linha bate com o padrão de Peça
                     if re.match(r'^\d+\s', line):
-                        if buffer_desc:
-                            desc_tmp = " ".join(buffer_desc).strip()
-                            if len(desc_tmp) > 3:
-                                row = veiculo_info.copy()
-                                row.update({'Qt Código': '1', 'descrição': desc_tmp, 'Pr,total': '0,00', 'fornecedor': 'Serviço Interno', 'N.NF': '', 'Descontos': '0,00', 'Origem': 'Interno'})
-                                parsed_data.append(row)
-                            buffer_desc = []
-                            
                         res = parse_part_line(line)
                         if res:
+                            # Se estávamos armazenando algo no buffer que não era Mão de Obra, joga como Interno
+                            if buffer_desc:
+                                desc_tmp = " ".join(buffer_desc).strip()
+                                if len(desc_tmp) > 3 and not ("MÃO" in desc_tmp.upper() or "MAO" in desc_tmp.upper()):
+                                    row = veiculo_info.copy()
+                                    row.update({'Qt Código': '1', 'descrição': desc_tmp, 'Pr,total': '0,00', 'fornecedor': 'Serviço Interno', 'N.NF': '', 'Descontos': '0,00', 'Origem': 'Interno'})
+                                    parsed_data.append(row)
+                                buffer_desc = []
+                                
                             row = veiculo_info.copy()
                             row.update(res)
                             parsed_data.append(row)
                             idx_line += 1
                             continue
+
+                    # Identifica Fornecedor de Mão de Obra e "fecha" o serviço
+                    if line_upper.startswith("FORNECEDOR DE MÃO-DE-OBRA") or line_upper.startswith("FORNECEDOR DE MAO-DE-OBRA"):
+                        desc_servico = " ".join(labor_desc).strip()
+                        if not desc_servico and buffer_desc:
+                            desc_servico = " ".join(buffer_desc).strip()
+                            buffer_desc = []
+                        labor_desc = []
+
+                        fornecedor, nf, valor = "", "", ""
+                        offset = 1
+                        while idx_line + offset < len(pecas_lines):
+                            nl = pecas_lines[idx_line + offset].strip()
+                            nl_upper = nl.upper()
                             
-                    # Tudo que sobrar e não engatilhar as linhas acima, vira descrição solta (Serviços Internos, etc)
-                    if not re.match(r'^\d{2}:\d{2}', line) and not re.match(r'^[\d\.,]+$', line):
-                        buffer_desc.append(line)
+                            # Se esbarrar no próximo bloco ou peça, para a varredura
+                            if nl_upper.startswith("FORNECEDOR DE MÃO-DE-OBRA") or nl_upper.startswith("FORNECEDOR DE MAO-DE-OBRA") or nl_upper.startswith("PEÇAS") or nl_upper.startswith("PECAS"):
+                                break
+                            if re.match(r'^\d+\s', nl) and parse_part_line(nl) is not None:
+                                break
+                                
+                            if nl_upper not in ["VALOR", "N. NF", "DESCONTOS DESCRIÇÃO", "GAR.KMS", "GAR.DIAS", "0,00", "00:00"]:
+                                if re.match(r'^\d{1,10}$', nl) and not nf:
+                                    nf = nl
+                                elif re.match(r'^[\d\.]+,\d{2}$', nl) and not valor:
+                                    valor = nl
+                                elif not re.match(r'^[\d\.]+,\d{2}$', nl) and not re.match(r'^\d+$', nl):
+                                    if not fornecedor:
+                                        fornecedor = nl
+                                    else:
+                                        fornecedor += " " + nl
+                            offset += 1
+                            
+                        row = veiculo_info.copy()
+                        row.update({
+                            'Qt Código': '1', 'descrição': desc_servico if desc_servico else "Mão de Obra / Serviço",
+                            'Pr,total': valor if valor else '0,00', 'fornecedor': fornecedor if fornecedor else 'Não Informado',
+                            'N.NF': nf, 'Descontos': '0,00', 'Origem': 'Mão de Obra'
+                        })
+                        parsed_data.append(row)
+                        idx_line += offset
+                        continue
                         
+                    # Se não for peça nem o rodapé do fornecedor, guarda como texto genérico ou mão de obra
+                    if not re.match(r'^\d{2}:\d{2}', line) and not re.match(r'^[\d\.,]+$', line):
+                        if "MÃO" in line_upper or "MAO" in line_upper:
+                            labor_desc.append(line)
+                        else:
+                            if labor_desc:
+                                labor_desc.append(line)
+                            else:
+                                buffer_desc.append(line)
+                                
                     idx_line += 1
                     
+                # Ao final do bloco, se sobrou algo no buffer de descrição avulsa
                 if buffer_desc:
                     desc_tmp = " ".join(buffer_desc).strip()
                     if len(desc_tmp) > 3:
