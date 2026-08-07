@@ -1108,15 +1108,9 @@ def logistics_page():
     # --- SCRIPT MANUTENÇÃO VEÍCULOS ---
     elif script_choice == "Manutenção Veículos":
         st.subheader("Manutenção de Veículos (FleetCom)")
-        st.info("Envie os relatórios em PDF. O sistema irá consolidar tudo em um único arquivo Excel com abas separadas.")
+        st.info("Envie o relatório em PDF. O sistema irá consolidar tudo em um único arquivo Excel.")
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            up_cam = st.file_uploader("🚛 Caminhões (PDF)", type=["pdf"], key="up_cam")
-        with col2:
-            up_car = st.file_uploader("🚗 Carros (PDF)", type=["pdf"], key="up_car")
-        with col3:
-            up_mot = st.file_uploader("🏍️ Motos (PDF)", type=["pdf"], key="up_mot")
+        up_frota = st.file_uploader("📄 Relatório de Manutenção (PDF)", type=["pdf"], key="up_frota")
 
         def extrair_dados_fleetcom(pdf_buffer):
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_buffer.getvalue()))
@@ -1384,39 +1378,30 @@ def logistics_page():
             return pd.DataFrame()
 
         if st.button("Processar Frota Completa", use_container_width=True):
-            if not any([up_cam, up_car, up_mot]):
-                st.warning("⚠️ Envie pelo menos um relatório em PDF para processar.")
+            if not up_frota:
+                st.warning("⚠️ Envie o relatório em PDF para processar.")
             else:
-                dict_dfs = {}
-                if up_cam:
-                    df = extrair_dados_fleetcom(up_cam)
-                    if df is not None and not df.empty: dict_dfs["Caminhões"] = df
-                if up_car:
-                    df = extrair_dados_fleetcom(up_car)
-                    if df is not None and not df.empty: dict_dfs["Carros"] = df
-                if up_mot:
-                    df = extrair_dados_fleetcom(up_mot)
-                    if df is not None and not df.empty: dict_dfs["Motos"] = df
+                df = extrair_dados_fleetcom(up_frota)
 
-                if dict_dfs:
-                    st.success("✅ Relatórios processados com sucesso!")
+                if df is not None and not df.empty:
+                    st.success("✅ Relatório processado com sucesso!")
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                         formato_moeda = writer.book.add_format({'num_format': 'R$ #,##0.00'})
                         formato_km = writer.book.add_format({'num_format': '#,##0.0'})
                         
-                        for nome_aba, df_sheet in dict_dfs.items():
-                            df_sheet.to_excel(writer, index=False, sheet_name=nome_aba)
-                            ws = writer.sheets[nome_aba]
-                            for idx, col in enumerate(df_sheet.columns):
-                                tamanho = max(df_sheet[col].astype(str).str.len().max(), len(col)) + 2
-                                
-                                if col in ['Total M-O', 'Total Peças', 'Custo da IM', 'Pr,total', 'Descontos']:
-                                    ws.set_column(idx, idx, 15, formato_moeda)
-                                elif col in ['Km Atual', 'Hodômetro', 'Qt Código', 'Ga. KMS', 'GA. Dias']:
-                                    ws.set_column(idx, idx, 12, formato_km)
-                                else:
-                                    ws.set_column(idx, idx, min(tamanho, 45))
+                        nome_aba = "Manutenção"
+                        df.to_excel(writer, index=False, sheet_name=nome_aba)
+                        ws = writer.sheets[nome_aba]
+                        for idx, col in enumerate(df.columns):
+                            tamanho = max(df[col].astype(str).str.len().max(), len(col)) + 2
+                            
+                            if col in ['Total M-O', 'Total Peças', 'Custo da IM', 'Pr,total', 'Descontos']:
+                                ws.set_column(idx, idx, 15, formato_moeda)
+                            elif col in ['Km Atual', 'Hodômetro', 'Qt Código', 'Ga. KMS', 'GA. Dias']:
+                                ws.set_column(idx, idx, 12, formato_km)
+                            else:
+                                ws.set_column(idx, idx, min(tamanho, 45))
                     
                     output.seek(0)
                     st.download_button(
@@ -1429,11 +1414,10 @@ def logistics_page():
                     
                     st.write("---")
                     st.write("### 👁️ Visualização dos Dados:")
-                    for nome_aba, df_sheet in dict_dfs.items():
-                        with st.expander(f"Frota: {nome_aba} ({len(df_sheet)} serviços)"):
-                            st.dataframe(df_sheet, use_container_width=True)
+                    with st.expander(f"Frota Consolidada ({len(df)} serviços)"):
+                        st.dataframe(df, use_container_width=True)
                 else:
-                    st.error("Não foi possível extrair dados dos arquivos. Verifique o padrão do PDF.")
+                    st.error("Não foi possível extrair dados do arquivo. Verifique o padrão do PDF.")
 
 # ====================================================================
 # 6. SETOR COMERCIAL
