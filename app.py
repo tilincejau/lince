@@ -1130,13 +1130,74 @@ def logistics_page():
 
             parsed_data = []
 
-            # Regex abrangente para placas e empilhadeiras (CPD25)
+            # 1. Padrão ajustado para capturar qualquer tipo de placa (incluindo empilhadeiras tipo "CPD25")
             veiculo_pattern = re.compile(r'^([A-Z0-9\-]{3,15})\s+(.+?)\s+([A-Z0-9\-]{3,15})\s+([\d\.]+,\d+)\s+(\d{4})', re.MULTILINE)
             matches_veiculos = list(veiculo_pattern.finditer(text))
             
             if not matches_veiculos:
                 veiculo_pattern = re.compile(r'([A-Z0-9\-]{3,15})\s+(.+?)\s+([A-Z0-9\-]{3,15})\s+([\d\.]+,\d+)\s+(\d{4})')
                 matches_veiculos = list(veiculo_pattern.finditer(text))
+
+            # FUNÇÕES AUXILIARES DE PARSER (Da Direita para a Esquerda)
+            def parse_part_line(line):
+                tokens = line.split()
+                if len(tokens) < 4: return None
+                
+                qtd = tokens[0]
+                if not re.match(r'^\d+$', qtd): return None
+                
+                origem = []
+                while tokens and not re.match(r'^[\d\.,]+$', tokens[-1]):
+                    origem.insert(0, tokens.pop())
+                origem = " ".join(origem) if origem else "Não Informado"
+                
+                desconto = "0,00"
+                if tokens and re.match(r'^[\d\.,]+$', tokens[-1]):
+                    desconto = tokens.pop()
+                    
+                n_nf = ""
+                if tokens and re.match(r'^\d+$', tokens[-1]):
+                    n_nf = tokens.pop()
+                    
+                pr_tot_idx = -1
+                for i in range(len(tokens)-1, 0, -1):
+                    if re.match(r'^\d{1,3}(?:\.\d{3})*,\d{2}$', tokens[i]):
+                        pr_tot_idx = i
+                        break
+                        
+                if pr_tot_idx != -1:
+                    pr_tot = tokens[pr_tot_idx]
+                    fornecedor = " ".join(tokens[pr_tot_idx+1:])
+                    descricao = " ".join(tokens[1:pr_tot_idx])
+                else:
+                    return None
+                    
+                return {
+                    'Qt Código': qtd, 'descrição': descricao, 'Pr,total': pr_tot,
+                    'fornecedor': fornecedor, 'N.NF': n_nf, 'Descontos': desconto, 'Origem': origem
+                }
+
+            def parse_labor_line(desc, detail_line):
+                tokens = detail_line.split()
+                if not tokens: return None
+                
+                desconto = "0,00"
+                if re.match(r'^[\d\.,]+$', tokens[-1]):
+                    desconto = tokens.pop()
+                    
+                valor = "0,00"
+                if tokens and re.match(r'^[\d\.,]+$', tokens[-1]):
+                    valor = tokens.pop()
+                    
+                n_nf = ""
+                if tokens and re.match(r'^\d+$', tokens[-1]):
+                    n_nf = tokens.pop()
+                    
+                fornecedor = " ".join(tokens)
+                return {
+                    'Qt Código': '1', 'descrição': desc, 'Pr,total': valor,
+                    'fornecedor': fornecedor, 'N.NF': n_nf, 'Descontos': desconto, 'Origem': 'Mão de Obra'
+                }
 
             for i in range(len(matches_veiculos)):
                 m = matches_veiculos[i]
@@ -1208,52 +1269,6 @@ def logistics_page():
                         linha_limpa = l.strip().replace('R$ ', '').replace('R$', '')
                         pecas_lines.append(linha_limpa)
 
-                # Processador de linha: Peças
-                def parse_part_line(line):
-                    tokens = line.split()
-                    if len(tokens) < 4: return None
-                    qtd = tokens[0]
-                    if not re.match(r'^\d+$', qtd): return None
-                    origem = []
-                    while tokens and not re.match(r'^[\d\.,]+$', tokens[-1]):
-                        origem.insert(0, tokens.pop())
-                    origem = " ".join(origem) if origem else "Não Informado"
-                    desconto = "0,00"
-                    if tokens and re.match(r'^[\d\.,]+$', tokens[-1]):
-                        desconto = tokens.pop()
-                    n_nf = ""
-                    if tokens and re.match(r'^\d+$', tokens[-1]):
-                        n_nf = tokens.pop()
-                    pr_tot_idx = -1
-                    # Leitura reversa para encontrar o Pr.Total
-                    for j in range(len(tokens)-1, 0, -1):
-                        if re.match(r'^\d{1,3}(?:\.\d{3})*,\d{2}$', tokens[j]):
-                            pr_tot_idx = j
-                            break
-                    if pr_tot_idx != -1:
-                        pr_tot = tokens[pr_tot_idx]
-                        fornecedor = " ".join(tokens[pr_tot_idx+1:])
-                        descricao = " ".join(tokens[1:pr_tot_idx])
-                    else:
-                        return None
-                    return {'Qt Código': qtd, 'descrição': descricao, 'Pr,total': pr_tot, 'fornecedor': fornecedor, 'N.NF': n_nf, 'Descontos': desconto, 'Origem': origem}
-
-                # Processador de linha: Mão de obra
-                def parse_labor_line(desc, detail_line):
-                    tokens = detail_line.split()
-                    if not tokens: return None
-                    desconto = "0,00"
-                    if re.match(r'^[\d\.,]+$', tokens[-1]):
-                        desconto = tokens.pop()
-                    valor = "0,00"
-                    if tokens and re.match(r'^[\d\.,]+$', tokens[-1]):
-                        valor = tokens.pop()
-                    n_nf = ""
-                    if tokens and re.match(r'^\d+$', tokens[-1]):
-                        n_nf = tokens.pop()
-                    fornecedor = " ".join(tokens)
-                    return {'Qt Código': '1', 'descrição': desc, 'Pr,total': valor, 'fornecedor': fornecedor, 'N.NF': n_nf, 'Descontos': desconto, 'Origem': 'Mão de Obra'}
-
                 idx_line = 0
                 buffer_desc = []
                 
@@ -1265,6 +1280,7 @@ def logistics_page():
                         idx_line += 1
                         continue
                         
+                    # BLOCO DE MÃO DE OBRA
                     if line.upper().startswith("MÃO DE OBRA") or line.upper().startswith("MAO DE OBRA"):
                         if buffer_desc:
                             desc_tmp = " ".join(buffer_desc).strip()
@@ -1309,6 +1325,7 @@ def logistics_page():
                                 parsed_data.append(row)
                         continue
                         
+                    # BLOCO DE PEÇAS
                     if re.match(r'^\d+\s', line):
                         if buffer_desc:
                             desc_tmp = " ".join(buffer_desc).strip()
@@ -1326,6 +1343,7 @@ def logistics_page():
                             idx_line += 1
                             continue
                             
+                    # Tudo que sobrar e não engatilhar as linhas acima, vira descrição solta (Serviços Internos, etc)
                     if not re.match(r'^\d{2}:\d{2}', line) and not re.match(r'^[\d\.,]+$', line):
                         buffer_desc.append(line)
                         
@@ -1357,11 +1375,18 @@ def logistics_page():
                             errors='coerce'
                         ).fillna(0)
                         
+                # >>> NOVA LÓGICA DE CLASSIFICAÇÃO DE MANUTENÇÃO <<<
+                if 'descrição' in df_resultado.columns:
+                    condicao_prev = df_resultado['descrição'].astype(str).str.upper().str.replace('Ó', 'O', regex=False).str.contains(r'OLEO|GRAXA|ADITIVO', regex=True, na=False)
+                    df_resultado['Manutenção'] = np.where(condicao_prev, 'Preventiva', 'Corretiva')
+                else:
+                    df_resultado['Manutenção'] = 'Corretiva'
+                        
                 colunas_ordenadas = [
                     'N. veículo', 'Modelo', 'Placa', 'Km Atual', 'Ano Fabr.', 
                     'Data Exec.', 'Data Inicio', 'Tempo Parado', 'Hodômetro', 
                     'Total M-O', 'Total Peças', 'Custo da IM', 'Código da IM', 'Grupo Veicular',
-                    'Qt Código', 'descrição', 'Pr,total', 'fornecedor', 
+                    'Qt Código', 'descrição', 'Manutenção', 'Pr,total', 'fornecedor', 
                     'N.NF', 'Descontos', 'Ga. KMS', 'GA. Dias', 'posição', 'Origem'
                 ]
                 colunas_presentes = [c for c in colunas_ordenadas if c in df_resultado.columns]
