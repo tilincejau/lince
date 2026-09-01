@@ -1130,34 +1130,30 @@ def logistics_page():
 
             parsed_data = []
 
-            veiculo_pattern = re.compile(r'^([A-Z0-9\-]{3,15})\s+(.+?)\s+([A-Z0-9\-]{3,15})\s+([\d\.]+,\d+)\s+(\d{4})', re.MULTILINE)
+            # Expressão Regular para pegar os cabeçalhos mesmo que a data esteja colada no ano
+            veiculo_pattern = re.compile(r'([A-Z0-9\-]{6,10})\s+(.+?)\s+([A-Z0-9\-]{6,10})\s+([\d\.]+,\d+)\s+(\d{4})\s*(\d{2}/\d{2}/\d{4})')
             matches_veiculos = list(veiculo_pattern.finditer(text))
-            
-            if not matches_veiculos:
-                veiculo_pattern = re.compile(r'([A-Z0-9\-]{3,15})\s+(.+?)\s+([A-Z0-9\-]{3,15})\s+([\d\.]+,\d+)\s+(\d{4})')
-                matches_veiculos = list(veiculo_pattern.finditer(text))
 
-            # Função Auxiliar de Peça
-            def parse_part_line(line):
+            def parse_part_line_v5(line):
                 tokens = line.split()
-                if len(tokens) < 4: return None
+                if len(tokens) < 3: return None
                 
                 qtd = tokens[0]
                 if not re.match(r'^\d+$', qtd): return None
                 
-                origem = []
-                while tokens and not re.match(r'^[\d\.,]+$', tokens[-1]):
-                    origem.insert(0, tokens.pop())
-                origem = " ".join(origem) if origem else "Não Informado"
+                origem_tokens = []
+                while tokens and not re.match(r'^[\d\.,]+$', tokens[-1]) and not re.match(r'^\d+$', tokens[-1]):
+                    origem_tokens.insert(0, tokens.pop())
                 
-                desconto = "0,00"
-                if tokens and re.match(r'^[\d\.,]+$', tokens[-1]):
-                    desconto = tokens.pop()
-                    
                 n_nf = ""
                 if tokens and re.match(r'^\d+$', tokens[-1]):
                     n_nf = tokens.pop()
                     
+                desconto = "0,00"
+                if tokens and re.match(r'^[\d\.,]+$', tokens[-1]):
+                    desconto = tokens.pop()
+                    
+                pr_tot = "0,00"
                 pr_tot_idx = -1
                 for i in range(len(tokens)-1, 0, -1):
                     if re.match(r'^\d{1,3}(?:\.\d{3})*,\d{2}$', tokens[i]):
@@ -1169,14 +1165,33 @@ def logistics_page():
                     fornecedor = " ".join(tokens[pr_tot_idx+1:])
                     descricao = " ".join(tokens[1:pr_tot_idx])
                 else:
-                    return None
-                    
+                    parts = re.split(r'\s{2,}', line.strip())
+                    if len(parts) >= 4:
+                        desc_candidates = []
+                        fornecedor_cand = ""
+                        for i in range(1, len(parts)):
+                            if re.match(r'^\d+$', parts[i]) or "manutenção" in parts[i].lower():
+                                break
+                            if not desc_candidates:
+                                desc_candidates.append(parts[i])
+                            else:
+                                fornecedor_cand = parts[i]
+                        
+                        if not fornecedor_cand and len(desc_candidates) > 0:
+                            descricao = desc_candidates[0]
+                            fornecedor = ""
+                        else:
+                            descricao = " ".join(desc_candidates)
+                            fornecedor = fornecedor_cand
+                    else:
+                        descricao = " ".join(tokens[1:])
+                        fornecedor = ""
+                        
                 return {
-                    'Qt Código': qtd, 'descrição': descricao, 'Pr,total': pr_tot,
-                    'fornecedor': fornecedor, 'N.NF': n_nf, 'Descontos': desconto, 'Origem': origem
+                    'descrição': descricao, 'Pr,total': pr_tot,
+                    'fornecedor': fornecedor, 'N.NF': n_nf, 'Descontos': desconto
                 }
 
-            # Loop por cada veículo
             for i in range(len(matches_veiculos)):
                 m = matches_veiculos[i]
                 
@@ -1184,60 +1199,59 @@ def logistics_page():
                 modelo = m.group(2).strip()
                 km_atual = m.group(4)
                 ano_fabr = m.group(5)
+                data_exec = m.group(6)
 
                 start_idx = m.end()
                 end_idx = matches_veiculos[i+1].start() if i+1 < len(matches_veiculos) else len(text)
                 
-                cabecalho_bruto = text[m.start():start_idx + 250].replace('\n', ' ')
+                bloco = text[start_idx:end_idx].strip()
+                first_line = bloco.split('\n')[0].strip()
                 
-                datas = re.findall(r'\d{2}/\d{2}/\d{4}', cabecalho_bruto)
-                data_exec = datas[0] if len(datas) > 0 else ""
-                data_inicio = datas[1] if len(datas) > 1 else ""
-                data_fim = datas[2] if len(datas) > 2 else ""
+                datas = re.findall(r'\d{2}/\d{2}/\d{4}', first_line)
+                data_inicio = datas[0] if len(datas) > 0 else ""
+                data_fim = datas[1] if len(datas) > 1 else ""
                 
-                m_tempo = re.search(r'\b\d{2,3}:\d{2}\b', cabecalho_bruto)
+                m_tempo = re.search(r'\b\d{2,3}:\d{2}\b', first_line)
                 tempo_parado = m_tempo.group(0) if m_tempo else "00:00"
                 
-                resto_cab = cabecalho_bruto
-                if data_fim: 
-                    resto_cab = cabecalho_bruto[cabecalho_bruto.rfind(data_fim) + 10:]
-                    
-                valores = re.findall(r'[\d\.]+[,\.]\d{1,2}', resto_cab)
-                hodometro = valores[0] if len(valores) > 0 else "0,00"
-                total_mo = valores[1] if len(valores) > 1 else "0,00"
-                total_pecas = valores[2] if len(valores) > 2 else "0,00"
-                custo_im = valores[3] if len(valores) > 3 else "0,00"
-
-                # >>> MELHORIA: Identificar o Grupo Veicular do texto
+                monetaries = re.findall(r'R\$\s*[\d\.]+[,\.]\d{2}', first_line)
+                hodo_match = re.search(r'([\d\.]+,\d+)\s+R\$', first_line)
+                hodometro = hodo_match.group(1) if hodo_match else "0,00"
+                
+                total_mo = monetaries[0].replace('R$ ', '') if len(monetaries) > 0 else "0,00"
+                total_pecas = monetaries[1].replace('R$ ', '') if len(monetaries) > 1 else "0,00"
+                custo_im = monetaries[2].replace('R$ ', '') if len(monetaries) > 2 else "0,00"
+                
                 grupo_veicular = 'NÃO IDENTIFICADO'
                 codigo_im = ''
-                if custo_im in resto_cab:
-                    tail = resto_cab[resto_cab.rfind(custo_im) + len(custo_im):].strip()
-                    tokens_tail = tail.split()
-                    if tokens_tail:
-                        grupo_veicular = tokens_tail[-1]
-                        codigo_im = " ".join(tokens_tail[:-1])
+                if monetaries:
+                    last_monetary = monetaries[-1]
+                    tail = first_line[first_line.rfind(last_monetary) + len(last_monetary):].strip()
+                    tail_tokens = tail.split()
+                    if tail_tokens:
+                        grupo_veicular = tail_tokens[-1]
+                        codigo_im = " ".join(tail_tokens[:-1])
 
+                # Mapeado exatamente para o seu Excel Modelo
                 veiculo_info = {
-                    'N. veículo': placa,
-                    'Modelo': modelo,
-                    'Placa': placa,
-                    'Km Atual': km_atual,
-                    'Ano Fabr.': ano_fabr,
-                    'Data Exec.': data_exec,
-                    'Data Inicio': data_inicio,
-                    'Data Fim': data_fim,
-                    'Tempo Parado': tempo_parado,
-                    'Hodômetro': hodometro,
-                    'Total M-O': total_mo,
-                    'Total Peças': total_pecas,
-                    'Custo da IM': custo_im,
-                    'Código da IM': codigo_im,
-                    'Grupo Veicular': grupo_veicular
+                    'N° Veículo': placa,
+                    'MODELO': modelo,
+                    'PLACA': placa,
+                    'KM ATUAL': km_atual,
+                    'ANO FABR.': ano_fabr,
+                    'DATA EXEC.': data_exec,
+                    'DATA INICIO': data_inicio,
+                    'DATA FIM': data_fim,
+                    'TEMPO PARADO': tempo_parado,
+                    'HODÔMETRO': hodometro,
+                    'TOTAL M-O': total_mo,
+                    'TOTAL PEÇAS': total_pecas,
+                    'CUSTO IM': custo_im,
+                    'CÓDIGO DA IM': codigo_im,
+                    'GRUPO VEICULAR ': grupo_veicular
                 }
 
-                bloco = text[start_idx:end_idx].strip()
-                pecas_lines_raw = bloco.split('\n')
+                pecas_lines_raw = bloco.split('\n')[1:]
                 pecas_lines = []
                 
                 lixos_ignorar = [
@@ -1259,10 +1273,8 @@ def logistics_page():
                 buffer_desc = []
                 labor_desc = []
                 
-                # >>> NOVO: ACUMULADOR DE ITENS
                 agg_items = {
-                    'Qt Código': [], 'descrição': [], 'Pr,total': [], 'fornecedor': [],
-                    'N.NF': [], 'Descontos': [], 'Origem': [], 'Ga. KMS': [], 'GA. Dias': [], 'posição': []
+                    'DESCRIÇÃO': [], 'FORNECEDOR DE MÃO-DE-OBRA': [], 'N. NF': [], 'VALOR': [], 'DESCONTOS': []
                 }
                 
                 while idx_line < len(pecas_lines):
@@ -1275,22 +1287,23 @@ def logistics_page():
                         
                     # 1. BLOCO DE PEÇA
                     if re.match(r'^\d+\s', line):
-                        res = parse_part_line(line)
+                        res = parse_part_line_v5(line)
                         if res:
                             if buffer_desc:
                                 desc_tmp = " ".join(buffer_desc).strip()
                                 if len(desc_tmp) > 3 and not ("MÃO" in desc_tmp.upper() or "MAO" in desc_tmp.upper()):
-                                    agg_items['Qt Código'].append('1')
-                                    agg_items['descrição'].append(desc_tmp)
-                                    agg_items['Pr,total'].append('0,00')
-                                    agg_items['fornecedor'].append('Serviço Interno')
-                                    agg_items['N.NF'].append('')
-                                    agg_items['Descontos'].append('0,00')
-                                    agg_items['Origem'].append('Interno')
+                                    agg_items['DESCRIÇÃO'].append(desc_tmp)
+                                    agg_items['VALOR'].append('0,00')
+                                    agg_items['FORNECEDOR DE MÃO-DE-OBRA'].append('Serviço Interno')
+                                    agg_items['N. NF'].append('')
+                                    agg_items['DESCONTOS'].append('0,00')
                                 buffer_desc = []
                                 
-                            for k in res:
-                                if k in agg_items: agg_items[k].append(str(res[k]))
+                            agg_items['DESCRIÇÃO'].append(str(res['descrição']))
+                            agg_items['VALOR'].append(str(res['Pr,total']))
+                            agg_items['FORNECEDOR DE MÃO-DE-OBRA'].append(str(res['fornecedor']))
+                            agg_items['N. NF'].append(str(res['N.NF']))
+                            agg_items['DESCONTOS'].append(str(res['Descontos']))
                             idx_line += 1
                             continue
 
@@ -1312,7 +1325,7 @@ def logistics_page():
                             if nl_upper.startswith("FORNECEDOR DE MÃO-DE-OBRA") or nl_upper.startswith("FORNECEDOR DE MAO-DE-OBRA") or nl_upper.startswith("PEÇAS") or nl_upper.startswith("PECAS"):
                                 break
                             
-                            if re.match(r'^\d+\s', nl) and parse_part_line(nl) is not None:
+                            if re.match(r'^\d+\s', nl) and parse_part_line_v5(nl) is not None:
                                 break
                                 
                             if any(x in nl_upper for x in ["VALOR", "N. NF", "DESCONTOS", "DESCRIÇÃO", "GAR.KMS", "GAR.DIAS", "0,00", "00:00"]):
@@ -1333,13 +1346,11 @@ def logistics_page():
                                         fornecedor += " " + t
                             offset += 1
                             
-                        agg_items['Qt Código'].append('1')
-                        agg_items['descrição'].append(desc_servico if desc_servico else "Mão de Obra / Serviço")
-                        agg_items['Pr,total'].append(valor if valor else '0,00')
-                        agg_items['fornecedor'].append(fornecedor if fornecedor else 'Não Informado')
-                        agg_items['N.NF'].append(nf)
-                        agg_items['Descontos'].append('0,00')
-                        agg_items['Origem'].append('Mão de Obra')
+                        agg_items['DESCRIÇÃO'].append(desc_servico if desc_servico else "")
+                        agg_items['VALOR'].append(valor if valor else '0,00')
+                        agg_items['FORNECEDOR DE MÃO-DE-OBRA'].append(fornecedor if fornecedor else 'Não Informado')
+                        agg_items['N. NF'].append(nf)
+                        agg_items['DESCONTOS'].append('0,00')
                         idx_line += offset
                         continue
                         
@@ -1355,32 +1366,24 @@ def logistics_page():
                                 
                     idx_line += 1
                     
-                # Ao final do bloco do veículo, descarrega o buffer
                 if buffer_desc:
                     desc_tmp = " ".join(buffer_desc).strip()
                     if len(desc_tmp) > 3:
-                        agg_items['Qt Código'].append('1')
-                        agg_items['descrição'].append(desc_tmp)
-                        agg_items['Pr,total'].append('0,00')
-                        agg_items['fornecedor'].append('Serviço Interno / Sem NF')
-                        agg_items['N.NF'].append('')
-                        agg_items['Descontos'].append('0,00')
-                        agg_items['Origem'].append('Interno')
+                        agg_items['DESCRIÇÃO'].append(desc_tmp)
+                        agg_items['VALOR'].append('0,00')
+                        agg_items['FORNECEDOR DE MÃO-DE-OBRA'].append('Serviço Interno / Sem NF')
+                        agg_items['N. NF'].append('')
+                        agg_items['DESCONTOS'].append('0,00')
 
-                # >>> UNIFICA OS ITENS NA LINHA DO VEÍCULO SEPARANDO POR VÍRGULA
                 for k in agg_items:
-                    veiculo_info[k] = ", ".join(agg_items[k])
+                    veiculo_info[k] = ", ".join([v for v in agg_items[k] if v])
 
                 parsed_data.append(veiculo_info)
 
             if parsed_data:
                 df_resultado = pd.DataFrame(parsed_data)
                 
-                # REPARO IMPORTANTE: Removi os campos de peça daqui, pois agora são texto separado por vírgula.
-                colunas_numericas = [
-                    'Km Atual', 'Hodômetro', 'Total M-O', 'Total Peças', 'Custo da IM'
-                ]
-                
+                colunas_numericas = ['KM ATUAL', 'HODÔMETRO', 'TOTAL M-O', 'TOTAL PEÇAS', 'CUSTO IM']
                 for c in colunas_numericas:
                     if c in df_resultado.columns:
                         df_resultado[c] = pd.to_numeric(
@@ -1391,22 +1394,20 @@ def logistics_page():
                             errors='coerce'
                         ).fillna(0)
                         
-                # A LÓGICA PREVENTIVA FUNCIONA PERFEITAMENTE AQUI AINDA QUE ESTEJA SEPARADO POR VÍRGULA
-                if 'descrição' in df_resultado.columns:
-                    condicao_prev = df_resultado['descrição'].astype(str).str.upper().str.replace('Ó', 'O', regex=False).str.contains(r'OLEO|GRAXA|ADITIVO', regex=True, na=False)
-                    df_resultado['Manutenção'] = np.where(condicao_prev, 'Preventiva', 'Corretiva')
+                if 'DESCRIÇÃO' in df_resultado.columns:
+                    condicao_prev = df_resultado['DESCRIÇÃO'].astype(str).str.upper().str.replace('Ó', 'O', regex=False).str.contains(r'OLEO|GRAXA|ADITIVO', regex=True, na=False)
+                    df_resultado['TIPO'] = np.where(condicao_prev, 'PREVENTIVA', 'CORRETIVA')
                 else:
-                    df_resultado['Manutenção'] = 'Corretiva'
+                    df_resultado['TIPO'] = 'CORRETIVA'
                         
-                # >>> ORDENAÇÃO EXATAMENTE COMO VOCÊ PEDIU
+                # Ordenação exata solicitada pelo modelo
                 colunas_ordenadas = [
-                    'N. veículo', 'Modelo', 'Placa', 'Km Atual', 'Ano Fabr.', 
-                    'Data Exec.', 'Data Inicio', 'Data Fim', 'Tempo Parado', 'Hodômetro', 
-                    'Total M-O', 'Total Peças', 'Custo da IM', 'Código da IM', 
-                    'Qt Código', 'descrição', 'Manutenção', 'Pr,total', 'fornecedor', 
-                    'N.NF', 'Descontos', 'Ga. KMS', 'GA. Dias', 'posição', 'Origem',
-                    'Grupo Veicular' # Grupo veicular passou para o final
+                    'N° Veículo', 'MODELO', 'PLACA', 'KM ATUAL', 'ANO FABR.', 
+                    'DATA EXEC.', 'DATA INICIO', 'DATA FIM', 'TEMPO PARADO', 'HODÔMETRO', 
+                    'TOTAL M-O', 'TOTAL PEÇAS', 'CUSTO IM', 'CÓDIGO DA IM', 'GRUPO VEICULAR ',
+                    'DESCRIÇÃO', 'TIPO', 'FORNECEDOR DE MÃO-DE-OBRA', 'N. NF', 'VALOR', 'DESCONTOS'
                 ]
+                
                 colunas_presentes = [c for c in colunas_ordenadas if c in df_resultado.columns]
                 return df_resultado[colunas_presentes]
                 
@@ -1431,10 +1432,10 @@ def logistics_page():
                         for idx, col in enumerate(df.columns):
                             tamanho = max(df[col].astype(str).str.len().max(), len(col)) + 2
                             
-                            # Retirei o 'Pr,total' e 'Descontos' daqui:
-                            if col in ['Total M-O', 'Total Peças', 'Custo da IM']:
+                            # Mantemos apenas as colunas principais como valores monetários
+                            if col in ['TOTAL M-O', 'TOTAL PEÇAS', 'CUSTO IM']:
                                 ws.set_column(idx, idx, 15, formato_moeda)
-                            elif col in ['Km Atual', 'Hodômetro']:
+                            elif col in ['KM ATUAL', 'HODÔMETRO']:
                                 ws.set_column(idx, idx, 12, formato_km)
                             else:
                                 ws.set_column(idx, idx, min(tamanho, 45))
