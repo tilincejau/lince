@@ -1130,7 +1130,6 @@ def logistics_page():
 
             parsed_data = []
 
-            # Expressão Regular para pegar os cabeçalhos mesmo que a data esteja colada no ano
             veiculo_pattern = re.compile(r'([A-Z0-9\-]{6,10})\s+(.+?)\s+([A-Z0-9\-]{6,10})\s+([\d\.]+,\d+)\s+(\d{4})\s*(\d{2}/\d{2}/\d{4})')
             matches_veiculos = list(veiculo_pattern.finditer(text))
 
@@ -1232,7 +1231,6 @@ def logistics_page():
                         grupo_veicular = tail_tokens[-1]
                         codigo_im = " ".join(tail_tokens[:-1])
 
-                # Mapeado exatamente para o seu Excel Modelo
                 veiculo_info = {
                     'N° Veículo': placa,
                     'MODELO': modelo,
@@ -1375,8 +1373,21 @@ def logistics_page():
                         agg_items['N. NF'].append('')
                         agg_items['DESCONTOS'].append('0,00')
 
+                # UNIFICANDO OS ITENS
                 for k in agg_items:
-                    veiculo_info[k] = ", ".join([v for v in agg_items[k] if v])
+                    # Se for fornecedor ou NF, remove duplicadas sem perder a ordem original
+                    if k in ['FORNECEDOR DE MÃO-DE-OBRA', 'N. NF']:
+                        vistos = set()
+                        unicos = []
+                        for v in agg_items[k]:
+                            v_clean = str(v).strip()
+                            if v_clean and v_clean not in vistos:
+                                vistos.add(v_clean)
+                                unicos.append(v_clean)
+                        veiculo_info[k] = ", ".join(unicos)
+                    else:
+                        # Demais itens (como descrição e valor) continuam sendo unidos normalmente
+                        veiculo_info[k] = ", ".join([v for v in agg_items[k] if v])
 
                 parsed_data.append(veiculo_info)
 
