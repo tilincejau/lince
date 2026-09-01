@@ -1208,6 +1208,16 @@ def logistics_page():
                 total_pecas = valores[2] if len(valores) > 2 else "0,00"
                 custo_im = valores[3] if len(valores) > 3 else "0,00"
 
+                # >>> MELHORIA: Identificar o Grupo Veicular do texto
+                grupo_veicular = 'NÃO IDENTIFICADO'
+                codigo_im = ''
+                if custo_im in resto_cab:
+                    tail = resto_cab[resto_cab.rfind(custo_im) + len(custo_im):].strip()
+                    tokens_tail = tail.split()
+                    if tokens_tail:
+                        grupo_veicular = tokens_tail[-1]
+                        codigo_im = " ".join(tokens_tail[:-1])
+
                 veiculo_info = {
                     'N. veículo': placa,
                     'Modelo': modelo,
@@ -1216,16 +1226,14 @@ def logistics_page():
                     'Ano Fabr.': ano_fabr,
                     'Data Exec.': data_exec,
                     'Data Inicio': data_inicio,
+                    'Data Fim': data_fim,
                     'Tempo Parado': tempo_parado,
                     'Hodômetro': hodometro,
                     'Total M-O': total_mo,
                     'Total Peças': total_pecas,
                     'Custo da IM': custo_im,
-                    'Código da IM': '',
-                    'Grupo Veicular': 'DIFERENCIAL',
-                    'Ga. KMS': '0,00',
-                    'GA. Dias': '0,00',
-                    'posição': ''
+                    'Código da IM': codigo_im,
+                    'Grupo Veicular': grupo_veicular
                 }
 
                 bloco = text[start_idx:end_idx].strip()
@@ -1251,6 +1259,12 @@ def logistics_page():
                 buffer_desc = []
                 labor_desc = []
                 
+                # >>> NOVO: ACUMULADOR DE ITENS
+                agg_items = {
+                    'Qt Código': [], 'descrição': [], 'Pr,total': [], 'fornecedor': [],
+                    'N.NF': [], 'Descontos': [], 'Origem': [], 'Ga. KMS': [], 'GA. Dias': [], 'posição': []
+                }
+                
                 while idx_line < len(pecas_lines):
                     line = pecas_lines[idx_line].strip()
                     line_upper = line.upper()
@@ -1266,14 +1280,17 @@ def logistics_page():
                             if buffer_desc:
                                 desc_tmp = " ".join(buffer_desc).strip()
                                 if len(desc_tmp) > 3 and not ("MÃO" in desc_tmp.upper() or "MAO" in desc_tmp.upper()):
-                                    row = veiculo_info.copy()
-                                    row.update({'Qt Código': '1', 'descrição': desc_tmp, 'Pr,total': '0,00', 'fornecedor': 'Serviço Interno', 'N.NF': '', 'Descontos': '0,00', 'Origem': 'Interno'})
-                                    parsed_data.append(row)
+                                    agg_items['Qt Código'].append('1')
+                                    agg_items['descrição'].append(desc_tmp)
+                                    agg_items['Pr,total'].append('0,00')
+                                    agg_items['fornecedor'].append('Serviço Interno')
+                                    agg_items['N.NF'].append('')
+                                    agg_items['Descontos'].append('0,00')
+                                    agg_items['Origem'].append('Interno')
                                 buffer_desc = []
                                 
-                            row = veiculo_info.copy()
-                            row.update(res)
-                            parsed_data.append(row)
+                            for k in res:
+                                if k in agg_items: agg_items[k].append(str(res[k]))
                             idx_line += 1
                             continue
 
@@ -1292,27 +1309,23 @@ def logistics_page():
                             nl_upper = nl.upper()
                             nl_tokens = nl.split()
                             
-                            # Se esbarrar no próximo bloco ou peça, para a varredura
                             if nl_upper.startswith("FORNECEDOR DE MÃO-DE-OBRA") or nl_upper.startswith("FORNECEDOR DE MAO-DE-OBRA") or nl_upper.startswith("PEÇAS") or nl_upper.startswith("PECAS"):
                                 break
                             
-                            # Se esbarrar numa linha de peça, para a varredura
                             if re.match(r'^\d+\s', nl) and parse_part_line(nl) is not None:
                                 break
                                 
-                            # Pular as linhas de cabeçalho perdidas
                             if any(x in nl_upper for x in ["VALOR", "N. NF", "DESCONTOS", "DESCRIÇÃO", "GAR.KMS", "GAR.DIAS", "0,00", "00:00"]):
                                 offset += 1
                                 continue
                                 
-                            # Identificar NF, Valor e Fornecedor da Mão de obra fatiando a linha
                             for t in nl_tokens:
                                 if re.match(r'^\d{1,10}$', t) and not nf:
                                     nf = t
                                 elif re.match(r'^\d{1,3}(?:\.\d{3})*,\d{2}$', t) and not valor:
                                     valor = t
                                 elif re.match(r'^\d{1,3}(?:\.\d{3})*,\d{2}$', t) and valor:
-                                    pass # O segundo valor monetário é o desconto
+                                    pass
                                 else:
                                     if not fornecedor:
                                         fornecedor = t
@@ -1320,21 +1333,17 @@ def logistics_page():
                                         fornecedor += " " + t
                             offset += 1
                             
-                        row = veiculo_info.copy()
-                        row.update({
-                            'Qt Código': '1', 
-                            'descrição': desc_servico if desc_servico else "Mão de Obra / Serviço",
-                            'Pr,total': valor if valor else '0,00',
-                            'fornecedor': fornecedor if fornecedor else 'Não Informado',
-                            'N.NF': nf,
-                            'Descontos': '0,00',
-                            'Origem': 'Mão de Obra'
-                        })
-                        parsed_data.append(row)
+                        agg_items['Qt Código'].append('1')
+                        agg_items['descrição'].append(desc_servico if desc_servico else "Mão de Obra / Serviço")
+                        agg_items['Pr,total'].append(valor if valor else '0,00')
+                        agg_items['fornecedor'].append(fornecedor if fornecedor else 'Não Informado')
+                        agg_items['N.NF'].append(nf)
+                        agg_items['Descontos'].append('0,00')
+                        agg_items['Origem'].append('Mão de Obra')
                         idx_line += offset
                         continue
                         
-                    # 3. TEXTOS GENÉRICOS (ACUMULADORES DE DESCRIÇÃO)
+                    # 3. TEXTOS GENÉRICOS
                     if not re.match(r'^\d{2}:\d{2}', line) and not re.match(r'^[\d\.,]+$', line):
                         if "MÃO" in line_upper or "MAO" in line_upper:
                             labor_desc.append(line)
@@ -1346,21 +1355,30 @@ def logistics_page():
                                 
                     idx_line += 1
                     
-                # Ao final do bloco do veículo, descarrega o buffer restante se houver algo
+                # Ao final do bloco do veículo, descarrega o buffer
                 if buffer_desc:
                     desc_tmp = " ".join(buffer_desc).strip()
                     if len(desc_tmp) > 3:
-                        row = veiculo_info.copy()
-                        row.update({'Qt Código': '1', 'descrição': desc_tmp, 'Pr,total': '0,00', 'fornecedor': 'Serviço Interno / Sem NF', 'N.NF': '', 'Descontos': '0,00', 'Origem': 'Interno'})
-                        parsed_data.append(row)
+                        agg_items['Qt Código'].append('1')
+                        agg_items['descrição'].append(desc_tmp)
+                        agg_items['Pr,total'].append('0,00')
+                        agg_items['fornecedor'].append('Serviço Interno / Sem NF')
+                        agg_items['N.NF'].append('')
+                        agg_items['Descontos'].append('0,00')
+                        agg_items['Origem'].append('Interno')
+
+                # >>> UNIFICA OS ITENS NA LINHA DO VEÍCULO SEPARANDO POR VÍRGULA
+                for k in agg_items:
+                    veiculo_info[k] = ", ".join(agg_items[k])
+
+                parsed_data.append(veiculo_info)
 
             if parsed_data:
                 df_resultado = pd.DataFrame(parsed_data)
                 
+                # REPARO IMPORTANTE: Removi os campos de peça daqui, pois agora são texto separado por vírgula.
                 colunas_numericas = [
-                    'Km Atual', 'Hodômetro', 'Total M-O', 'Total Peças', 
-                    'Custo da IM', 'Pr,total', 'Descontos', 
-                    'Qt Código', 'Ga. KMS', 'GA. Dias'
+                    'Km Atual', 'Hodômetro', 'Total M-O', 'Total Peças', 'Custo da IM'
                 ]
                 
                 for c in colunas_numericas:
@@ -1373,19 +1391,21 @@ def logistics_page():
                             errors='coerce'
                         ).fillna(0)
                         
-                # >>> LÓGICA DE CLASSIFICAÇÃO DE MANUTENÇÃO (PREVENTIVA / CORRETIVA) <<<
+                # A LÓGICA PREVENTIVA FUNCIONA PERFEITAMENTE AQUI AINDA QUE ESTEJA SEPARADO POR VÍRGULA
                 if 'descrição' in df_resultado.columns:
                     condicao_prev = df_resultado['descrição'].astype(str).str.upper().str.replace('Ó', 'O', regex=False).str.contains(r'OLEO|GRAXA|ADITIVO', regex=True, na=False)
                     df_resultado['Manutenção'] = np.where(condicao_prev, 'Preventiva', 'Corretiva')
                 else:
                     df_resultado['Manutenção'] = 'Corretiva'
                         
+                # >>> ORDENAÇÃO EXATAMENTE COMO VOCÊ PEDIU
                 colunas_ordenadas = [
                     'N. veículo', 'Modelo', 'Placa', 'Km Atual', 'Ano Fabr.', 
-                    'Data Exec.', 'Data Inicio', 'Tempo Parado', 'Hodômetro', 
-                    'Total M-O', 'Total Peças', 'Custo da IM', 'Código da IM', 'Grupo Veicular',
+                    'Data Exec.', 'Data Inicio', 'Data Fim', 'Tempo Parado', 'Hodômetro', 
+                    'Total M-O', 'Total Peças', 'Custo da IM', 'Código da IM', 
                     'Qt Código', 'descrição', 'Manutenção', 'Pr,total', 'fornecedor', 
-                    'N.NF', 'Descontos', 'Ga. KMS', 'GA. Dias', 'posição', 'Origem'
+                    'N.NF', 'Descontos', 'Ga. KMS', 'GA. Dias', 'posição', 'Origem',
+                    'Grupo Veicular' # Grupo veicular passou para o final
                 ]
                 colunas_presentes = [c for c in colunas_ordenadas if c in df_resultado.columns]
                 return df_resultado[colunas_presentes]
@@ -1411,9 +1431,10 @@ def logistics_page():
                         for idx, col in enumerate(df.columns):
                             tamanho = max(df[col].astype(str).str.len().max(), len(col)) + 2
                             
-                            if col in ['Total M-O', 'Total Peças', 'Custo da IM', 'Pr,total', 'Descontos']:
+                            # Retirei o 'Pr,total' e 'Descontos' daqui:
+                            if col in ['Total M-O', 'Total Peças', 'Custo da IM']:
                                 ws.set_column(idx, idx, 15, formato_moeda)
-                            elif col in ['Km Atual', 'Hodômetro', 'Qt Código', 'Ga. KMS', 'GA. Dias']:
+                            elif col in ['Km Atual', 'Hodômetro']:
                                 ws.set_column(idx, idx, 12, formato_km)
                             else:
                                 ws.set_column(idx, idx, min(tamanho, 45))
