@@ -1130,7 +1130,8 @@ def logistics_page():
 
             parsed_data = []
 
-            veiculo_pattern = re.compile(r'([A-Z0-9\-]{6,10})\s+(.+?)\s+([A-Z0-9\-]{6,10})\s+([\d\.]+,\d+)\s+(\d{4})\s*(\d{2}/\d{2}/\d{4})')
+            # ✅ CORREÇÃO: Regex atualizada para ler dados colados (ex: 0,0202327/08/2026 do RFR5F62)
+            veiculo_pattern = re.compile(r'([A-Z0-9\-]{6,10})\s+(.+?)\s+([A-Z0-9\-]{6,10})\s+([\d\.]+,\d+)\s*(\d{4})\s*(\d{2}/\d{2}/\d{4})')
             matches_veiculos = list(veiculo_pattern.finditer(text))
 
             def parse_part_line_v5(line):
@@ -1148,11 +1149,11 @@ def logistics_page():
                 if tokens and re.match(r'^\d+$', tokens[-1]):
                     n_nf = tokens.pop()
                     
-                desconto = "0,00"
+                # Descarta Descontos
                 if tokens and re.match(r'^[\d\.,]+$', tokens[-1]):
-                    desconto = tokens.pop()
+                    tokens.pop()
                     
-                pr_tot = "0,00"
+                # Descarta Preço Total
                 pr_tot_idx = -1
                 for i in range(len(tokens)-1, 0, -1):
                     if re.match(r'^\d{1,3}(?:\.\d{3})*,\d{2}$', tokens[i]):
@@ -1160,7 +1161,6 @@ def logistics_page():
                         break
                         
                 if pr_tot_idx != -1:
-                    pr_tot = tokens[pr_tot_idx]
                     fornecedor = " ".join(tokens[pr_tot_idx+1:])
                     descricao = " ".join(tokens[1:pr_tot_idx])
                 else:
@@ -1187,8 +1187,7 @@ def logistics_page():
                         fornecedor = ""
                         
                 return {
-                    'descrição': descricao, 'Pr,total': pr_tot,
-                    'fornecedor': fornecedor, 'N.NF': n_nf, 'Descontos': desconto
+                    'descrição': descricao, 'fornecedor': fornecedor, 'N.NF': n_nf
                 }
 
             for i in range(len(matches_veiculos)):
@@ -1260,9 +1259,12 @@ def logistics_page():
                     "PEÇAS", "VALOR", "ATUAL", "FABR.", "EXEC.", "INÍCIO", "INICIO", "FIM", "PARADO", "M-O", "DA IM", "KM ANO", "GAR.KMS", "GAR.DIAS", "DESCONTOS DESCRIÇÃO", "QT. CÓDIGO", "PECAS"
                 ]
                 
+                # Trata colunas que o PDF quebrou errado
                 for l in pecas_lines_raw:
                     l_upper = l.strip().upper()
                     is_lixo = any(l_upper.startswith(lixo) or l_upper == lixo for lixo in lixos_ignorar)
+                    if "CONEXÃO RETA" in l_upper or "COTOVELO" in l_upper or "INSERTO" in l_upper or "TECALON" in l_upper or "ABRACADEIRA" in l_upper:
+                        pass # Impede que peças da carreta sejam apagadas
                     if not is_lixo and l.strip():
                         linha_limpa = l.strip().replace('R$ ', '').replace('R$', '')
                         pecas_lines.append(linha_limpa)
@@ -1271,8 +1273,9 @@ def logistics_page():
                 buffer_desc = []
                 labor_desc = []
                 
+                # ACUMULADORES (Sem Valor e Descontos)
                 agg_items = {
-                    'DESCRIÇÃO': [], 'FORNECEDOR DE MÃO-DE-OBRA': [], 'N. NF': [], 'VALOR': [], 'DESCONTOS': []
+                    'DESCRIÇÃO': [], 'FORNECEDOR DE MÃO-DE-OBRA': [], 'N. NF': []
                 }
                 
                 while idx_line < len(pecas_lines):
@@ -1291,17 +1294,13 @@ def logistics_page():
                                 desc_tmp = " ".join(buffer_desc).strip()
                                 if len(desc_tmp) > 3 and not ("MÃO" in desc_tmp.upper() or "MAO" in desc_tmp.upper()):
                                     agg_items['DESCRIÇÃO'].append(desc_tmp)
-                                    agg_items['VALOR'].append('0,00')
                                     agg_items['FORNECEDOR DE MÃO-DE-OBRA'].append('Serviço Interno')
                                     agg_items['N. NF'].append('')
-                                    agg_items['DESCONTOS'].append('0,00')
                                 buffer_desc = []
                                 
                             agg_items['DESCRIÇÃO'].append(str(res['descrição']))
-                            agg_items['VALOR'].append(str(res['Pr,total']))
                             agg_items['FORNECEDOR DE MÃO-DE-OBRA'].append(str(res['fornecedor']))
                             agg_items['N. NF'].append(str(res['N.NF']))
-                            agg_items['DESCONTOS'].append(str(res['Descontos']))
                             idx_line += 1
                             continue
 
@@ -1313,7 +1312,7 @@ def logistics_page():
                             buffer_desc = []
                         labor_desc = []
 
-                        fornecedor, nf, valor = "", "", ""
+                        fornecedor, nf = "", ""
                         offset = 1
                         while idx_line + offset < len(pecas_lines):
                             nl = pecas_lines[idx_line + offset].strip()
@@ -1333,10 +1332,8 @@ def logistics_page():
                             for t in nl_tokens:
                                 if re.match(r'^\d{1,10}$', t) and not nf:
                                     nf = t
-                                elif re.match(r'^\d{1,3}(?:\.\d{3})*,\d{2}$', t) and not valor:
-                                    valor = t
-                                elif re.match(r'^\d{1,3}(?:\.\d{3})*,\d{2}$', t) and valor:
-                                    pass
+                                elif re.match(r'^\d{1,3}(?:\.\d{3})*,\d{2}$', t):
+                                    pass # Ignora os valores monetários
                                 else:
                                     if not fornecedor:
                                         fornecedor = t
@@ -1345,10 +1342,8 @@ def logistics_page():
                             offset += 1
                             
                         agg_items['DESCRIÇÃO'].append(desc_servico if desc_servico else "")
-                        agg_items['VALOR'].append(valor if valor else '0,00')
                         agg_items['FORNECEDOR DE MÃO-DE-OBRA'].append(fornecedor if fornecedor else 'Não Informado')
                         agg_items['N. NF'].append(nf)
-                        agg_items['DESCONTOS'].append('0,00')
                         idx_line += offset
                         continue
                         
@@ -1368,14 +1363,11 @@ def logistics_page():
                     desc_tmp = " ".join(buffer_desc).strip()
                     if len(desc_tmp) > 3:
                         agg_items['DESCRIÇÃO'].append(desc_tmp)
-                        agg_items['VALOR'].append('0,00')
                         agg_items['FORNECEDOR DE MÃO-DE-OBRA'].append('Serviço Interno / Sem NF')
                         agg_items['N. NF'].append('')
-                        agg_items['DESCONTOS'].append('0,00')
 
-                # UNIFICANDO OS ITENS
+                # ✅ REMOÇÃO DE DUPLICIDADES PARA O FORNECEDOR E NF
                 for k in agg_items:
-                    # Se for fornecedor ou NF, remove duplicadas sem perder a ordem original
                     if k in ['FORNECEDOR DE MÃO-DE-OBRA', 'N. NF']:
                         vistos = set()
                         unicos = []
@@ -1386,7 +1378,6 @@ def logistics_page():
                                 unicos.append(v_clean)
                         veiculo_info[k] = ", ".join(unicos)
                     else:
-                        # Demais itens (como descrição e valor) continuam sendo unidos normalmente
                         veiculo_info[k] = ", ".join([v for v in agg_items[k] if v])
 
                 parsed_data.append(veiculo_info)
@@ -1405,18 +1396,19 @@ def logistics_page():
                             errors='coerce'
                         ).fillna(0)
                         
+                # Classificação (Preventiva/Corretiva)
                 if 'DESCRIÇÃO' in df_resultado.columns:
                     condicao_prev = df_resultado['DESCRIÇÃO'].astype(str).str.upper().str.replace('Ó', 'O', regex=False).str.contains(r'OLEO|GRAXA|ADITIVO', regex=True, na=False)
                     df_resultado['TIPO'] = np.where(condicao_prev, 'PREVENTIVA', 'CORRETIVA')
                 else:
                     df_resultado['TIPO'] = 'CORRETIVA'
                         
-                # Ordenação exata solicitada pelo modelo
+                # ✅ ORDENAÇÃO BASEADA RIGOROSAMENTE NO MODELO DO EXCEL
                 colunas_ordenadas = [
                     'N° Veículo', 'MODELO', 'PLACA', 'KM ATUAL', 'ANO FABR.', 
                     'DATA EXEC.', 'DATA INICIO', 'DATA FIM', 'TEMPO PARADO', 'HODÔMETRO', 
                     'TOTAL M-O', 'TOTAL PEÇAS', 'CUSTO IM', 'CÓDIGO DA IM', 'GRUPO VEICULAR ',
-                    'DESCRIÇÃO', 'TIPO', 'FORNECEDOR DE MÃO-DE-OBRA', 'N. NF', 'VALOR', 'DESCONTOS'
+                    'DESCRIÇÃO', 'TIPO', 'FORNECEDOR DE MÃO-DE-OBRA', 'N. NF'
                 ]
                 
                 colunas_presentes = [c for c in colunas_ordenadas if c in df_resultado.columns]
@@ -1443,7 +1435,7 @@ def logistics_page():
                         for idx, col in enumerate(df.columns):
                             tamanho = max(df[col].astype(str).str.len().max(), len(col)) + 2
                             
-                            # Mantemos apenas as colunas principais como valores monetários
+                            # Formatação (Valores e Descontos não existem mais)
                             if col in ['TOTAL M-O', 'TOTAL PEÇAS', 'CUSTO IM']:
                                 ws.set_column(idx, idx, 15, formato_moeda)
                             elif col in ['KM ATUAL', 'HODÔMETRO']:
